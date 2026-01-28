@@ -256,22 +256,24 @@ EDITOR_TEMPLATE = """
             }
         }
 
-        function applyTruncation(textbox, fullText) {
-            if (!fullText) { textbox.set('text', ''); return; }
+        function applyTruncation(textbox, textToDisplay) {
+            const textSource = textToDisplay || textbox.fullMediaText || "";
+            if (!textSource) { textbox.set('text', ''); return; }
+
+            // Wir setzen zuerst den vollen Text, um die Zeilen zu berechnen
+            textbox.set('text', textSource);
             
-            // 1. Limit festlegen (entweder gezogen oder initial)
-            const limit = textbox.maxAllowedHeight || textbox.height;
-            
-            // 2. Text setzen
-            textbox.set('text', fullText);
-            
-            // 3. Prüfen ob er zu hoch ist
-            // Wir nutzen getScaledHeight() um die tatsächliche Render-Höhe zu prüfen
-            if (textbox.getScaledHeight() > limit) {
-                let words = fullText.split(' ');
-                while (textbox.getScaledHeight() > limit && words.length > 0) {
+            // Falls der Text höher ist als die vom User gezogene Box
+            if (textbox.height > textbox.fixedHeight) {
+                let words = textSource.split(' ');
+                let currentText = textSource;
+
+                while (textbox.height > textbox.fixedHeight && words.length > 0) {
                     words.pop();
-                    textbox.set('text', words.join(' ') + '...');
+                    currentText = words.join(' ') + '...';
+                    textbox.set('text', currentText);
+                    // Wir müssen Fabric zwingen, die Höhe nach Textänderung neu zu berechnen
+                    textbox.initDimensions(); 
                 }
             }
             canvas.renderAll();
@@ -293,8 +295,12 @@ EDITOR_TEMPLATE = """
                             case 'year': val = data.year; break;
                             case 'rating': val = (data.rating !== 'N/A') ? `IMDb: ${data.rating}` : ''; break;
                             case 'overview': 
-                                if (obj.type === 'textbox') applyTruncation(obj, data.overview);
-                                else val = data.overview;
+                                if (obj.type === 'textbox') {
+                                    obj.fullMediaText = data.overview; // Speicher das Original
+                                    applyTruncation(obj, data.overview); // Zeige nur was passt
+                                } else {
+                                    obj.set({ text: data.overview });
+                                }
                                 break;
                             case 'genres': val = data.genres; break;
                             case 'runtime': val = data.runtime; break;
@@ -314,10 +320,11 @@ EDITOR_TEMPLATE = """
                 textObj = new fabric.Textbox(placeholder, {
                     ...props,
                     width: 600,
-                    height: 300,           // Start-Höhe
-                    maxAllowedHeight: 300, // Unsere eigene Begrenzung
+                    height: 300,
+                    fixedHeight: 300, // Unsere Referenz für das Abschneiden
                     splitByGrapheme: true,
-                    lockScalingY: false
+                    lockScalingY: false,
+                    fullMediaText: placeholder
                 });
             } else {
                 textObj = new fabric.IText(placeholder, props);
@@ -334,15 +341,17 @@ EDITOR_TEMPLATE = """
                 if (t instanceof fabric.Textbox) {
                     const newWidth = t.width * t.scaleX;
                     const newHeight = t.height * t.scaleY;
+                    
+                    // Wir speichern die neue Wunsch-Größe
                     t.set({
                         width: newWidth,
-                        height: newHeight,
+                        fixedHeight: newHeight, // Update der Grenze
                         scaleX: 1,
                         scaleY: 1
                     });
-                    // Wenn es die Beschreibung ist, merken wir uns die neue gezogene Höhe
+
                     if (t.dataTag === 'overview') {
-                        t.maxAllowedHeight = newHeight;
+                        applyTruncation(t, t.fullMediaText);
                     }
                 }
                 if (t === mainBg) updateFades();
