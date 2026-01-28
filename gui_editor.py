@@ -49,12 +49,23 @@ def get_random_media():
             
             if items:
                 item = random.choice(items)
+                
+                # Convert RunTimeTicks to "Xh Ymin"
+                ticks = item.get('RunTimeTicks', 0)
+                minutes = (ticks // 600000000) if ticks else 0
+                h = minutes // 60
+                m = minutes % 60
+                runtime_str = f"{h}h {m}min" if h > 0 else f"{m}min"
+
                 print(f"DEBUG: Successfully fetched {item.get('Name')} from Jellyfin")
+                
                 return jsonify({
                     "title": item.get('Name'),
                     "year": item.get('ProductionYear', 'N/A'),
                     "rating": item.get('CommunityRating', 'N/A'),
                     "overview": item.get('Overview', ''),
+                    "genres": ", ".join(item.get('Genres', [])), # Join list to string
+                    "runtime": runtime_str,
                     "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={jf['api_key']}",
                     "source": "Jellyfin"
                 })
@@ -323,9 +334,16 @@ EDITOR_TEMPLATE = """
                             case 'title': newValue = data.title; break;
                             case 'year': newValue = data.year; break;
                             case 'rating': newValue = (data.rating !== 'N/A') ? `IMDb: ${data.rating}` : ''; break;
-                            case 'overview': newValue = data.overview; break;
+                            case 'overview': newValue = data.overview || ""; break;
+                            case 'genres': newValue = data.genres || ""; break;
+                            case 'runtime': newValue = data.runtime || ""; break;
                         }
                         obj.set({ text: String(newValue) });
+
+                        // Re-wrap overview text if it changed
+                        if (obj.dataTag === 'overview') {
+                            obj.set({ width: obj.width }); // Triggers recalculation
+                        }
                     }
                 });
 
