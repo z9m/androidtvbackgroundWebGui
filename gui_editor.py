@@ -36,6 +36,7 @@ def proxy_image():
     if not url:
         return "Missing URL", 400
     try:
+        # requests requires an absolute URL (http://...)
         resp = requests.get(url, stream=True, timeout=10)
         resp.raise_for_status()
         return send_file(
@@ -43,6 +44,7 @@ def proxy_image():
             mimetype=resp.headers.get('Content-Type', 'image/jpeg')
         )
     except Exception as e:
+        print(f"Proxy Error for {url}: {e}")
         return str(e), 500
 
 @gui_editor_bp.route('/api/media/random')
@@ -111,6 +113,7 @@ EDITOR_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <title>TV Background Suite</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <style>
@@ -129,9 +132,10 @@ EDITOR_TEMPLATE = """
 
         .control-group { border-bottom: 1px solid #333; padding-bottom: 15px; }
         h3 { font-size: 12px; text-transform: uppercase; color: #888; margin: 0 0 10px 0; }
-        label { font-size: 11px; color: #666; display: block; margin-top: 8px; }
+        label { font-size: 11px; color: #666; display: block; margin-top: 8px; cursor: pointer; }
         input, select, button { padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: white; width: 100%; margin-top: 5px; box-sizing: border-box; }
         button { background: var(--primary); border: none; font-weight: bold; cursor: pointer; }
+        button:hover { filter: brightness(1.2); }
         .btn-export { background: #1565c0; margin-top: 20px; }
 
         #canvas-wrapper { width: 100%; max-width: 1200px; aspect-ratio: 16 / 9; background: #000; border: 2px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
@@ -233,9 +237,23 @@ EDITOR_TEMPLATE = """
     </div>
 
     <script>
+        // --- GLOBAL FIXES & VARIABLES ---
+        (function() {
+            // Force baseline to alphabetic to avoid Chrome 'alphabetical' error
+            if (typeof fabric !== 'undefined') {
+                fabric.Text.prototype.textBaseline = 'alphabetic';
+                fabric.IText.prototype.textBaseline = 'alphabetic';
+                fabric.Textbox.prototype.textBaseline = 'alphabetic';
+            }
+        })();
+
         let canvas;
         let mainBg = null;
         let fades = { left: null, right: null, top: null, bottom: null };
+        let scalingTimeout = null;
+        let lastFetchedData = null; 
+
+        // --- UI & LOGIC FUNCTIONS ---
 
         function updateSelectionUI() {
             const activeObj = canvas.getActiveObject();
@@ -252,31 +270,34 @@ EDITOR_TEMPLATE = """
             const activeObj = canvas.getActiveObject();
             if (activeObj) {
                 activeObj.set("fontSize", parseInt(document.getElementById('fontSizeInput').value));
-                canvas.renderAll();
+                canvas.requestRenderAll();
             }
         }
 
         function applyTruncation(textbox, textToDisplay) {
+            if (!canvas) return;
             const textSource = textToDisplay || textbox.fullMediaText || "";
             if (!textSource) { textbox.set('text', ''); return; }
 
-            // Wir setzen zuerst den vollen Text, um die Zeilen zu berechnen
-            textbox.set('text', textSource);
-            
-            // Falls der Text höher ist als die vom User gezogene Box
-            if (textbox.height > textbox.fixedHeight) {
-                let words = textSource.split(' ');
-                let currentText = textSource;
+            const oldState = canvas.renderOnAddRemove;
+            canvas.renderOnAddRemove = false;
 
-                while (textbox.height > textbox.fixedHeight && words.length > 0) {
+            textbox.set('text', textSource);
+            textbox.initDimensions();
+
+            const limit = textbox.fixedHeight || textbox.height;
+
+            if (textbox.height > limit) {
+                let words = textSource.split(' ');
+                while (textbox.height > limit && words.length > 0) {
                     words.pop();
-                    currentText = words.join(' ') + '...';
-                    textbox.set('text', currentText);
-                    // Wir müssen Fabric zwingen, die Höhe nach Textänderung neu zu berechnen
-                    textbox.initDimensions(); 
+                    textbox.set('text', words.join(' ') + '...');
+                    textbox.initDimensions();
                 }
             }
-            canvas.renderAll();
+
+            canvas.renderOnAddRemove = oldState;
+            canvas.requestRenderAll();
         }
 
         async function fetchRandomPreview() {
@@ -285,43 +306,69 @@ EDITOR_TEMPLATE = """
             try {
                 const response = await fetch('/api/media/random');
                 const data = await response.json();
+                
+                lastFetchedData = data; 
+
                 if (data.backdrop_url) loadBackground(data.backdrop_url);
 
-                canvas.getObjects().forEach(obj => {
-                    if (obj.dataTag) {
-                        let val = "";
-                        switch(obj.dataTag) {
-                            case 'title': val = data.title; break;
-                            case 'year': val = data.year; break;
-                            case 'rating': val = (data.rating !== 'N/A') ? `IMDb: ${data.rating}` : ''; break;
-                            case 'overview': 
-                                if (obj.type === 'textbox') {
-                                    obj.fullMediaText = data.overview; // Speicher das Original
-                                    applyTruncation(obj, data.overview); // Zeige nur was passt
-                                } else {
-                                    obj.set({ text: data.overview });
-                                }
-                                break;
-                            case 'genres': val = data.genres; break;
-                            case 'runtime': val = data.runtime; break;
-                        }
-                        if (val) obj.set({ text: String(val) });
-                    }
-                });
+                previewTemplate(data);
+
                 indicator.innerText = "Source: " + data.source;
-                canvas.renderAll();
-            } catch (err) { indicator.innerText = "Error loading preview"; }
+            } catch (err) { 
+                console.error(err);
+                indicator.innerText = "Error loading preview"; 
+            }
+        }
+
+        function previewTemplate(mediaData) {
+            if (!canvas || !mediaData) return;
+
+            canvas.getObjects().forEach(obj => {
+                if (obj.dataTag) {
+                    let val = "";
+                    switch(obj.dataTag) {
+                        case 'title': val = mediaData.title || mediaData.Name; break;
+                        case 'year': val = mediaData.year || mediaData.ProductionYear; break;
+                        case 'rating': 
+                            let r = mediaData.rating || mediaData.CommunityRating;
+                            val = (r && r !== 'N/A') ? `IMDb: ${r}` : ''; 
+                            break;
+                        case 'overview': 
+                            let ov = mediaData.overview || mediaData.Overview || "";
+                            if (obj.type === 'textbox') {
+                                obj.fullMediaText = ov;
+                                applyTruncation(obj, ov);
+                            } else { val = ov; }
+                            break;
+                        case 'genres': val = mediaData.genres || ""; break;
+                        case 'runtime': val = mediaData.runtime || ""; break;
+                    }
+                    if (val !== undefined && val !== null && obj.dataTag !== 'overview') {
+                        obj.set({ text: String(val) });
+                    }
+                }
+            });
+            canvas.requestRenderAll();
         }
 
         function addMetadataTag(type, placeholder) {
             let textObj;
-            const props = { left: 200, top: 200, fontFamily: 'Segoe UI', fontSize: type === 'title' ? 80 : 35, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
+            const props = { 
+                left: 200, top: 200, 
+                fontFamily: 'Segoe UI', 
+                fontSize: type === 'title' ? 80 : 35, 
+                fill: 'white', 
+                shadow: '2px 2px 10px rgba(0,0,0,0.8)', 
+                dataTag: type,
+                textBaseline: 'alphabetic'
+            };
+
             if (type === 'overview') {
                 textObj = new fabric.Textbox(placeholder, {
                     ...props,
                     width: 600,
                     height: 300,
-                    fixedHeight: 300, // Unsere Referenz für das Abschneiden
+                    fixedHeight: 300,
                     splitByGrapheme: true,
                     lockScalingY: false,
                     fullMediaText: placeholder
@@ -329,32 +376,44 @@ EDITOR_TEMPLATE = """
             } else {
                 textObj = new fabric.IText(placeholder, props);
             }
+
             canvas.add(textObj);
             canvas.setActiveObject(textObj);
+
+            if (lastFetchedData) {
+                previewTemplate(lastFetchedData);
+            } else {
+                canvas.requestRenderAll();
+            }
         }
 
         function init() {
-            canvas = new fabric.Canvas('mainCanvas', { width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true });
+            canvas = new fabric.Canvas('mainCanvas', { 
+                width: 1920, 
+                height: 1080, 
+                backgroundColor: '#000000', 
+                preserveObjectStacking: true 
+            });
+
+            canvas.renderOnAddRemove = false;
+            fabric.Object.prototype.objectCaching = true;
 
             canvas.on('object:scaling', (e) => {
                 const t = e.target;
                 if (t instanceof fabric.Textbox) {
                     const newWidth = t.width * t.scaleX;
                     const newHeight = t.height * t.scaleY;
-                    
-                    // Wir speichern die neue Wunsch-Größe
-                    t.set({
-                        width: newWidth,
-                        fixedHeight: newHeight, // Update der Grenze
-                        scaleX: 1,
-                        scaleY: 1
-                    });
+                    t.set({ width: newWidth, fixedHeight: newHeight, scaleX: 1, scaleY: 1 });
 
                     if (t.dataTag === 'overview') {
-                        applyTruncation(t, t.fullMediaText);
+                        clearTimeout(scalingTimeout);
+                        scalingTimeout = setTimeout(() => {
+                            applyTruncation(t, t.fullMediaText);
+                        }, 50); 
                     }
                 }
                 if (t === mainBg) updateFades();
+                canvas.requestRenderAll();
             });
 
             canvas.on('selection:created', updateSelectionUI);
@@ -364,7 +423,10 @@ EDITOR_TEMPLATE = """
 
             window.addEventListener('keydown', (e) => {
                 if (e.key === "Delete" || e.key === "Backspace") {
-                    canvas.getActiveObjects().forEach(obj => { if (obj === mainBg) mainBg = null; canvas.remove(obj); });
+                    canvas.getActiveObjects().forEach(obj => { 
+                        if (obj === mainBg) mainBg = null; 
+                        canvas.remove(obj); 
+                    });
                     canvas.discardActiveObject().requestRenderAll();
                 }
             });
@@ -373,7 +435,11 @@ EDITOR_TEMPLATE = """
         }
 
         function loadBackground(url) {
-            const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
+            // FIX: Only use proxy for external http/https links
+            const proxiedUrl = url.startsWith('http') 
+                ? `/api/proxy/image?url=${encodeURIComponent(url)}` 
+                : url;
+            
             fabric.Image.fromURL(proxiedUrl, function(img, isError) {
                 if (isError) return;
                 if (mainBg) canvas.remove(mainBg);
@@ -390,22 +456,23 @@ EDITOR_TEMPLATE = """
             if (!mainBg) return;
             ['left', 'right', 'top', 'bottom'].forEach(side => {
                 if (fades[side]) canvas.remove(fades[side]);
-                const val = document.getElementById('fade' + side.charAt(0).toUpperCase() + side.slice(1)).value;
-                if (val > 0) {
-                    fades[side] = createFadeRect(side, val);
+                const el = document.getElementById('fade' + side.charAt(0).toUpperCase() + side.slice(1));
+                if (el && el.value > 0) {
+                    fades[side] = createFadeRect(side, el.value);
                     canvas.add(fades[side]);
                     fades[side].moveTo(canvas.getObjects().indexOf(mainBg) + 1);
                 }
             });
-            canvas.renderAll();
+            canvas.requestRenderAll();
         }
 
         function createFadeRect(type, size) {
             const bgColor = document.getElementById('bgColor').value;
-            const b = 2; // bleed
+            const b = 2; 
             const wImg = mainBg.getScaledWidth();
             const hImg = mainBg.getScaledHeight();
             let w, h, x, y, c;
+            
             if (type === 'left') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 1, y2: 0 }; }
             else if (type === 'right') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left + wImg - size; y = mainBg.top - b; c = { x1: 1, y1: 0, x2: 0, y2: 0 }; }
             else if (type === 'top') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 0, y2: 1 }; }
@@ -413,27 +480,39 @@ EDITOR_TEMPLATE = """
 
             return new fabric.Rect({
                 left: x, top: y, width: w, height: h, selectable: false, evented: false,
-                fill: new fabric.Gradient({ type: 'linear', gradientUnits: 'percentage', coords: c, colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] })
+                fill: new fabric.Gradient({ 
+                    type: 'linear', gradientUnits: 'percentage', coords: c, 
+                    colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] 
+                })
             });
         }
 
         function hexToRgba(hex, a) {
             let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-            return `rgba(${r}, ${g}, ${b}, ${a})`;
+            return `rgba(${r}, ${g}, ${b}, ${a === 0 ? 0.005 : a})`;
         }
 
-        function updateBgColor() { canvas.setBackgroundColor(document.getElementById('bgColor').value, () => { updateFades(); canvas.renderAll(); }); }
+        function updateBgColor() { 
+            if(!canvas) return;
+            canvas.setBackgroundColor(document.getElementById('bgColor').value, () => { updateFades(); canvas.requestRenderAll(); }); 
+        }
+
         function openTab(evt, tabId) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
             evt.currentTarget.classList.add('active');
         }
+
         async function saveSettings() {
-            const config = { jellyfin: { url: document.getElementById('set-jf-url').value, api_key: document.getElementById('set-jf-key').value, user_id: document.getElementById('set-jf-user').value }, tmdb: { api_key: document.getElementById('set-tmdb-key').value, language: document.getElementById('set-tmdb-lang').value } };
+            const config = { 
+                jellyfin: { url: document.getElementById('set-jf-url').value, api_key: document.getElementById('set-jf-key').value, user_id: document.getElementById('set-jf-user').value }, 
+                tmdb: { api_key: document.getElementById('set-tmdb-key').value, language: document.getElementById('set-tmdb-lang').value } 
+            };
             const resp = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-            if(resp.ok) alert("Gespeichert!");
+            if(resp.ok) alert("Settings saved!");
         }
+
         function changeResolution() {
             const res = document.getElementById('resSelect').value;
             const targetW = (res === '2160') ? 3840 : 1920;
@@ -442,7 +521,14 @@ EDITOR_TEMPLATE = """
             canvas.getObjects().forEach(obj => { obj.scaleX *= scale; obj.scaleY *= scale; obj.left *= scale; obj.top *= scale; obj.setCoords(); });
             updateFades();
         }
-        function saveImage() { const l = document.createElement('a'); l.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 }); l.download = 'tv-background.jpg'; l.click(); }
+
+        function saveImage() { 
+            const l = document.createElement('a'); 
+            l.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 }); 
+            l.download = 'tv-background.jpg'; 
+            l.click(); 
+        }
+
         window.onload = init;
     </script>
 </body>
