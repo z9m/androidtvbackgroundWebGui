@@ -257,11 +257,19 @@ EDITOR_TEMPLATE = """
         }
 
         function applyTruncation(textbox, fullText) {
-            const maxHeight = textbox.height;
+            if (!fullText) { textbox.set('text', ''); return; }
+            
+            // 1. Limit festlegen (entweder gezogen oder initial)
+            const limit = textbox.maxAllowedHeight || textbox.height;
+            
+            // 2. Text setzen
             textbox.set('text', fullText);
-            if (textbox.getScaledHeight() > maxHeight) {
+            
+            // 3. Prüfen ob er zu hoch ist
+            // Wir nutzen getScaledHeight() um die tatsächliche Render-Höhe zu prüfen
+            if (textbox.getScaledHeight() > limit) {
                 let words = fullText.split(' ');
-                while (textbox.getScaledHeight() > maxHeight && words.length > 0) {
+                while (textbox.getScaledHeight() > limit && words.length > 0) {
                     words.pop();
                     textbox.set('text', words.join(' ') + '...');
                 }
@@ -303,7 +311,14 @@ EDITOR_TEMPLATE = """
             let textObj;
             const props = { left: 200, top: 200, fontFamily: 'Segoe UI', fontSize: type === 'title' ? 80 : 35, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
             if (type === 'overview') {
-                textObj = new fabric.Textbox(placeholder, { ...props, width: 600, splitByGrapheme: true, lockScalingY: false });
+                textObj = new fabric.Textbox(placeholder, {
+                    ...props,
+                    width: 600,
+                    height: 300,           // Start-Höhe
+                    maxAllowedHeight: 300, // Unsere eigene Begrenzung
+                    splitByGrapheme: true,
+                    lockScalingY: false
+                });
             } else {
                 textObj = new fabric.IText(placeholder, props);
             }
@@ -315,11 +330,22 @@ EDITOR_TEMPLATE = """
             canvas = new fabric.Canvas('mainCanvas', { width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true });
 
             canvas.on('object:scaling', (e) => {
-                if (e.target instanceof fabric.Textbox) {
-                    const t = e.target;
-                    t.set({ width: t.width * t.scaleX, height: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
+                const t = e.target;
+                if (t instanceof fabric.Textbox) {
+                    const newWidth = t.width * t.scaleX;
+                    const newHeight = t.height * t.scaleY;
+                    t.set({
+                        width: newWidth,
+                        height: newHeight,
+                        scaleX: 1,
+                        scaleY: 1
+                    });
+                    // Wenn es die Beschreibung ist, merken wir uns die neue gezogene Höhe
+                    if (t.dataTag === 'overview') {
+                        t.maxAllowedHeight = newHeight;
+                    }
                 }
-                if (e.target === mainBg) updateFades();
+                if (t === mainBg) updateFades();
             });
 
             canvas.on('selection:created', updateSelectionUI);
