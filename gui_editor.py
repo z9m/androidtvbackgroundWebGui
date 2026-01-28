@@ -36,7 +36,6 @@ def proxy_image():
     if not url:
         return "Missing URL", 400
     try:
-        # requests requires an absolute URL (http://...)
         resp = requests.get(url, stream=True, timeout=10)
         resp.raise_for_status()
         return send_file(
@@ -55,7 +54,7 @@ def get_random_media():
     if jf.get('url') and jf.get('api_key'):
         headers = {"X-Emby-Token": jf['api_key']}
         clean_url = jf['url'].rstrip('/')
-        url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie&Limit=50&Fields=Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks"
+        url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie&Limit=50&Fields=Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks,ImageTags"
         
         try:
             r = requests.get(url, headers=headers, timeout=5)
@@ -64,10 +63,15 @@ def get_random_media():
             
             if items:
                 item = random.choice(items)
+                
+                # Check for Logo availability
+                has_logo = 'Logo' in item.get('ImageTags', {})
+                logo_url = f"{clean_url}/Items/{item['Id']}/Images/Logo?api_key={jf['api_key']}" if has_logo else None
+
+                # Convert Ticks to Runtime
                 ticks = item.get('RunTimeTicks', 0)
                 minutes = (ticks // 600000000) if ticks else 0
-                h = minutes // 60
-                m = minutes % 60
+                h, m = divmod(minutes, 60)
                 runtime_str = f"{h}h {m}min" if h > 0 else f"{m}min"
 
                 return jsonify({
@@ -78,15 +82,16 @@ def get_random_media():
                     "genres": ", ".join(item.get('Genres', [])),
                     "runtime": runtime_str,
                     "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={jf['api_key']}",
+                    "logo_url": logo_url,
                     "source": "Jellyfin"
                 })
         except Exception as e:
             print(f"DEBUG: Jellyfin Error: {e}")
 
-    # Fallback to Mock Data
+    # Fallback Data
     mock_samples = [
-        {"title": "Interstellar", "year": 2014, "rating": 8.7, "overview": "A team of explorers travel through a wormhole in space...", "backdrop_url": "https://image.tmdb.org/t/p/original/gEU2vRuvmER7pG97uCqb9hHbp22.jpg"},
-        {"title": "The Dark Knight", "year": 2008, "rating": 9.0, "overview": "When the menace known as the Joker wreaks havoc...", "backdrop_url": "https://image.tmdb.org/t/p/original/nMKdUUepR0At5Iu98TjPLuOwwvM.jpg"}
+        {"title": "Interstellar", "year": 2014, "rating": 8.7, "overview": "A team of explorers travel through a wormhole in space...", "backdrop_url": "https://image.tmdb.org/t/p/original/gEU2vRuvmER7pG97uCqb9hHbp22.jpg", "logo_url": None},
+        {"title": "The Dark Knight", "year": 2008, "rating": 9.0, "overview": "When the menace known as the Joker wreaks havoc...", "backdrop_url": "https://image.tmdb.org/t/p/original/nMKdUUepR0At5Iu98TjPLuOwwvM.jpg", "logo_url": None}
     ]
     sample = random.choice(mock_samples)
     sample["source"] = "Demo Mode"
@@ -119,17 +124,13 @@ EDITOR_TEMPLATE = """
     <style>
         :root { --primary: #2e7d32; --bg: #0a0a0a; --panel: #181818; --text: #eee; --sidebar-w: 320px; }
         body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        
         .nav-tabs { display: flex; background: #000; padding: 0 20px; border-bottom: 1px solid #333; height: 50px; flex-shrink: 0; }
         .tab-link { padding: 15px 25px; cursor: pointer; border-bottom: 3px solid transparent; font-size: 14px; }
         .tab-link.active { border-bottom-color: var(--primary); background: var(--panel); }
-
         .tab-content { display: none; flex: 1; overflow: hidden; }
         .tab-content.active { display: flex; }
-
         .sidebar { width: var(--sidebar-w); background: var(--panel); border-right: 1px solid #333; padding: 20px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
         .main-view { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; background: #111; position: relative; overflow: auto; }
-
         .control-group { border-bottom: 1px solid #333; padding-bottom: 15px; }
         h3 { font-size: 12px; text-transform: uppercase; color: #888; margin: 0 0 10px 0; }
         label { font-size: 11px; color: #666; display: block; margin-top: 8px; cursor: pointer; }
@@ -137,11 +138,9 @@ EDITOR_TEMPLATE = """
         button { background: var(--primary); border: none; font-weight: bold; cursor: pointer; }
         button:hover { filter: brightness(1.2); }
         .btn-export { background: #1565c0; margin-top: 20px; }
-
         #canvas-wrapper { width: 100%; max-width: 1200px; aspect-ratio: 16 / 9; background: #000; border: 2px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
         .canvas-container { width: 100% !important; height: 100% !important; }
         canvas { width: 100% !important; height: 100% !important; }
-
         #settings-tab { padding: 40px; overflow-y: auto; flex-direction: column; align-items: center;}
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; width: 100%; max-width: 1000px; }
     </style>
@@ -158,12 +157,12 @@ EDITOR_TEMPLATE = """
             <div class="control-group">
                 <h3>Metadata Tags</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                    <button onclick="addMetadataTag('title', 'MOVIE TITLE')">Title</button>
+                    <button onclick="addMetadataTag('title', 'TITLE / LOGO')">Title/Logo</button>
                     <button onclick="addMetadataTag('year', '2024')">Year</button>
                     <button onclick="addMetadataTag('rating', 'IMDb: 8.5')">Rating</button>
                     <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
                     <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
-                    <button onclick="addMetadataTag('overview', 'Movie description placeholder...')">Overview</button>
+                    <button onclick="addMetadataTag('overview', 'Movie description...')">Overview</button>
                 </div>
             </div>
 
@@ -174,26 +173,22 @@ EDITOR_TEMPLATE = """
             </div>
 
             <div class="control-group">
-                <h3>Leinwand</h3>
-                <label for="resSelect">Ziel-Auflösung</label>
+                <h3>Canvas</h3>
+                <label for="resSelect">Resolution</label>
                 <select id="resSelect" onchange="changeResolution()">
                     <option value="1080">1080p (Full HD)</option>
                     <option value="2160">2160p (4K)</option>
                 </select>
-                <label for="bgColor">Hintergrundfarbe</label>
+                <label for="bgColor">Background Color</label>
                 <input type="color" id="bgColor" oninput="updateBgColor()" value="#000000">
             </div>
 
             <div class="control-group">
-                <h3>Fade-Out Kanten</h3>
-                <label for="fadeLeft">Links</label>
-                <input type="range" id="fadeLeft" min="0" max="1000" value="0" oninput="updateFades()">
-                <label for="fadeRight">Rechts</label>
-                <input type="range" id="fadeRight" min="0" max="1000" value="0" oninput="updateFades()">
-                <label for="fadeTop">Oben</label>
-                <input type="range" id="fadeTop" min="0" max="1000" value="0" oninput="updateFades()">
-                <label for="fadeBottom">Unten</label>
-                <input type="range" id="fadeBottom" min="0" max="1000" value="0" oninput="updateFades()">
+                <h3>Fade-Out Edges</h3>
+                <label for="fadeLeft">Left</label><input type="range" id="fadeLeft" min="0" max="1000" value="0" oninput="updateFades()">
+                <label for="fadeRight">Right</label><input type="range" id="fadeRight" min="0" max="1000" value="0" oninput="updateFades()">
+                <label for="fadeTop">Top</label><input type="range" id="fadeTop" min="0" max="1000" value="0" oninput="updateFades()">
+                <label for="fadeBottom">Bottom</label><input type="range" id="fadeBottom" min="0" max="1000" value="0" oninput="updateFades()">
             </div>
 
             <div class="control-group" id="text-properties" style="display:none;">
@@ -203,7 +198,7 @@ EDITOR_TEMPLATE = """
             </div>
 
             <div style="margin-top:auto">
-                <button class="btn-export" onclick="saveImage()">💾 Exportieren (JPG)</button>
+                <button class="btn-export" onclick="saveImage()">💾 Export JPG</button>
             </div>
         </div>
 
@@ -225,22 +220,13 @@ EDITOR_TEMPLATE = """
                 <label for="set-jf-user">User ID</label>
                 <input type="text" id="set-jf-user" value="{{ config.jellyfin.user_id }}">
             </div>
-            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
-                <h3>TMDB</h3>
-                <label for="set-tmdb-key">Bearer Token</label>
-                <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
-                <label for="set-tmdb-lang">Sprache</label>
-                <input type="text" id="set-tmdb-lang" value="{{ config.tmdb.language }}">
-            </div>
-            <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;">Alle Einstellungen speichern</button>
+            <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;">Save Settings</button>
         </div>
     </div>
 
     <script>
-        // --- GLOBAL FIXES & VARIABLES ---
+        // --- GLOBAL FIXES ---
         (function() {
-            // THE ULTIMATE FIX: Hijack the browser's internal Canvas-Setter
-            // This intercepts every call to context.textBaseline and fixes 'alphabetical'
             const originalSetter = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'textBaseline').set;
             Object.defineProperty(CanvasRenderingContext2D.prototype, 'textBaseline', {
                 set: function(value) {
@@ -249,21 +235,11 @@ EDITOR_TEMPLATE = """
                 },
                 configurable: true
             });
-
-            // Also patch Fabric's internal defaults if possible
-            if (window.fabric) {
-                fabric.Text.prototype.textBaseline = 'alphabetic';
-                fabric.IText.prototype.textBaseline = 'alphabetic';
-                fabric.Textbox.prototype.textBaseline = 'alphabetic';
-            }
         })();
 
-        let canvas;
-        let mainBg = null;
+        let canvas, mainBg = null;
         let fades = { left: null, right: null, top: null, bottom: null };
-        let scalingTimeout = null;
-        let lastFetchedData = null;
-        // --- UI & LOGIC FUNCTIONS ---
+        let scalingTimeout = null, lastFetchedData = null;
 
         function updateSelectionUI() {
             const activeObj = canvas.getActiveObject();
@@ -271,51 +247,27 @@ EDITOR_TEMPLATE = """
             if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'textbox')) {
                 panel.style.display = 'block';
                 document.getElementById('fontSizeInput').value = activeObj.fontSize;
-            } else {
-                panel.style.display = 'none';
-            }
+            } else { panel.style.display = 'none'; }
         }
 
         function updateSelectedFontSize() {
             const activeObj = canvas.getActiveObject();
-            if (activeObj) {
-                activeObj.set("fontSize", parseInt(document.getElementById('fontSizeInput').value));
-                canvas.requestRenderAll();
-            }
+            if (activeObj) { activeObj.set("fontSize", parseInt(document.getElementById('fontSizeInput').value)); canvas.renderAll(); }
         }
 
         function applyTruncation(textbox, textToDisplay) {
             if (!canvas) return;
             const textSource = textToDisplay || textbox.fullMediaText || "";
-            if (!textSource) { textbox.set('text', ''); return; }
-
             const oldState = canvas.renderOnAddRemove;
             canvas.renderOnAddRemove = false;
-
             textbox.set('text', textSource);
             textbox.initDimensions();
-
             const limit = textbox.fixedHeight || textbox.height;
-
             if (textbox.height > limit) {
                 let words = textSource.split(' ');
-                
-                // Performance Tweak: Wenn der Text viel zu lang ist, löschen wir 
-                // erst größere Blöcke (10 Wörter), statt jedes Wort einzeln.
-                while (textbox.height > limit && words.length > 10) {
-                    words.splice(-10); // Letzte 10 Wörter weg
-                    textbox.set('text', words.join(' ') + '...');
-                    textbox.initDimensions();
-                }
-
-                // Feinschliff: Jetzt Wort für Wort bis es perfekt passt
-                while (textbox.height > limit && words.length > 0) {
-                    words.pop();
-                    textbox.set('text', words.join(' ') + '...');
-                    textbox.initDimensions();
-                }
+                while (textbox.height > limit && words.length > 10) { words.splice(-10); textbox.set('text', words.join(' ') + '...'); textbox.initDimensions(); }
+                while (textbox.height > limit && words.length > 0) { words.pop(); textbox.set('text', words.join(' ') + '...'); textbox.initDimensions(); }
             }
-
             canvas.renderOnAddRemove = oldState;
             canvas.requestRenderAll();
         }
@@ -326,46 +278,40 @@ EDITOR_TEMPLATE = """
             try {
                 const response = await fetch('/api/media/random');
                 const data = await response.json();
-                
-                lastFetchedData = data; 
-
+                lastFetchedData = data;
                 if (data.backdrop_url) loadBackground(data.backdrop_url);
-
                 previewTemplate(data);
-
                 indicator.innerText = "Source: " + data.source;
-            } catch (err) { 
-                console.error(err);
-                indicator.innerText = "Error loading preview"; 
-            }
+            } catch (err) { console.error(err); indicator.innerText = "Error loading preview"; }
         }
 
         function previewTemplate(mediaData) {
             if (!canvas || !mediaData) return;
-
             canvas.getObjects().forEach(obj => {
                 if (obj.dataTag) {
                     let val = "";
                     switch(obj.dataTag) {
-                        case 'title': val = mediaData.title || mediaData.Name; break;
-                        case 'year': val = mediaData.year || mediaData.ProductionYear; break;
-                        case 'rating': 
-                            let r = mediaData.rating || mediaData.CommunityRating;
-                            val = (r && r !== 'N/A') ? `IMDb: ${r}` : ''; 
+                        case 'title':
+                            if (mediaData.logo_url) {
+                                const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(mediaData.logo_url)}`;
+                                fabric.Image.fromURL(proxiedLogo, function(img) {
+                                    img.set({ left: obj.left, top: obj.top, dataTag: 'title' });
+                                    img.scaleToHeight(obj.height || 150);
+                                    canvas.remove(obj); canvas.add(img); canvas.requestRenderAll();
+                                }, { crossOrigin: 'anonymous' });
+                                return; // Skip standard text update
+                            } else { val = mediaData.title || mediaData.Name; }
                             break;
+                        case 'year': val = mediaData.year || mediaData.ProductionYear; break;
+                        case 'rating': let r = mediaData.rating || mediaData.CommunityRating; val = (r && r !== 'N/A') ? `IMDb: ${r}` : ''; break;
                         case 'overview': 
                             let ov = mediaData.overview || mediaData.Overview || "";
-                            if (obj.type === 'textbox') {
-                                obj.fullMediaText = ov;
-                                applyTruncation(obj, ov);
-                            } else { val = ov; }
+                            if (obj.type === 'textbox') { obj.fullMediaText = ov; applyTruncation(obj, ov); } else { val = ov; }
                             break;
                         case 'genres': val = mediaData.genres || ""; break;
                         case 'runtime': val = mediaData.runtime || ""; break;
                     }
-                    if (val !== undefined && val !== null && obj.dataTag !== 'overview') {
-                        obj.set({ text: String(val) });
-                    }
+                    if (val !== undefined && obj.dataTag !== 'overview') obj.set({ text: String(val) });
                 }
             });
             canvas.requestRenderAll();
@@ -373,64 +319,28 @@ EDITOR_TEMPLATE = """
 
         function addMetadataTag(type, placeholder) {
             let textObj;
-            const props = { 
-                left: 200, top: 200, 
-                fontFamily: 'Segoe UI', 
-                fontSize: type === 'title' ? 80 : 35, 
-                fill: 'white', 
-                shadow: '2px 2px 10px rgba(0,0,0,0.8)', 
-                dataTag: type,
-                textBaseline: 'alphabetic'
-            };
-
+            const props = { left: 200, top: 200, fontFamily: 'Segoe UI', fontSize: type === 'title' ? 80 : 35, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
             if (type === 'overview') {
-                textObj = new fabric.Textbox(placeholder, {
-                    ...props,
-                    width: 600,
-                    height: 300,
-                    fixedHeight: 300,
-                    splitByGrapheme: true,
-                    lockScalingY: false,
-                    fullMediaText: placeholder
-                });
+                textObj = new fabric.Textbox(placeholder, { ...props, width: 600, height: 300, fixedHeight: 300, splitByGrapheme: true, lockScalingY: false, fullMediaText: placeholder });
             } else {
                 textObj = new fabric.IText(placeholder, props);
             }
-
             canvas.add(textObj);
             canvas.setActiveObject(textObj);
-
-            if (lastFetchedData) {
-                previewTemplate(lastFetchedData);
-            } else {
-                canvas.requestRenderAll();
-            }
+            if (lastFetchedData) previewTemplate(lastFetchedData);
+            else canvas.requestRenderAll();
         }
 
         function init() {
-            canvas = new fabric.Canvas('mainCanvas', { 
-                width: 1920, 
-                height: 1080, 
-                backgroundColor: '#000000', 
-                preserveObjectStacking: true 
-            });
-
+            canvas = new fabric.Canvas('mainCanvas', { width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true });
             canvas.renderOnAddRemove = false;
             fabric.Object.prototype.objectCaching = true;
 
             canvas.on('object:scaling', (e) => {
                 const t = e.target;
                 if (t instanceof fabric.Textbox) {
-                    const newWidth = t.width * t.scaleX;
-                    const newHeight = t.height * t.scaleY;
-                    t.set({ width: newWidth, fixedHeight: newHeight, scaleX: 1, scaleY: 1 });
-
-                    if (t.dataTag === 'overview') {
-                        clearTimeout(scalingTimeout);
-                        scalingTimeout = setTimeout(() => {
-                            applyTruncation(t, t.fullMediaText);
-                        }, 50); 
-                    }
+                    t.set({ width: t.width * t.scaleX, fixedHeight: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
+                    if (t.dataTag === 'overview') { clearTimeout(scalingTimeout); scalingTimeout = setTimeout(() => applyTruncation(t, t.fullMediaText), 50); }
                 }
                 if (t === mainBg) updateFades();
                 canvas.requestRenderAll();
@@ -443,10 +353,7 @@ EDITOR_TEMPLATE = """
 
             window.addEventListener('keydown', (e) => {
                 if (e.key === "Delete" || e.key === "Backspace") {
-                    canvas.getActiveObjects().forEach(obj => { 
-                        if (obj === mainBg) mainBg = null; 
-                        canvas.remove(obj); 
-                    });
+                    canvas.getActiveObjects().forEach(obj => { if (obj === mainBg) mainBg = null; canvas.remove(obj); });
                     canvas.discardActiveObject().requestRenderAll();
                 }
             });
@@ -455,20 +362,14 @@ EDITOR_TEMPLATE = """
         }
 
         function loadBackground(url) {
-            // FIX: Only use proxy for external http/https links
-            const proxiedUrl = url.startsWith('http') 
-                ? `/api/proxy/image?url=${encodeURIComponent(url)}` 
-                : url;
-            
+            const proxiedUrl = url.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(url)}` : url;
             fabric.Image.fromURL(proxiedUrl, function(img, isError) {
                 if (isError) return;
                 if (mainBg) canvas.remove(mainBg);
                 mainBg = img;
                 img.set({ left: 0, top: 0, selectable: true });
                 img.scaleToWidth(canvas.width);
-                canvas.add(img);
-                canvas.sendToBack(img);
-                updateFades();
+                canvas.add(img); canvas.sendToBack(img); updateFades();
             }, { crossOrigin: 'anonymous' });
         }
 
@@ -477,33 +378,22 @@ EDITOR_TEMPLATE = """
             ['left', 'right', 'top', 'bottom'].forEach(side => {
                 if (fades[side]) canvas.remove(fades[side]);
                 const el = document.getElementById('fade' + side.charAt(0).toUpperCase() + side.slice(1));
-                if (el && el.value > 0) {
-                    fades[side] = createFadeRect(side, el.value);
-                    canvas.add(fades[side]);
-                    fades[side].moveTo(canvas.getObjects().indexOf(mainBg) + 1);
-                }
+                if (el && el.value > 0) { fades[side] = createFadeRect(side, el.value); canvas.add(fades[side]); fades[side].moveTo(canvas.getObjects().indexOf(mainBg) + 1); }
             });
             canvas.requestRenderAll();
         }
 
         function createFadeRect(type, size) {
             const bgColor = document.getElementById('bgColor').value;
-            const b = 2; 
-            const wImg = mainBg.getScaledWidth();
-            const hImg = mainBg.getScaledHeight();
+            const b = 2, wImg = mainBg.getScaledWidth(), hImg = mainBg.getScaledHeight();
             let w, h, x, y, c;
-            
             if (type === 'left') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 1, y2: 0 }; }
             else if (type === 'right') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left + wImg - size; y = mainBg.top - b; c = { x1: 1, y1: 0, x2: 0, y2: 0 }; }
             else if (type === 'top') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 0, y2: 1 }; }
             else if (type === 'bottom') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top + hImg - size; c = { x1: 0, y1: 1, x2: 0, y2: 0 }; }
-
             return new fabric.Rect({
                 left: x, top: y, width: w, height: h, selectable: false, evented: false,
-                fill: new fabric.Gradient({ 
-                    type: 'linear', gradientUnits: 'percentage', coords: c, 
-                    colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] 
-                })
+                fill: new fabric.Gradient({ type: 'linear', gradientUnits: 'percentage', coords: c, colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] })
             });
         }
 
@@ -512,27 +402,13 @@ EDITOR_TEMPLATE = """
             return `rgba(${r}, ${g}, ${b}, ${a === 0 ? 0.005 : a})`;
         }
 
-        function updateBgColor() { 
-            if(!canvas) return;
-            canvas.setBackgroundColor(document.getElementById('bgColor').value, () => { updateFades(); canvas.requestRenderAll(); }); 
-        }
-
-        function openTab(evt, tabId) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active');
-            evt.currentTarget.classList.add('active');
-        }
-
+        function updateBgColor() { if(!canvas) return; canvas.setBackgroundColor(document.getElementById('bgColor').value, () => { updateFades(); canvas.requestRenderAll(); }); }
+        function openTab(evt, tabId) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active')); document.getElementById(tabId).classList.add('active'); evt.currentTarget.classList.add('active'); }
         async function saveSettings() {
-            const config = { 
-                jellyfin: { url: document.getElementById('set-jf-url').value, api_key: document.getElementById('set-jf-key').value, user_id: document.getElementById('set-jf-user').value }, 
-                tmdb: { api_key: document.getElementById('set-tmdb-key').value, language: document.getElementById('set-tmdb-lang').value } 
-            };
+            const config = { jellyfin: { url: document.getElementById('set-jf-url').value, api_key: document.getElementById('set-jf-key').value, user_id: document.getElementById('set-jf-user').value }, tmdb: { api_key: "", language: "de-DE" } };
             const resp = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
             if(resp.ok) alert("Settings saved!");
         }
-
         function changeResolution() {
             const res = document.getElementById('resSelect').value;
             const targetW = (res === '2160') ? 3840 : 1920;
@@ -541,14 +417,7 @@ EDITOR_TEMPLATE = """
             canvas.getObjects().forEach(obj => { obj.scaleX *= scale; obj.scaleY *= scale; obj.left *= scale; obj.top *= scale; obj.setCoords(); });
             updateFades();
         }
-
-        function saveImage() { 
-            const l = document.createElement('a'); 
-            l.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 }); 
-            l.download = 'tv-background.jpg'; 
-            l.click(); 
-        }
-
+        function saveImage() { const l = document.createElement('a'); l.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 }); l.download = 'tv-background.jpg'; l.click(); }
         window.onload = init;
     </script>
 </body>
