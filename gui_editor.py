@@ -239,8 +239,19 @@ EDITOR_TEMPLATE = """
     <script>
         // --- GLOBAL FIXES & VARIABLES ---
         (function() {
-            // Force baseline to alphabetic to avoid Chrome 'alphabetical' error
-            if (typeof fabric !== 'undefined') {
+            // THE ULTIMATE FIX: Hijack the browser's internal Canvas-Setter
+            // This intercepts every call to context.textBaseline and fixes 'alphabetical'
+            const originalSetter = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'textBaseline').set;
+            Object.defineProperty(CanvasRenderingContext2D.prototype, 'textBaseline', {
+                set: function(value) {
+                    if (value === 'alphabetical') value = 'alphabetic';
+                    return originalSetter.call(this, value);
+                },
+                configurable: true
+            });
+
+            // Also patch Fabric's internal defaults if possible
+            if (window.fabric) {
                 fabric.Text.prototype.textBaseline = 'alphabetic';
                 fabric.IText.prototype.textBaseline = 'alphabetic';
                 fabric.Textbox.prototype.textBaseline = 'alphabetic';
@@ -251,8 +262,7 @@ EDITOR_TEMPLATE = """
         let mainBg = null;
         let fades = { left: null, right: null, top: null, bottom: null };
         let scalingTimeout = null;
-        let lastFetchedData = null; 
-
+        let lastFetchedData = null;
         // --- UI & LOGIC FUNCTIONS ---
 
         function updateSelectionUI() {
@@ -289,6 +299,16 @@ EDITOR_TEMPLATE = """
 
             if (textbox.height > limit) {
                 let words = textSource.split(' ');
+                
+                // Performance Tweak: Wenn der Text viel zu lang ist, löschen wir 
+                // erst größere Blöcke (10 Wörter), statt jedes Wort einzeln.
+                while (textbox.height > limit && words.length > 10) {
+                    words.splice(-10); // Letzte 10 Wörter weg
+                    textbox.set('text', words.join(' ') + '...');
+                    textbox.initDimensions();
+                }
+
+                // Feinschliff: Jetzt Wort für Wort bis es perfekt passt
                 while (textbox.height > limit && words.length > 0) {
                     words.pop();
                     textbox.set('text', words.join(' ') + '...');
