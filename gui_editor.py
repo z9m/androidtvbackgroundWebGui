@@ -40,7 +40,8 @@ def get_random_media():
         headers = {"X-Emby-Token": jf['api_key']}
         # Remove trailing slash if exists and construct URL
         clean_url = jf['url'].rstrip('/')
-        url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie&Limit=50"
+        # We must explicitly ask for Overview, Genres, and other fields
+        url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie&Limit=50&Fields=Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks"
         
         try:
             r = requests.get(url, headers=headers, timeout=5)
@@ -63,6 +64,7 @@ def get_random_media():
                     "title": item.get('Name'),
                     "year": item.get('ProductionYear', 'N/A'),
                     "rating": item.get('CommunityRating', 'N/A'),
+                    # Jellyfin returns 'Overview' with a capital 'O'
                     "overview": item.get('Overview', ''),
                     "genres": ", ".join(item.get('Genres', [])), # Join list to string
                     "runtime": runtime_str,
@@ -248,6 +250,12 @@ EDITOR_TEMPLATE = """
                 <button onclick="addTitle()">+ Text hinzufügen</button>
             </div>
 
+            <div class="control-group" id="text-properties" style="display:none;">
+                <h3>Text Properties</h3>
+                <label for="fontSizeInput">Font Size</label>
+                <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
+            </div>
+
             <div style="margin-top:auto">
                 <button class="btn-export" onclick="saveImage()">💾 Exportieren (JPG)</button>
                 <p style="font-size:10px; color:#555; text-align:center; margin-top:10px;">Markierte Objekte mit Entf-Taste löschen</p>
@@ -300,16 +308,63 @@ EDITOR_TEMPLATE = """
             canvas.getObjects().forEach(obj => {
                 if (obj.dataTag) {
                     switch(obj.dataTag) {
-                        case 'title': obj.text = mediaData.Name; break;
-                        case 'year': obj.text = mediaData.ProductionYear.toString(); break;
-                        case 'rating': obj.text = `IMDb: ${mediaData.CommunityRating}`; break;
-                        // Add more cases as needed...
+                        case 'title': 
+                            obj.set({ text: String(mediaData.Name || mediaData.title) }); 
+                            break;
+                        case 'year': 
+                            obj.set({ text: String(mediaData.ProductionYear || mediaData.year) }); 
+                            break;
+                        case 'rating': 
+                            let r = mediaData.CommunityRating || mediaData.rating;
+                            obj.set({ text: (r && r !== 'N/A') ? `IMDb: ${r}` : '' }); 
+                            break;
+                        
+                        case 'overview': 
+                            const overviewText = mediaData.Overview || mediaData.overview || "";
+                            // We check if it's a Textbox to use our smart truncation
+                            if (obj.type === 'textbox') {
+                                applyTruncation(obj, overviewText);
+                            } else {
+                                obj.set({ text: overviewText });
+                            }
+                            break;
+                        // -----------------------------
+                        
+                        case 'genres': 
+                            obj.set({ text: String(mediaData.genres || "") }); 
+                            break;
+                        case 'runtime': 
+                            obj.set({ text: String(mediaData.runtime || "") }); 
+                            break;
                     }
                 }
             });
             canvas.renderAll();
         }
 
+        /**
+        * Fits text into a textbox by removing words and adding an ellipsis 
+        * if the text exceeds the current height of the box.
+        */
+        function applyTruncation(textbox, fullText) {
+            // 1. Remember the current height set by the user in the editor
+            const maxHeight = textbox.height;
+            
+            // 2. Set the full text first to calculate current overflow
+            textbox.set('text', fullText);
+            
+            // 3. If the content is now taller than the box, truncate word by word
+            // We use a simple while loop to remove the last word until it fits
+            if (textbox.getScaledHeight() > maxHeight) {
+                let words = fullText.split(' ');
+                while (textbox.getScaledHeight() > maxHeight && words.length > 0) {
+                    words.pop();
+                    textbox.set('text', words.join(' ') + '...');
+                }
+            }
+            canvas.renderAll();
+        }
+        
         /**
         * Fetches a random movie from the API and updates all tags on the canvas.
         */
@@ -362,25 +417,28 @@ EDITOR_TEMPLATE = """
         * @param {string} placeholder - Default text to display in editor.
         */
         function addMetadataTag(type, placeholder) {
-            const textObj = new fabric.IText(placeholder, {
+            let textObj;
+            
+            const commonProps = {
                 left: 200,
                 top: 200,
                 fontFamily: 'Segoe UI',
-                fontSize: type === 'title' ? 80 : 30,
-                fontWeight: type === 'title' ? 'bold' : 'normal',
+                fontSize: type === 'title' ? 80 : 35,
                 fill: 'white',
                 shadow: '2px 2px 10px rgba(0,0,0,0.8)',
-                // Custom property to identify the tag during export
-                dataTag: type 
-            });
-            
-            // Style specific tags differently by default
+                dataTag: type
+            };
+
             if (type === 'overview') {
-                textObj.set({
-                    fontSize: 25,
+                // Use Textbox for automatic wrapping and fixed-width scaling
+                textObj = new fabric.Textbox(placeholder, {
+                    ...commonProps,
                     width: 600,
-                    splitByGrapheme: true // Enables word wrapping
+                    splitByGrapheme: true, // Wraps long words
+                    lockScalingY: false,   // Allow height adjustment
                 });
+            } else {
+                textObj = new fabric.IText(placeholder, commonProps);
             }
 
             canvas.add(textObj);
@@ -475,6 +533,42 @@ EDITOR_TEMPLATE = """
         function init() {
             canvas = new fabric.Canvas('mainCanvas', {
                 width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true
+
+            canvas.on('object:scaling', function(e) {
+                const obj = e.target;
+                if (obj instanceof fabric.Textbox) {
+                    // Reset scale and update width/height instead
+                    const newWidth = obj.width * obj.scaleX;
+                    const newHeight = obj.height * obj.scaleY;
+                    obj.set({
+                        width: newWidth,
+                        height: newHeight,
+                        scaleX: 1,
+                        scaleY: 1
+                    });
+                }
+            });
+
+            // Update UI when an object is selected
+            canvas.on('selection:created', updateSelectionUI);
+            canvas.on('selection:updated', updateSelectionUI);
+            canvas.on('selection:cleared', () => document.getElementById('text-properties').style.display = 'none');
+
+            function updateSelectionUI() {
+                const activeObj = canvas.getActiveObject();
+                if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'textbox')) {
+                    document.getElementById('text-properties').style.display = 'block';
+                    document.getElementById('fontSizeInput').value = activeObj.fontSize;
+                }
+            }
+
+            function updateSelectedFontSize() {
+                const activeObj = canvas.getActiveObject();
+                if (activeObj) {
+                    activeObj.set("fontSize", parseInt(document.getElementById('fontSizeInput').value));
+                    canvas.renderAll();
+                }
+            }
             });
 
             window.addEventListener('keydown', (e) => {
