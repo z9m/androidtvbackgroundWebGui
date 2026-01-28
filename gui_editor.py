@@ -26,6 +26,30 @@ def update_settings():
     save_config(request.json)
     return jsonify({"status": "success"})
 
+@gui_editor_bp.route('/api/jellyfin/recent')
+def get_jellyfin_recent():
+    config = load_config().get('jellyfin', {})
+    if not config.get('url') or not config.get('api_key'):
+        return jsonify({"error": "Jellyfin not configured"}), 400
+    
+    headers = {"X-Emby-Token": config['api_key']}
+    url = f"{config['url']}/Users/{config['user_id']}/Items"
+    params = {
+        "SortBy": "DateCreated",
+        "SortOrder": "Descending",
+        "IncludeItemTypes": "Movie",
+        "Limit": 10,
+        "Recursive": "true",
+        "Fields": "ProductionYear,Overview,CommunityRating"
+    }
+    
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=5)
+        r.raise_for_status()
+        return jsonify(r.json().get('Items', []))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @gui_editor_bp.route('/get_local_background')
 def get_local_background():
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -100,6 +124,18 @@ EDITOR_TEMPLATE = """
     <!-- TAB: EDITOR -->
     <div id="editor-tab" class="tab-content active">
         <div class="sidebar">
+           <div class="control-group">
+                <h3>Metadata Tags</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <button onclick="addMetadataTag('title', 'MOVIE TITLE')">Title</button>
+                    <button onclick="addMetadataTag('year', '2024')">Year</button>
+                    <button onclick="addMetadataTag('rating', 'IMDb: 8.5')">Rating</button>
+                    <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
+                    <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
+                    <button onclick="addMetadataTag('overview', 'This is a sample movie description text...')">Overview</button>
+                </div>
+                <p style="font-size: 10px; color: #555; margin-top: 5px;">Click to add placeholder to canvas</p>
+            </div>
             <div class="control-group">
                 <h3>Leinwand</h3>
                 <label>Ziel-Auflösung</label>
@@ -168,6 +204,113 @@ EDITOR_TEMPLATE = """
         let canvas;
         let mainBg = null;
         let fades = { left: null, right: null, top: null, bottom: null };
+
+        /**
+        * Fills all data-tags on canvas with real media data.
+        * @param {Object} mediaData - Data fetched from Jellyfin API.
+        */
+        function previewTemplate(mediaData) {
+            canvas.getObjects().forEach(obj => {
+                if (obj.dataTag) {
+                    switch(obj.dataTag) {
+                        case 'title': obj.text = mediaData.Name; break;
+                        case 'year': obj.text = mediaData.ProductionYear.toString(); break;
+                        case 'rating': obj.text = `IMDb: ${mediaData.CommunityRating}`; break;
+                        // Add more cases as needed...
+                    }
+                }
+            });
+            canvas.renderAll();
+        }
+
+        /**
+        * Adds a metadata placeholder to the canvas.
+        * @param {string} type - The Jellyfin metadata field name.
+        * @param {string} placeholder - Default text to display in editor.
+        */
+        function addMetadataTag(type, placeholder) {
+            const textObj = new fabric.IText(placeholder, {
+                left: 200,
+                top: 200,
+                fontFamily: 'Segoe UI',
+                fontSize: type === 'title' ? 80 : 30,
+                fontWeight: type === 'title' ? 'bold' : 'normal',
+                fill: 'white',
+                shadow: '2px 2px 10px rgba(0,0,0,0.8)',
+                // Custom property to identify the tag during export
+                dataTag: type 
+            });
+            
+            // Style specific tags differently by default
+            if (type === 'overview') {
+                textObj.set({
+                    fontSize: 25,
+                    width: 600,
+                    splitByGrapheme: true // Enables word wrapping
+                });
+            }
+
+            canvas.add(textObj);
+            canvas.setActiveObject(textObj);
+        }
+
+        async function fetchJellyfinRecent() {
+            const listContainer = document.getElementById('media-list');
+            listContainer.innerHTML = '<p style="font-size:10px">Loading...</p>';
+            
+            try {
+                const response = await fetch('/api/jellyfin/recent');
+                const items = await response.json();
+                
+                if (items.error) throw new Error(items.error);
+
+                listContainer.innerHTML = '';
+                items.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.className = 'media-item-btn'; // Optional: add some CSS for this
+                    btn.style.fontSize = '11px'; btn.style.textAlign = 'left'; btn.style.background = '#222';
+                    btn.innerText = `${item.Name} (${item.ProductionYear || 'N/A'})`;
+                    btn.onclick = () => loadJellyfinItem(item);
+                    listContainer.appendChild(btn);
+                });
+            } catch (err) {
+                listContainer.innerHTML = `<p style="color:red; font-size:10px">Error: ${err.message}</p>`;
+            }
+        }
+
+        function loadJellyfinItem(item) {
+            // Get current config values from settings inputs
+            const baseUrl = document.getElementById('set-jf-url').value;
+            const apiKey = document.getElementById('set-jf-key').value;
+            
+            // 1. Load Backdrop
+            const backdropUrl = `${baseUrl}/Items/${item.Id}/Images/Backdrop?api_key=${apiKey}`;
+            if (mainBg) canvas.remove(mainBg);
+            
+            fabric.Image.fromURL(backdropUrl, function(img) {
+                mainBg = img;
+                img.set({ left: 0, top: 0, selectable: true });
+                img.scaleToWidth(canvas.width);
+                canvas.add(img);
+                canvas.sendToBack(img);
+                updateFades();
+            }, { crossOrigin: 'anonymous' });
+
+            // 2. Add Title (as an editable text object)
+            const title = new fabric.IText(item.Name.toUpperCase(), {
+                left: 150, top: canvas.height - 250,
+                fontFamily: 'Segoe UI', fontSize: 120, fontWeight: 'bold', fill: 'white',
+                shadow: '2px 2px 20px rgba(0,0,0,0.8)'
+            });
+            canvas.add(title);
+            
+            // 3. Add Year/Rating Info
+            const info = new fabric.IText(`${item.ProductionYear}  |  IMDb: ${item.CommunityRating || 'N/A'}`, {
+                left: 150, top: canvas.height - 120,
+                fontFamily: 'Segoe UI', fontSize: 40, fill: '#ccc'
+            });
+            canvas.add(info);
+        }
 
         function openTab(evt, tabId) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
