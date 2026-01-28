@@ -1,0 +1,11 @@
+{
+    "jellyfin": {
+        "url": "http://truenas:30013",
+        "api_key": "b00ae14a7c3249b2b154f22f75e1ecfd",
+        "user_id": "c39196675b694b32b8c95f726c2092d1"
+    },
+    "tmdb": {
+        "api_key": "",
+        "language": "de-DE"
+    }
+}

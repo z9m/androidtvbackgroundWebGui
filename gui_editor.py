@@ -1,9 +1,77 @@
 import os
 import json
-from flask import Blueprint, render_template_string, request, jsonify, send_from_directory, url_for
+import random
+import io
+import requests  # Added for API communication
+from flask import Blueprint, render_template_string, request, jsonify, send_from_directory, url_for, send_file # Added send_file
 
 gui_editor_bp = Blueprint('gui_editor', __name__)
 CONFIG_FILE = 'config.json'
+
+@gui_editor_bp.route('/api/proxy/image')
+def proxy_image():
+    """ Proxies an image URL to bypass CORS/CORB blocks. """
+    url = request.args.get('url')
+    if not url:
+        return "Missing URL", 400
+    
+    try:
+        # We fetch the image from the external source (Jellyfin/TMDB)
+        resp = requests.get(url, stream=True, timeout=10)
+        resp.raise_for_status()
+        
+        # We send the image back to the browser as if it were ours
+        return send_file(
+            io.BytesIO(resp.content),
+            mimetype=resp.headers.get('Content-Type', 'image/jpeg')
+        )
+    except Exception as e:
+        return str(e), 500
+
+@gui_editor_bp.route('/api/media/random')
+def get_random_media():
+    config = load_config()
+    jf = config.get('jellyfin', {})
+    
+    # Debug: Check if config is loaded correctly
+    print(f"DEBUG: Attempting Jellyfin connection to {jf.get('url')}")
+
+    if jf.get('url') and jf.get('api_key'):
+        headers = {"X-Emby-Token": jf['api_key']}
+        # Remove trailing slash if exists and construct URL
+        clean_url = jf['url'].rstrip('/')
+        url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie&Limit=50"
+        
+        try:
+            r = requests.get(url, headers=headers, timeout=5)
+            r.raise_for_status() # This will trigger an exception on 401, 404, etc.
+            items = r.json().get('Items', [])
+            
+            if items:
+                item = random.choice(items)
+                print(f"DEBUG: Successfully fetched {item.get('Name')} from Jellyfin")
+                return jsonify({
+                    "title": item.get('Name'),
+                    "year": item.get('ProductionYear', 'N/A'),
+                    "rating": item.get('CommunityRating', 'N/A'),
+                    "overview": item.get('Overview', ''),
+                    "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={jf['api_key']}",
+                    "source": "Jellyfin"
+                })
+            else:
+                print("DEBUG: Jellyfin returned 0 items. Check UserID and Library permissions.")
+        except Exception as e:
+            print(f"DEBUG: Jellyfin Connection Error: {e}")
+
+    # Fallback to Mock Data
+    print("DEBUG: Falling back to Demo Mode")
+    mock_samples = [
+        {"title": "Interstellar", "year": 2014, "rating": 8.7, "overview": "A team of explorers travel through a wormhole in space...", "backdrop_url": "https://image.tmdb.org/t/p/original/gEU2vRuvmER7pG97uCqb9hHbp22.jpg"},
+        {"title": "The Dark Knight", "year": 2008, "rating": 9.0, "overview": "When the menace known as the Joker wreaks havoc...", "backdrop_url": "https://image.tmdb.org/t/p/original/nMKdUUepR0At5Iu98TjPLuOwwvM.jpg"}
+    ]
+    sample = random.choice(mock_samples)
+    sample["source"] = "Demo Mode"
+    return jsonify(sample)
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -137,25 +205,30 @@ EDITOR_TEMPLATE = """
                 <p style="font-size: 10px; color: #555; margin-top: 5px;">Click to add placeholder to canvas</p>
             </div>
             <div class="control-group">
+                <h3>Preview Controls</h3>
+                <button onclick="fetchRandomPreview()" style="background: #1565c0;">🎲 Shuffle Preview Media</button>
+                <p id="source-indicator" style="font-size: 9px; color: #555; text-align: center; margin-top: 5px;">Source: None</p>
+            </div>
+            <div class="control-group">
                 <h3>Leinwand</h3>
-                <label>Ziel-Auflösung</label>
+                <label for="resSelect">Ziel-Auflösung</label>
                 <select id="resSelect" onchange="changeResolution()">
                     <option value="1080">1080p (Full HD)</option>
                     <option value="2160">2160p (4K)</option>
                 </select>
-                <label>Hintergrundfarbe</label>
+                <label for="bgColor">Hintergrundfarbe</label>
                 <input type="color" id="bgColor" oninput="updateBgColor()" value="#000000">
             </div>
 
             <div class="control-group">
                 <h3>Fade-Out Kanten</h3>
-                <label>Links</label>
+                <label for="fadeLeft">Links</label>
                 <input type="range" id="fadeLeft" min="0" max="1000" value="0" oninput="updateFades()">
-                <label>Rechts</label>
+                <label for="fadeRight">Rechts</label>
                 <input type="range" id="fadeRight" min="0" max="1000" value="0" oninput="updateFades()">
-                <label>Oben</label>
+                <label for="fadeTop">Oben</label>
                 <input type="range" id="fadeTop" min="0" max="1000" value="0" oninput="updateFades()">
-                <label>Unten</label>
+                <label for="fadeBottom">Unten</label>
                 <input type="range" id="fadeBottom" min="0" max="1000" value="0" oninput="updateFades()">
             </div>
 
@@ -180,20 +253,23 @@ EDITOR_TEMPLATE = """
     <!-- TAB: SETTINGS -->
     <div id="settings-tab" class="tab-content">
         <div class="settings-grid">
+            <!-- Jellyfin Section -->
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Jellyfin</h3>
-                <label>Server URL</label>
+                <label for="set-jf-url">Server URL</label>
                 <input type="text" id="set-jf-url" value="{{ config.jellyfin.url }}">
-                <label>API Key</label>
+                <label for="set-jf-key">API Key</label>
                 <input type="password" id="set-jf-key" value="{{ config.jellyfin.api_key }}">
-                <label>User ID</label>
+                <label for="set-jf-user">User ID</label>
                 <input type="text" id="set-jf-user" value="{{ config.jellyfin.user_id }}">
             </div>
+
+            <!-- TMDB Section -->
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>TMDB</h3>
-                <label>Bearer Token</label>
+                <label for="set-tmdb-key">Bearer Token</label>
                 <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
-                <label>Sprache</label>
+                <label for="set-tmdb-lang">Sprache</label>
                 <input type="text" id="set-tmdb-lang" value="{{ config.tmdb.language }}">
             </div>
             <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;">Alle Einstellungen speichern</button>
@@ -221,6 +297,45 @@ EDITOR_TEMPLATE = """
                 }
             });
             canvas.renderAll();
+        }
+
+        /**
+        * Fetches a random movie from the API and updates all tags on the canvas.
+        */
+        async function fetchRandomPreview() {
+            const indicator = document.getElementById('source-indicator');
+            indicator.innerText = "Fetching...";
+
+            try {
+                const response = await fetch('/api/media/random');
+                const data = await response.json();
+
+                // 1. Update Backdrop
+                if (data.backdrop_url) {
+                    loadBackground(data.backdrop_url);
+                }
+
+                // 2. Map data to existing canvas tags
+                canvas.getObjects().forEach(obj => {
+                    if (obj.dataTag) {
+                        let newValue = "";
+                        switch(obj.dataTag) {
+                            case 'title': newValue = data.title; break;
+                            case 'year': newValue = data.year; break;
+                            case 'rating': newValue = (data.rating !== 'N/A') ? `IMDb: ${data.rating}` : ''; break;
+                            case 'overview': newValue = data.overview; break;
+                        }
+                        obj.set({ text: String(newValue) });
+                    }
+                });
+
+                indicator.innerText = "Source: " + data.source;
+                canvas.renderAll();
+
+            } catch (err) {
+                console.error("Shuffle failed:", err);
+                indicator.innerText = "Error loading preview";
+            }
         }
 
         /**
@@ -361,15 +476,24 @@ EDITOR_TEMPLATE = """
         }
 
         function loadBackground(url) {
-            fabric.Image.fromURL(url, function(img, isError) {
-                if (isError) return;
+            // We wrap the external URL into our local proxy
+            const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
+            
+            console.log("Loading image via proxy:", proxiedUrl);
+            
+            fabric.Image.fromURL(proxiedUrl, function(img, isError) {
+                if (isError) {
+                    console.error("Proxy failed to load image.");
+                    return;
+                }
+                if (mainBg) canvas.remove(mainBg);
                 mainBg = img;
                 img.set({ left: 0, top: 0, selectable: true });
                 img.scaleToWidth(canvas.width);
                 canvas.add(img);
                 canvas.sendToBack(img);
                 updateFades();
-            }); 
+            }, { crossOrigin: 'anonymous' }); 
         }
 
         function updateBgColor() {
