@@ -2,25 +2,42 @@ import os
 import json
 import random
 import io
-import requests  # Added for API communication
-from flask import Blueprint, render_template_string, request, jsonify, send_from_directory, url_for, send_file # Added send_file
+import requests
+from flask import Blueprint, render_template_string, request, jsonify, send_from_directory, url_for, send_file
 
+# Blueprint Setup
 gui_editor_bp = Blueprint('gui_editor', __name__)
 CONFIG_FILE = 'config.json'
 
+# --- CONFIGURATION LOGIC ---
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            try:
+                return json.load(f)
+            except:
+                pass
+    return {
+        "jellyfin": {"url": "", "api_key": "", "user_id": ""},
+        "plex": {"url": "", "token": ""},
+        "tmdb": {"api_key": "", "language": "de-DE"},
+        "editor": {"resolution": "1080"}
+    }
+
+def save_config(config_data):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config_data, f, indent=4)
+
+# --- API ROUTES ---
 @gui_editor_bp.route('/api/proxy/image')
 def proxy_image():
     """ Proxies an image URL to bypass CORS/CORB blocks. """
     url = request.args.get('url')
     if not url:
         return "Missing URL", 400
-    
     try:
-        # We fetch the image from the external source (Jellyfin/TMDB)
         resp = requests.get(url, stream=True, timeout=10)
         resp.raise_for_status()
-        
-        # We send the image back to the browser as if it were ours
         return send_file(
             io.BytesIO(resp.content),
             mimetype=resp.headers.get('Content-Type', 'image/jpeg')
@@ -33,51 +50,38 @@ def get_random_media():
     config = load_config()
     jf = config.get('jellyfin', {})
     
-    # Debug: Check if config is loaded correctly
-    print(f"DEBUG: Attempting Jellyfin connection to {jf.get('url')}")
-
     if jf.get('url') and jf.get('api_key'):
         headers = {"X-Emby-Token": jf['api_key']}
-        # Remove trailing slash if exists and construct URL
         clean_url = jf['url'].rstrip('/')
-        # We must explicitly ask for Overview, Genres, and other fields
         url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie&Limit=50&Fields=Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks"
         
         try:
             r = requests.get(url, headers=headers, timeout=5)
-            r.raise_for_status() # This will trigger an exception on 401, 404, etc.
+            r.raise_for_status()
             items = r.json().get('Items', [])
             
             if items:
                 item = random.choice(items)
-                
-                # Convert RunTimeTicks to "Xh Ymin"
                 ticks = item.get('RunTimeTicks', 0)
                 minutes = (ticks // 600000000) if ticks else 0
                 h = minutes // 60
                 m = minutes % 60
                 runtime_str = f"{h}h {m}min" if h > 0 else f"{m}min"
 
-                print(f"DEBUG: Successfully fetched {item.get('Name')} from Jellyfin")
-                
                 return jsonify({
                     "title": item.get('Name'),
                     "year": item.get('ProductionYear', 'N/A'),
                     "rating": item.get('CommunityRating', 'N/A'),
-                    # Jellyfin returns 'Overview' with a capital 'O'
                     "overview": item.get('Overview', ''),
-                    "genres": ", ".join(item.get('Genres', [])), # Join list to string
+                    "genres": ", ".join(item.get('Genres', [])),
                     "runtime": runtime_str,
                     "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={jf['api_key']}",
                     "source": "Jellyfin"
                 })
-            else:
-                print("DEBUG: Jellyfin returned 0 items. Check UserID and Library permissions.")
         except Exception as e:
-            print(f"DEBUG: Jellyfin Connection Error: {e}")
+            print(f"DEBUG: Jellyfin Error: {e}")
 
     # Fallback to Mock Data
-    print("DEBUG: Falling back to Demo Mode")
     mock_samples = [
         {"title": "Interstellar", "year": 2014, "rating": 8.7, "overview": "A team of explorers travel through a wormhole in space...", "backdrop_url": "https://image.tmdb.org/t/p/original/gEU2vRuvmER7pG97uCqb9hHbp22.jpg"},
         {"title": "The Dark Knight", "year": 2008, "rating": 9.0, "overview": "When the menace known as the Joker wreaks havoc...", "backdrop_url": "https://image.tmdb.org/t/p/original/nMKdUUepR0At5Iu98TjPLuOwwvM.jpg"}
@@ -86,50 +90,10 @@ def get_random_media():
     sample["source"] = "Demo Mode"
     return jsonify(sample)
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            try: return json.load(f)
-            except: pass
-    return {
-        "jellyfin": {"url": "", "api_key": "", "user_id": ""},
-        "plex": {"url": "", "token": ""},
-        "tmdb": {"api_key": "", "language": "de-DE"},
-        "editor": {"resolution": "1080"}
-    }
-
-def save_config(config_data):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config_data, f, indent=4)
-
 @gui_editor_bp.route('/api/settings', methods=['POST'])
 def update_settings():
     save_config(request.json)
     return jsonify({"status": "success"})
-
-@gui_editor_bp.route('/api/jellyfin/recent')
-def get_jellyfin_recent():
-    config = load_config().get('jellyfin', {})
-    if not config.get('url') or not config.get('api_key'):
-        return jsonify({"error": "Jellyfin not configured"}), 400
-    
-    headers = {"X-Emby-Token": config['api_key']}
-    url = f"{config['url']}/Users/{config['user_id']}/Items"
-    params = {
-        "SortBy": "DateCreated",
-        "SortOrder": "Descending",
-        "IncludeItemTypes": "Movie",
-        "Limit": 10,
-        "Recursive": "true",
-        "Fields": "ProductionYear,Overview,CommunityRating"
-    }
-    
-    try:
-        r = requests.get(url, headers=headers, params=params, timeout=5)
-        r.raise_for_status()
-        return jsonify(r.json().get('Items', []))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @gui_editor_bp.route('/get_local_background')
 def get_local_background():
@@ -142,6 +106,7 @@ def editor_index():
     data = {"title": "TV Background", "backdrop_url": url_for('gui_editor.get_local_background')}
     return render_template_string(EDITOR_TEMPLATE, data=data, config=config)
 
+# --- HTML/JS TEMPLATE ---
 EDITOR_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -152,7 +117,6 @@ EDITOR_TEMPLATE = """
         :root { --primary: #2e7d32; --bg: #0a0a0a; --panel: #181818; --text: #eee; --sidebar-w: 320px; }
         body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
-        /* Navigation */
         .nav-tabs { display: flex; background: #000; padding: 0 20px; border-bottom: 1px solid #333; height: 50px; flex-shrink: 0; }
         .tab-link { padding: 15px 25px; cursor: pointer; border-bottom: 3px solid transparent; font-size: 14px; }
         .tab-link.active { border-bottom-color: var(--primary); background: var(--panel); }
@@ -160,38 +124,21 @@ EDITOR_TEMPLATE = """
         .tab-content { display: none; flex: 1; overflow: hidden; }
         .tab-content.active { display: flex; }
 
-        /* Sidebar Layout */
-        .sidebar { 
-            width: var(--sidebar-w); background: var(--panel); border-right: 1px solid #333; 
-            padding: 20px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
-        }
+        .sidebar { width: var(--sidebar-w); background: var(--panel); border-right: 1px solid #333; padding: 20px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
         .main-view { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; background: #111; position: relative; overflow: auto; }
 
-        /* Sidebar Controls */
         .control-group { border-bottom: 1px solid #333; padding-bottom: 15px; }
-        .control-group:last-child { border: none; }
-        h3 { font-size: 12px; text-transform: uppercase; color: #888; margin: 0 0 10px 0; letter-spacing: 1px; }
-        
+        h3 { font-size: 12px; text-transform: uppercase; color: #888; margin: 0 0 10px 0; }
         label { font-size: 11px; color: #666; display: block; margin-top: 8px; }
-        input, select, button { 
-            padding: 8px; border-radius: 4px; border: 1px solid #444; 
-            background: #222; color: white; width: 100%; margin-top: 5px; box-sizing: border-box; font-size: 13px;
-        }
-        input[type="range"] { padding: 0; }
-        button { background: var(--primary); border: none; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        button:hover { background: #388e3c; }
+        input, select, button { padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: white; width: 100%; margin-top: 5px; box-sizing: border-box; }
+        button { background: var(--primary); border: none; font-weight: bold; cursor: pointer; }
         .btn-export { background: #1565c0; margin-top: 20px; }
 
-        /* Canvas */
-        #canvas-wrapper { 
-            width: 100%; max-width: 1200px; aspect-ratio: 16 / 9; 
-            background: #000; border: 2px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-        }
+        #canvas-wrapper { width: 100%; max-width: 1200px; aspect-ratio: 16 / 9; background: #000; border: 2px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
         .canvas-container { width: 100% !important; height: 100% !important; }
         canvas { width: 100% !important; height: 100% !important; }
 
-        /* Settings Tab (Full width) */
-        #settings-tab { padding: 40px; overflow-y: auto; align-items: center; }
+        #settings-tab { padding: 40px; overflow-y: auto; flex-direction: column; align-items: center;}
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; width: 100%; max-width: 1000px; }
     </style>
 </head>
@@ -202,10 +149,9 @@ EDITOR_TEMPLATE = """
         <div class="tab-link" onclick="openTab(event, 'settings-tab')">⚙️ Provider Settings</div>
     </div>
 
-    <!-- TAB: EDITOR -->
     <div id="editor-tab" class="tab-content active">
         <div class="sidebar">
-           <div class="control-group">
+            <div class="control-group">
                 <h3>Metadata Tags</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                     <button onclick="addMetadataTag('title', 'MOVIE TITLE')">Title</button>
@@ -213,15 +159,16 @@ EDITOR_TEMPLATE = """
                     <button onclick="addMetadataTag('rating', 'IMDb: 8.5')">Rating</button>
                     <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
                     <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
-                    <button onclick="addMetadataTag('overview', 'This is a sample movie description text...')">Overview</button>
+                    <button onclick="addMetadataTag('overview', 'Movie description placeholder...')">Overview</button>
                 </div>
-                <p style="font-size: 10px; color: #555; margin-top: 5px;">Click to add placeholder to canvas</p>
             </div>
+
             <div class="control-group">
                 <h3>Preview Controls</h3>
-                <button onclick="fetchRandomPreview()" style="background: #1565c0;">🎲 Shuffle Preview Media</button>
+                <button onclick="fetchRandomPreview()" style="background: #1565c0;">🎲 Shuffle Preview</button>
                 <p id="source-indicator" style="font-size: 9px; color: #555; text-align: center; margin-top: 5px;">Source: None</p>
             </div>
+
             <div class="control-group">
                 <h3>Leinwand</h3>
                 <label for="resSelect">Ziel-Auflösung</label>
@@ -245,11 +192,6 @@ EDITOR_TEMPLATE = """
                 <input type="range" id="fadeBottom" min="0" max="1000" value="0" oninput="updateFades()">
             </div>
 
-            <div class="control-group">
-                <h3>Elemente</h3>
-                <button onclick="addTitle()">+ Text hinzufügen</button>
-            </div>
-
             <div class="control-group" id="text-properties" style="display:none;">
                 <h3>Text Properties</h3>
                 <label for="fontSizeInput">Font Size</label>
@@ -258,7 +200,6 @@ EDITOR_TEMPLATE = """
 
             <div style="margin-top:auto">
                 <button class="btn-export" onclick="saveImage()">💾 Exportieren (JPG)</button>
-                <p style="font-size:10px; color:#555; text-align:center; margin-top:10px;">Markierte Objekte mit Entf-Taste löschen</p>
             </div>
         </div>
 
@@ -269,10 +210,8 @@ EDITOR_TEMPLATE = """
         </div>
     </div>
 
-    <!-- TAB: SETTINGS -->
     <div id="settings-tab" class="tab-content">
         <div class="settings-grid">
-            <!-- Jellyfin Section -->
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Jellyfin</h3>
                 <label for="set-jf-url">Server URL</label>
@@ -282,8 +221,6 @@ EDITOR_TEMPLATE = """
                 <label for="set-jf-user">User ID</label>
                 <input type="text" id="set-jf-user" value="{{ config.jellyfin.user_id }}">
             </div>
-
-            <!-- TMDB Section -->
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>TMDB</h3>
                 <label for="set-tmdb-key">Bearer Token</label>
@@ -300,61 +237,28 @@ EDITOR_TEMPLATE = """
         let mainBg = null;
         let fades = { left: null, right: null, top: null, bottom: null };
 
-        /**
-        * Fills all data-tags on canvas with real media data.
-        * @param {Object} mediaData - Data fetched from Jellyfin API.
-        */
-        function previewTemplate(mediaData) {
-            canvas.getObjects().forEach(obj => {
-                if (obj.dataTag) {
-                    switch(obj.dataTag) {
-                        case 'title': 
-                            obj.set({ text: String(mediaData.Name || mediaData.title) }); 
-                            break;
-                        case 'year': 
-                            obj.set({ text: String(mediaData.ProductionYear || mediaData.year) }); 
-                            break;
-                        case 'rating': 
-                            let r = mediaData.CommunityRating || mediaData.rating;
-                            obj.set({ text: (r && r !== 'N/A') ? `IMDb: ${r}` : '' }); 
-                            break;
-                        
-                        case 'overview': 
-                            const overviewText = mediaData.Overview || mediaData.overview || "";
-                            // We check if it's a Textbox to use our smart truncation
-                            if (obj.type === 'textbox') {
-                                applyTruncation(obj, overviewText);
-                            } else {
-                                obj.set({ text: overviewText });
-                            }
-                            break;
-                        // -----------------------------
-                        
-                        case 'genres': 
-                            obj.set({ text: String(mediaData.genres || "") }); 
-                            break;
-                        case 'runtime': 
-                            obj.set({ text: String(mediaData.runtime || "") }); 
-                            break;
-                    }
-                }
-            });
-            canvas.renderAll();
+        function updateSelectionUI() {
+            const activeObj = canvas.getActiveObject();
+            const panel = document.getElementById('text-properties');
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'textbox')) {
+                panel.style.display = 'block';
+                document.getElementById('fontSizeInput').value = activeObj.fontSize;
+            } else {
+                panel.style.display = 'none';
+            }
         }
 
-        /**
-        * Fits text into a textbox by removing words and adding an ellipsis 
-        * if the text exceeds the current height of the box.
-        */
+        function updateSelectedFontSize() {
+            const activeObj = canvas.getActiveObject();
+            if (activeObj) {
+                activeObj.set("fontSize", parseInt(document.getElementById('fontSizeInput').value));
+                canvas.renderAll();
+            }
+        }
+
         function applyTruncation(textbox, fullText) {
-            // 1. Remember the current height set by the user in the editor
             const maxHeight = textbox.height;
-            
-            // 2. Set the full text first to calculate current overflow
             textbox.set('text', fullText);
-            
-            // 3. If the content is now taller than the box, truncate word by word
-            // We use a simple while loop to remove the last word until it fits
             if (textbox.getScaledHeight() > maxHeight) {
                 let words = fullText.split(' ');
                 while (textbox.getScaledHeight() > maxHeight && words.length > 0) {
@@ -364,240 +268,79 @@ EDITOR_TEMPLATE = """
             }
             canvas.renderAll();
         }
-        
-        /**
-        * Fetches a random movie from the API and updates all tags on the canvas.
-        */
+
         async function fetchRandomPreview() {
             const indicator = document.getElementById('source-indicator');
             indicator.innerText = "Fetching...";
-
             try {
                 const response = await fetch('/api/media/random');
                 const data = await response.json();
+                if (data.backdrop_url) loadBackground(data.backdrop_url);
 
-                // 1. Update Backdrop
-                if (data.backdrop_url) {
-                    loadBackground(data.backdrop_url);
-                }
-
-                // 2. Map data to existing canvas tags
                 canvas.getObjects().forEach(obj => {
                     if (obj.dataTag) {
-                        let newValue = "";
+                        let val = "";
                         switch(obj.dataTag) {
-                            case 'title': newValue = data.title; break;
-                            case 'year': newValue = data.year; break;
-                            case 'rating': newValue = (data.rating !== 'N/A') ? `IMDb: ${data.rating}` : ''; break;
-                            case 'overview': newValue = data.overview || ""; break;
-                            case 'genres': newValue = data.genres || ""; break;
-                            case 'runtime': newValue = data.runtime || ""; break;
+                            case 'title': val = data.title; break;
+                            case 'year': val = data.year; break;
+                            case 'rating': val = (data.rating !== 'N/A') ? `IMDb: ${data.rating}` : ''; break;
+                            case 'overview': 
+                                if (obj.type === 'textbox') applyTruncation(obj, data.overview);
+                                else val = data.overview;
+                                break;
+                            case 'genres': val = data.genres; break;
+                            case 'runtime': val = data.runtime; break;
                         }
-                        obj.set({ text: String(newValue) });
-
-                        // Re-wrap overview text if it changed
-                        if (obj.dataTag === 'overview') {
-                            obj.set({ width: obj.width }); // Triggers recalculation
-                        }
+                        if (val) obj.set({ text: String(val) });
                     }
                 });
-
                 indicator.innerText = "Source: " + data.source;
                 canvas.renderAll();
-
-            } catch (err) {
-                console.error("Shuffle failed:", err);
-                indicator.innerText = "Error loading preview";
-            }
+            } catch (err) { indicator.innerText = "Error loading preview"; }
         }
 
-        /**
-        * Adds a metadata placeholder to the canvas.
-        * @param {string} type - The Jellyfin metadata field name.
-        * @param {string} placeholder - Default text to display in editor.
-        */
         function addMetadataTag(type, placeholder) {
             let textObj;
-            
-            const commonProps = {
-                left: 200,
-                top: 200,
-                fontFamily: 'Segoe UI',
-                fontSize: type === 'title' ? 80 : 35,
-                fill: 'white',
-                shadow: '2px 2px 10px rgba(0,0,0,0.8)',
-                dataTag: type
-            };
-
+            const props = { left: 200, top: 200, fontFamily: 'Segoe UI', fontSize: type === 'title' ? 80 : 35, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
             if (type === 'overview') {
-                // Use Textbox for automatic wrapping and fixed-width scaling
-                textObj = new fabric.Textbox(placeholder, {
-                    ...commonProps,
-                    width: 600,
-                    splitByGrapheme: true, // Wraps long words
-                    lockScalingY: false,   // Allow height adjustment
-                });
+                textObj = new fabric.Textbox(placeholder, { ...props, width: 600, splitByGrapheme: true, lockScalingY: false });
             } else {
-                textObj = new fabric.IText(placeholder, commonProps);
+                textObj = new fabric.IText(placeholder, props);
             }
-
             canvas.add(textObj);
             canvas.setActiveObject(textObj);
         }
 
-        async function fetchJellyfinRecent() {
-            const listContainer = document.getElementById('media-list');
-            listContainer.innerHTML = '<p style="font-size:10px">Loading...</p>';
-            
-            try {
-                const response = await fetch('/api/jellyfin/recent');
-                const items = await response.json();
-                
-                if (items.error) throw new Error(items.error);
-
-                listContainer.innerHTML = '';
-                items.forEach(item => {
-                    const btn = document.createElement('button');
-                    btn.className = 'media-item-btn'; // Optional: add some CSS for this
-                    btn.style.fontSize = '11px'; btn.style.textAlign = 'left'; btn.style.background = '#222';
-                    btn.innerText = `${item.Name} (${item.ProductionYear || 'N/A'})`;
-                    btn.onclick = () => loadJellyfinItem(item);
-                    listContainer.appendChild(btn);
-                });
-            } catch (err) {
-                listContainer.innerHTML = `<p style="color:red; font-size:10px">Error: ${err.message}</p>`;
-            }
-        }
-
-        function loadJellyfinItem(item) {
-            // Get current config values from settings inputs
-            const baseUrl = document.getElementById('set-jf-url').value;
-            const apiKey = document.getElementById('set-jf-key').value;
-            
-            // 1. Load Backdrop
-            const backdropUrl = `${baseUrl}/Items/${item.Id}/Images/Backdrop?api_key=${apiKey}`;
-            if (mainBg) canvas.remove(mainBg);
-            
-            fabric.Image.fromURL(backdropUrl, function(img) {
-                mainBg = img;
-                img.set({ left: 0, top: 0, selectable: true });
-                img.scaleToWidth(canvas.width);
-                canvas.add(img);
-                canvas.sendToBack(img);
-                updateFades();
-            }, { crossOrigin: 'anonymous' });
-
-            // 2. Add Title (as an editable text object)
-            const title = new fabric.IText(item.Name.toUpperCase(), {
-                left: 150, top: canvas.height - 250,
-                fontFamily: 'Segoe UI', fontSize: 120, fontWeight: 'bold', fill: 'white',
-                shadow: '2px 2px 20px rgba(0,0,0,0.8)'
-            });
-            canvas.add(title);
-            
-            // 3. Add Year/Rating Info
-            const info = new fabric.IText(`${item.ProductionYear}  |  IMDb: ${item.CommunityRating || 'N/A'}`, {
-                left: 150, top: canvas.height - 120,
-                fontFamily: 'Segoe UI', fontSize: 40, fill: '#ccc'
-            });
-            canvas.add(info);
-        }
-
-        function openTab(evt, tabId) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active');
-            evt.currentTarget.classList.add('active');
-        }
-
-        async function saveSettings() {
-            const config = {
-                jellyfin: {
-                    url: document.getElementById('set-jf-url').value,
-                    api_key: document.getElementById('set-jf-key').value,
-                    user_id: document.getElementById('set-jf-user').value
-                },
-                tmdb: {
-                    api_key: document.getElementById('set-tmdb-key').value,
-                    language: document.getElementById('set-tmdb-lang').value
-                }
-            };
-            const resp = await fetch('/api/settings', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(config)
-            });
-            if(resp.ok) alert("Gespeichert!");
-        }
-
         function init() {
-            canvas = new fabric.Canvas('mainCanvas', {
-                width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true
+            canvas = new fabric.Canvas('mainCanvas', { width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true });
 
-            canvas.on('object:scaling', function(e) {
-                const obj = e.target;
-                if (obj instanceof fabric.Textbox) {
-                    // Reset scale and update width/height instead
-                    const newWidth = obj.width * obj.scaleX;
-                    const newHeight = obj.height * obj.scaleY;
-                    obj.set({
-                        width: newWidth,
-                        height: newHeight,
-                        scaleX: 1,
-                        scaleY: 1
-                    });
+            canvas.on('object:scaling', (e) => {
+                if (e.target instanceof fabric.Textbox) {
+                    const t = e.target;
+                    t.set({ width: t.width * t.scaleX, height: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
                 }
+                if (e.target === mainBg) updateFades();
             });
 
-            // Update UI when an object is selected
             canvas.on('selection:created', updateSelectionUI);
             canvas.on('selection:updated', updateSelectionUI);
-            canvas.on('selection:cleared', () => document.getElementById('text-properties').style.display = 'none');
-
-            function updateSelectionUI() {
-                const activeObj = canvas.getActiveObject();
-                if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'textbox')) {
-                    document.getElementById('text-properties').style.display = 'block';
-                    document.getElementById('fontSizeInput').value = activeObj.fontSize;
-                }
-            }
-
-            function updateSelectedFontSize() {
-                const activeObj = canvas.getActiveObject();
-                if (activeObj) {
-                    activeObj.set("fontSize", parseInt(document.getElementById('fontSizeInput').value));
-                    canvas.renderAll();
-                }
-            }
-            });
+            canvas.on('selection:cleared', updateSelectionUI);
+            canvas.on('object:moving', (e) => { if(e.target === mainBg) updateFades(); });
 
             window.addEventListener('keydown', (e) => {
                 if (e.key === "Delete" || e.key === "Backspace") {
-                    canvas.getActiveObjects().forEach(obj => {
-                        if (obj === mainBg) mainBg = null;
-                        canvas.remove(obj);
-                    });
+                    canvas.getActiveObjects().forEach(obj => { if (obj === mainBg) mainBg = null; canvas.remove(obj); });
                     canvas.discardActiveObject().requestRenderAll();
                 }
             });
-
-            canvas.on('object:moving', (e) => { if(e.target === mainBg) updateFades(); });
-            canvas.on('object:scaling', (e) => { if(e.target === mainBg) updateFades(); });
 
             loadBackground("{{ data.backdrop_url }}");
         }
 
         function loadBackground(url) {
-            // We wrap the external URL into our local proxy
             const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
-            
-            console.log("Loading image via proxy:", proxiedUrl);
-            
             fabric.Image.fromURL(proxiedUrl, function(img, isError) {
-                if (isError) {
-                    console.error("Proxy failed to load image.");
-                    return;
-                }
+                if (isError) return;
                 if (mainBg) canvas.remove(mainBg);
                 mainBg = img;
                 img.set({ left: 0, top: 0, selectable: true });
@@ -605,50 +348,7 @@ EDITOR_TEMPLATE = """
                 canvas.add(img);
                 canvas.sendToBack(img);
                 updateFades();
-            }, { crossOrigin: 'anonymous' }); 
-        }
-
-        function updateBgColor() {
-            const color = document.getElementById('bgColor').value;
-            canvas.setBackgroundColor(color, () => { updateFades(); canvas.renderAll(); });
-        }
-
-        function hexToRgba(hex, alpha) {
-            let r = parseInt(hex.slice(1, 3), 16),
-                g = parseInt(hex.slice(3, 5), 16),
-                b = parseInt(hex.slice(5, 7), 16);
-            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        }
-
-        function createFadeRect(type, size) {
-            if (!mainBg) return null;
-            const bgColor = document.getElementById('bgColor').value;
-            const imgWidth = mainBg.getScaledWidth();
-            const imgHeight = mainBg.getScaledHeight();
-            const bleed = 2;
-
-            let w, h, x, y, coords;
-            if (type === 'left') {
-                w = parseInt(size) + bleed; h = imgHeight + (bleed*2); x = mainBg.left - bleed; y = mainBg.top - bleed;
-                coords = { x1: 0, y1: 0, x2: 1, y2: 0 };
-            } else if (type === 'right') {
-                w = parseInt(size) + bleed; h = imgHeight + (bleed*2); x = mainBg.left + imgWidth - size; y = mainBg.top - bleed;
-                coords = { x1: 1, y1: 0, x2: 0, y2: 0 };
-            } else if (type === 'top') {
-                w = imgWidth + (bleed*2); h = parseInt(size) + bleed; x = mainBg.left - bleed; y = mainBg.top - bleed;
-                coords = { x1: 0, y1: 0, x2: 0, y2: 1 };
-            } else if (type === 'bottom') {
-                w = imgWidth + (bleed*2); h = parseInt(size) + bleed; x = mainBg.left - bleed; y = mainBg.top + imgHeight - size;
-                coords = { x1: 0, y1: 1, x2: 0, y2: 0 };
-            }
-
-            return new fabric.Rect({
-                left: x, top: y, width: w, height: h, selectable: false, evented: false,
-                fill: new fabric.Gradient({
-                    type: 'linear', gradientUnits: 'percentage', coords: coords,
-                    colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }]
-                })
-            });
+            }, { crossOrigin: 'anonymous' });
         }
 
         function updateFades() {
@@ -665,31 +365,49 @@ EDITOR_TEMPLATE = """
             canvas.renderAll();
         }
 
-        function addTitle() {
-            canvas.add(new fabric.IText("TEXT HIER", { left: 100, top: 100, fill: 'white', fontSize: 60, fontFamily: 'Segoe UI' }));
+        function createFadeRect(type, size) {
+            const bgColor = document.getElementById('bgColor').value;
+            const b = 2; // bleed
+            const wImg = mainBg.getScaledWidth();
+            const hImg = mainBg.getScaledHeight();
+            let w, h, x, y, c;
+            if (type === 'left') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 1, y2: 0 }; }
+            else if (type === 'right') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left + wImg - size; y = mainBg.top - b; c = { x1: 1, y1: 0, x2: 0, y2: 0 }; }
+            else if (type === 'top') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 0, y2: 1 }; }
+            else if (type === 'bottom') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top + hImg - size; c = { x1: 0, y1: 1, x2: 0, y2: 0 }; }
+
+            return new fabric.Rect({
+                left: x, top: y, width: w, height: h, selectable: false, evented: false,
+                fill: new fabric.Gradient({ type: 'linear', gradientUnits: 'percentage', coords: c, colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] })
+            });
         }
 
+        function hexToRgba(hex, a) {
+            let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${a})`;
+        }
+
+        function updateBgColor() { canvas.setBackgroundColor(document.getElementById('bgColor').value, () => { updateFades(); canvas.renderAll(); }); }
+        function openTab(evt, tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            evt.currentTarget.classList.add('active');
+        }
+        async function saveSettings() {
+            const config = { jellyfin: { url: document.getElementById('set-jf-url').value, api_key: document.getElementById('set-jf-key').value, user_id: document.getElementById('set-jf-user').value }, tmdb: { api_key: document.getElementById('set-tmdb-key').value, language: document.getElementById('set-tmdb-lang').value } };
+            const resp = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
+            if(resp.ok) alert("Gespeichert!");
+        }
         function changeResolution() {
             const res = document.getElementById('resSelect').value;
             const targetW = (res === '2160') ? 3840 : 1920;
-            const targetH = (res === '2160') ? 2160 : 1080;
             const scale = targetW / canvas.width;
-            canvas.setDimensions({ width: targetW, height: targetH });
-            canvas.getObjects().forEach(obj => {
-                obj.scaleX *= scale; obj.scaleY *= scale;
-                obj.left *= scale; obj.top *= scale;
-                obj.setCoords();
-            });
+            canvas.setDimensions({ width: targetW, height: (res === '2160' ? 2160 : 1080) });
+            canvas.getObjects().forEach(obj => { obj.scaleX *= scale; obj.scaleY *= scale; obj.left *= scale; obj.top *= scale; obj.setCoords(); });
             updateFades();
         }
-
-        function saveImage() {
-            const link = document.createElement('a');
-            link.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 });
-            link.download = 'tv-background.jpg';
-            link.click();
-        }
-
+        function saveImage() { const l = document.createElement('a'); l.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 }); l.download = 'tv-background.jpg'; l.click(); }
         window.onload = init;
     </script>
 </body>

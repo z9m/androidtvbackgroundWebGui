@@ -1,0 +1,18 @@
+{
+    "jellyfin": {
+        "url": "http://your-ip:8096",
+        "api_key": "YOUR_API_KEY",
+        "user_id": "YOUR_USER_ID"
+    },
+    "plex": {
+        "url": "",
+        "token": ""
+    },
+    "tmdb": {
+        "api_key": "",
+        "language": "de-DE"
+    },
+    "editor": {
+        "resolution": "1080"
+    }
+}
