@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <title>TV Background Suite</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Merriweather:wght@300;400;700&family=Montserrat:wght@300;400;700&family=Open+Sans:wght@300;400;700&family=Oswald:wght@300;400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #2e7d32; --bg: #0a0a0a; --panel: #181818; --text: #eee; --sidebar-w: 320px; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .nav-tabs { display: flex; background: #000; padding: 0 20px; border-bottom: 1px solid #333; height: 50px; flex-shrink: 0; }
+        .tab-link { padding: 15px 25px; cursor: pointer; border-bottom: 3px solid transparent; font-size: 14px; }
+        .tab-link.active { border-bottom-color: var(--primary); background: var(--panel); }
+        .tab-content { display: none; flex: 1; overflow: hidden; }
+        .tab-content.active { display: flex; }
+        .sidebar { width: var(--sidebar-w); background: var(--panel); border-right: 1px solid #333; padding: 20px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+        .main-view { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; background: #111; position: relative; overflow: auto; }
+        .control-group { border-bottom: 1px solid #333; padding-bottom: 15px; }
+        h3 { font-size: 12px; text-transform: uppercase; color: #888; margin: 0 0 10px 0; }
+        label { font-size: 11px; color: #666; display: block; margin-top: 8px; cursor: pointer; }
+        input, select, button { padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: white; width: 100%; margin-top: 5px; box-sizing: border-box; }
+        button { background: var(--primary); border: none; font-weight: bold; cursor: pointer; }
+        button:hover { filter: brightness(1.2); }
+        button:disabled, button:disabled:hover { background: #555; cursor: not-allowed; opacity: 0.7; filter: none; }
+        .btn-export { background: #1565c0; margin-top: 20px; }
+        #canvas-wrapper { width: 100%; max-width: 1200px; aspect-ratio: 16 / 9; background: #000; border: 2px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
+        .canvas-container { width: 100% !important; height: 100% !important; }
+        canvas { width: 100% !important; height: 100% !important; }
+        #settings-tab { padding: 40px; overflow-y: auto; flex-direction: column; align-items: center;}
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; width: 100%; max-width: 1000px; }
+        .gallery-container { padding: 20px; width: 100%; overflow-y: auto; }
+        .gallery-section { margin-bottom: 40px; }
+        .gallery-section h2 { color: #eee; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; font-size: 18px; }
+        .gallery-horizontal { display: flex; overflow-x: auto; gap: 15px; padding-bottom: 15px; scrollbar-width: thin; scrollbar-color: var(--primary) #222; }
+        .gallery-horizontal::-webkit-scrollbar { height: 8px; }
+        .gallery-horizontal::-webkit-scrollbar-track { background: #222; }
+        .gallery-horizontal::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+        .gallery-item { position: relative; height: 20vh; aspect-ratio: 16/9; overflow: hidden; border-radius: 4px; border: 1px solid #333; cursor: pointer; transition: transform 0.2s; flex-shrink: 0; }
+        .gallery-item:hover { transform: scale(1.05); z-index: 10; border-color: var(--primary); }
+        .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+        .gallery-item .caption { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; padding: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .layout-card { background: #181818; border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .layout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .layout-previews { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+        .layout-previews img { height: 60px; border-radius: 4px; border: 1px solid #444; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="nav-tabs">
+        <div class="tab-link active" onclick="openTab(event, 'editor-tab')">🎨 Layout Editor</div>
+        <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()">💾 Saved Layouts</div>
+        <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()">🖼️ Gallery</div>
+        <div class="tab-link" onclick="openTab(event, 'settings-tab')">⚙️ Provider Settings</div>
+    </div>
+
+    <div id="editor-tab" class="tab-content active">
+        <div class="sidebar">
+            <div class="control-group">
+                <h3>Layout Management</h3>
+                <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;">💾 Save Changes</button>
+                <label>Layout Name</label>
+                <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default">
+                <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                    <input type="checkbox" id="centerTagsToggle" onchange="updateVerticalLayout()" style="width:20px; height:20px; margin:0;" checked>
+                    <label for="centerTagsToggle" style="margin:0; cursor:pointer; font-size:11px;">Auto-Center Tags</label>
+                </div>
+                <div style="margin-top:5px;">
+                    <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
+                    <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
+                </div>
+                <button onclick="saveLayout()" style="background: #00796b; margin-top: 10px;">💾 Save Layout</button>
+            </div>
+
+            <div class="control-group">
+                <h3>Logos & Icons</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <button onclick="addLogo('https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/IMDB_Logo_2016.svg/1200px-IMDB_Logo_2016.svg.png')" style="grid-column: 1 / -1;">IMDb Logo</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Metadata Tags</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <button onclick="addMetadataTag('title', 'TITLE / LOGO')">Title/Logo</button>
+                    <button onclick="addMetadataTag('year', '2024')">Year</button>
+                    <button onclick="addMetadataTag('rating', 'IMDb: 8.5')">Rating (Text)</button>
+                    <button onclick="addMetadataTag('rating_star', '8.5')">Rating (Star)</button>
+                    <button onclick="addMetadataTag('rating_val', '8.5')">Rating (Value)</button>
+                    <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
+                    <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
+                    <button onclick="addMetadataTag('overview', 'Movie description...')">Overview</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Preview Controls</h3>
+                <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0;">🎲 Shuffle Preview</button>
+                <p id="source-indicator" style="font-size: 9px; color: #555; text-align: center; margin-top: 5px;">Source: None</p>
+            </div>
+
+            <div class="control-group">
+                <h3>Canvas</h3>
+                <label for="resSelect">Resolution</label>
+                <select id="resSelect" onchange="changeResolution()">
+                    <option value="1080">1080p (Full HD)</option>
+                    <option value="2160">2160p (4K)</option>
+                </select>
+                <label>Background Color</label>
+                <div style="display:flex; gap:5px; align-items:center;">
+                    <input type="color" id="bgColor" oninput="updateBgColor()" value="#000000" style="height:35px; width:60px;">
+                    <button onclick="autoDetectBgColor(true)" style="margin-top:0; font-size: 11px;">✨ Auto-Detect</button>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                    <label style="font-size:10px; margin:0;">Brightness</label>
+                    <span id="brightVal" style="font-size:10px;">20%</span>
+                </div>
+                <input type="range" id="bgBrightness" min="0" max="100" value="20" oninput="adjustAutoBrightness()" style="margin-top:2px;">
+                <button onclick="mirrorBackground()" style="margin-top: 10px; background-color: #4a4a4a;">↔️ Mirror Background</button>
+            </div>
+
+            <div class="control-group">
+                <h3>Background Effects</h3>
+                <label>Effect Type</label>
+                <select id="fadeEffect" onchange="updateFadeControls()">
+                    <option value="custom">Custom Linear Fade</option>
+                    <option value="bottom-left">Corner Fade: Bottom-Left</option>
+                    <option value="bottom-right">Corner Fade: Bottom-Right</option>
+                    <option value="top-left">Corner Fade: Top-Left</option>
+                    <option value="top-right">Corner Fade: Top-Right</option>
+                    <option value="vignette">Vignette Fade (Centered)</option>
+                </select>
+                <div id="ctrl-fade-radius" style="display:none;">
+                    <label for="fadeRadius">Corner Radius</label>
+                    <input type="range" id="fadeRadius" min="0" max="3000" value="1000" oninput="updateFades()">
+                </div>
+                <div id="ctrl-fade-left"><label for="fadeLeft">Left</label><input type="range" id="fadeLeft" min="0" max="3000" value="580" oninput="updateFades()"></div>
+                <div id="ctrl-fade-right"><label for="fadeRight">Right</label><input type="range" id="fadeRight" min="0" max="3000" value="0" oninput="updateFades()"></div>
+                <div id="ctrl-fade-top"><label for="fadeTop">Top</label><input type="range" id="fadeTop" min="0" max="2000" value="0" oninput="updateFades()"></div>
+                <div id="ctrl-fade-bottom"><label for="fadeBottom">Bottom</label><input type="range" id="fadeBottom" min="0" max="2000" value="320" oninput="updateFades()"></div>
+            </div>
+
+            <div class="control-group" id="text-properties" style="display:none;">
+                <h3>Text Properties</h3>
+                <label for="fontSizeInput">Font Size</label>
+                <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
+                <label for="fontFamilySelect">Font Family</label>
+                <select id="fontFamilySelect" onchange="updateSelectedFontFamily()">
+                    <option value="Segoe UI">Segoe UI (System)</option>
+                    <option value="Roboto">Roboto</option>
+                    <option value="Open Sans">Open Sans</option>
+                    <option value="Lato">Lato</option>
+                    <option value="Montserrat">Montserrat</option>
+                    <option value="Oswald">Oswald</option>
+                    <option value="Merriweather">Merriweather</option>
+                    <option value="Playfair Display">Playfair Display</option>
+                </select>
+                <label for="fontColorInput">Text Color</label>
+                <input type="color" id="fontColorInput" oninput="updateSelectedColor()" style="height:35px;">
+            </div>
+
+            <div style="margin-top:auto">
+                <button class="btn-export" onclick="saveImage()">💾 Export JPG (Download)</button>
+                <button onclick="saveToGallery()" style="background: #e65100; margin-top: 10px;">📂 Save to Gallery</button>
+            </div>
+        </div>
+
+        <div class="main-view">
+            <button onclick="toggleGrid()" style="position:absolute; top:20px; left:20px; width:auto; z-index:100; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">📏 Toggle Grid</button>
+            <div id="canvas-wrapper">
+                <canvas id="mainCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="layouts-tab" class="tab-content">
+        <div class="gallery-container" id="layouts-content">
+            <p style="color:#888; text-align:center; margin-top:50px;">Loading layouts...</p>
+        </div>
+    </div>
+
+    <div id="gallery-tab" class="tab-content">
+        <div class="gallery-container" id="gallery-content">
+            <p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>
+        </div>
+    </div>
+
+    <div id="settings-tab" class="tab-content">
+        <div class="settings-grid">
+            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+                <h3>General</h3>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                    <input type="checkbox" id="set-gen-overwrite" style="width:20px; height:20px; margin:0;" {% if config.general.overwrite_existing %}checked{% endif %}>
+                    <label for="set-gen-overwrite" style="margin:0; cursor:pointer;">Overwrite Existing Images</label>
+                </div>
+            </div>
+
+            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+                <h3>Jellyfin</h3>
+                <label for="set-jf-url">Server URL</label>
+                <input type="text" id="set-jf-url" value="{{ config.jellyfin.url }}">
+                <label for="set-jf-key">API Key</label>
+                <input type="password" id="set-jf-key" value="{{ config.jellyfin.api_key }}">
+                <label for="set-jf-user">User ID</label>
+                <input type="text" id="set-jf-user" value="{{ config.jellyfin.user_id }}">
+                <label for="set-jf-exclude">Excluded Libraries (comma separated)</label>
+                <input type="text" id="set-jf-exclude" value="{{ config.jellyfin.excluded_libraries }}">
+            </div>
+
+            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+                <h3>Plex</h3>
+                <label for="set-plex-url">Server URL</label>
+                <input type="text" id="set-plex-url" value="{{ config.plex.url }}">
+                <label for="set-plex-token">Token</label>
+                <input type="password" id="set-plex-token" value="{{ config.plex.token }}">
+            </div>
+
+            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+                <h3>TMDB</h3>
+                <label for="set-tmdb-key">API Key (Bearer Token)</label>
+                <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
+                <label for="set-tmdb-lang">Language</label>
+                <input type="text" id="set-tmdb-lang" value="{{ config.tmdb.language }}">
+            </div>
+
+            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+                <h3>Radarr & Sonarr</h3>
+                <label for="set-radarr-url">Radarr URL</label>
+                <input type="text" id="set-radarr-url" value="{{ config.radarr.url }}">
+                <label for="set-radarr-key">Radarr API Key</label>
+                <input type="password" id="set-radarr-key" value="{{ config.radarr.api_key }}">
+                <hr style="border-color:#333; margin:15px 0;">
+                <label for="set-sonarr-url">Sonarr URL</label>
+                <input type="text" id="set-sonarr-url" value="{{ config.sonarr.url }}">
+                <label for="set-sonarr-key">Sonarr API Key</label>
+                <input type="password" id="set-sonarr-key" value="{{ config.sonarr.api_key }}">
+            </div>
+
+            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+                <h3>Other Services</h3>
+                <label for="set-jellyseerr-url">Jellyseerr URL</label>
+                <input type="text" id="set-jellyseerr-url" value="{{ config.jellyseerr.url }}">
+                <label for="set-jellyseerr-key">Jellyseerr API Key</label>
+                <input type="password" id="set-jellyseerr-key" value="{{ config.jellyseerr.api_key }}">
+                <hr style="border-color:#333; margin:15px 0;">
+                <label for="set-trakt-key">Trakt Client ID</label>
+                <input type="password" id="set-trakt-key" value="{{ config.trakt.api_key }}">
+                <label for="set-trakt-user">Trakt Username</label>
+                <input type="text" id="set-trakt-user" value="{{ config.trakt.username }}">
+                <label for="set-trakt-list">Trakt List Name</label>
+                <input type="text" id="set-trakt-list" value="{{ config.trakt.listname }}">
+            </div>
+
+            <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;">Save Settings</button>
+        </div>
+    </div>
+
+    <div id="lightbox" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; justify-content:center; align-items:center;">
+        <span onclick="closeLightbox()" style="position:absolute; top:20px; right:35px; color:#fff; font-size:40px; cursor:pointer; user-select:none;">&times;</span>
+        <img id="lightbox-img" style="max-width:90%; max-height:90%; object-fit:contain;">
+        <span onclick="changeLightboxImage(-1)" style="position:absolute; top:50%; left:20px; color:#fff; font-size:40px; cursor:pointer; transform:translateY(-50%); user-select:none;">&#10094;</span>
+        <span onclick="changeLightboxImage(1)" style="position:absolute; top:50%; right:20px; color:#fff; font-size:40px; cursor:pointer; transform:translateY(-50%); user-select:none;">&#10095;</span>
+        <button id="lightbox-edit-btn" style="position:absolute; bottom:20px; right:20px; width:auto; padding:10px 20px; font-size:16px; background:#d32f2f; color:white; border:none; cursor:pointer; z-index:1001; border-radius:4px;">✏️ Edit</button>
+    </div>
+
+    <script>
+        // --- GLOBAL FIXES ---
+        (function() {
+            const originalSetter = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'textBaseline').set;
+            Object.defineProperty(CanvasRenderingContext2D.prototype, 'textBaseline', {
+                set: function(value) {
+                    if (value === 'alphabetical') value = 'alphabetic';
+                    return originalSetter.call(this, value);
+                },
+                configurable: true
+            });
+        })();
+
+        let canvas, mainBg = null;
+        let fades = { left: null, right: null, top: null, bottom: null, corner: null };
+        let scalingTimeout = null, lastFetchedData = null, lightboxImages = [], currentLightboxIndex = 0, loadedGalleryData = {};
+        let gridEnabled = false, movingObjects = [], snapLines = { v: [], h: [] }, guideLines = [], currentEditingFile = null;
+        const gridSize = 50;
+
+        function updateSelectionUI(e) {
+            const activeObj = canvas.getActiveObject();
+            const panel = document.getElementById('text-properties');
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'textbox' || (activeObj.type === 'group' && activeObj.dataTag === 'rating_star'))) {
+                panel.style.display = 'block';
+                let textObj = activeObj;
+                if (activeObj.type === 'group') textObj = activeObj.getObjects().find(o => o.type === 'i-text');
+                
+                if (textObj) {
+                    document.getElementById('fontSizeInput').value = textObj.fontSize;
+                    document.getElementById('fontFamilySelect').value = textObj.fontFamily;
+                    const color = new fabric.Color(textObj.fill);
+                    document.getElementById('fontColorInput').value = "#" + color.toHex();
+                }
+            } else { panel.style.display = 'none'; }
+        }
+
+        function updateSelectedFontSize() {
+            const activeObj = canvas.getActiveObject();
+            if (activeObj) { 
+                let textObj = (activeObj.type === 'group') ? activeObj.getObjects().find(o => o.type === 'i-text') : activeObj;
+                if (textObj) { 
+                    textObj.set("fontSize", parseInt(document.getElementById('fontSizeInput').value)); 
+                    if(activeObj.type==='group') activeObj.addWithUpdate(); 
+                    canvas.renderAll(); 
+                }
+            }
+        }
+
+        function updateSelectedFontFamily() {
+            const activeObj = canvas.getActiveObject();
+            if (activeObj) { 
+                let textObj = (activeObj.type === 'group') ? activeObj.getObjects().find(o => o.type === 'i-text') : activeObj; 
+                if(textObj) { 
+                    textObj.set("fontFamily", document.getElementById('fontFamilySelect').value); 
+                    if(activeObj.type==='group') activeObj.addWithUpdate(); 
+                    canvas.renderAll(); 
+                } 
+            }
+        }
+        
+        function updateSelectedColor() {
+            const activeObj = canvas.getActiveObject();
+            if (activeObj) { 
+                let textObj = (activeObj.type === 'group') ? activeObj.getObjects().find(o => o.type === 'i-text') : activeObj; 
+                if(textObj) { 
+                    textObj.set("fill", document.getElementById('fontColorInput').value); 
+                    if(activeObj.type==='group') activeObj.addWithUpdate(); 
+                    canvas.renderAll(); 
+                } 
+            }
+        }
+
+        function applyTruncation(textbox, textToDisplay) {
+            if (!canvas) return;
+            const textSource = textToDisplay || textbox.fullMediaText || "";
+            const oldState = canvas.renderOnAddRemove;
+            canvas.renderOnAddRemove = false;
+            textbox.set('text', textSource);
+            textbox.initDimensions();
+            const limit = textbox.fixedHeight || textbox.height;
+            if (textbox.height > limit) {
+                let words = textSource.split(' ');
+                while (textbox.height > limit && words.length > 10) { words.splice(-10); textbox.set('text', words.join(' ') + '...'); textbox.initDimensions(); }
+                while (textbox.height > limit && words.length > 0) { words.pop(); textbox.set('text', words.join(' ') + '...'); textbox.initDimensions(); }
+            }
+            canvas.renderOnAddRemove = oldState;
+            canvas.requestRenderAll();
+        }
+
+        async function fetchRandomPreview() {
+            const btn = document.getElementById('btn-shuffle');
+            const indicator = document.getElementById('source-indicator');
+            
+            btn.disabled = true;
+            const originalText = btn.innerText;
+            btn.innerText = "⏳ Loading...";
+            indicator.innerText = "Fetching...";
+            
+            try {
+                const response = await fetch('/api/media/random');
+                const data = await response.json();
+                lastFetchedData = data;
+                if (data.backdrop_url) await loadBackground(data.backdrop_url, true);
+                await previewTemplate(data);
+                canvas.requestRenderAll();
+                indicator.innerText = "Source: " + data.source;
+            } catch (err) { console.error(err); indicator.innerText = "Error loading preview"; }
+            finally {
+                btn.disabled = false;
+                btn.innerText = originalText;
+            }
+        }
+
+        function previewTemplate(mediaData) {
+            return new Promise((resolve) => {
+                if (!canvas || !mediaData) { resolve(); return; }
+                let promises = [];
+                
+                [...canvas.getObjects()].forEach(obj => {
+                    if (obj.dataTag) {
+                        let val = "";
+                        switch(obj.dataTag) {
+                            case 'title':
+                                if (mediaData.logo_url) {
+                                    const p = new Promise(r => {
+                                        const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(mediaData.logo_url)}`;
+                                        fabric.Image.fromURL(proxiedLogo, function(img, isError) {
+                                            if (isError || !img) { r(); return; }
+                                            img.set({ left: obj.left, top: obj.top, dataTag: 'title' });
+                                            const maxW = canvas.width * 0.55; 
+                                            const maxH = canvas.height * 0.35; 
+                                            const scale = Math.min(maxW / img.width, maxH / img.height) * 0.8;
+                                            img.scale(scale);
+                                            canvas.remove(obj); canvas.add(img); 
+                                            r();
+                                        }, { crossOrigin: 'anonymous' });
+                                    });
+                                    promises.push(p);
+                                    return; 
+                                } else { val = mediaData.title || mediaData.Name; }
+                                break;
+                            case 'year': val = mediaData.year || mediaData.ProductionYear; break;
+                            case 'rating': let r = mediaData.rating || mediaData.CommunityRating; val = (r && r !== 'N/A') ? `IMDb: ${r}` : ''; break;
+                            case 'rating_val': let rv = mediaData.rating || mediaData.CommunityRating; val = (rv && rv !== 'N/A') ? `${rv}` : ''; break;
+                            case 'rating_star': 
+                                let rs = mediaData.rating || mediaData.CommunityRating; 
+                                val = (rs && rs !== 'N/A') ? `${rs}` : '';
+                                if (obj.type === 'group') {
+                                    const t = obj.getObjects().find(o => o.type === 'i-text');
+                                    if(t) { t.set({ text: val }); obj.addWithUpdate(); }
+                                    val = undefined; 
+                                }
+                                break;
+                            case 'overview': 
+                                let ov = mediaData.overview || mediaData.Overview || "";
+                                if (obj.type === 'textbox') { obj.fullMediaText = ov; applyTruncation(obj, ov); } else { val = ov; }
+                                break;
+                            case 'genres': 
+                                val = mediaData.genres || ""; 
+                                const gLimit = parseInt(document.getElementById('genreLimitSlider').value);
+                                if (gLimit < 6) {
+                                    val = val.split(',').slice(0, gLimit).join(',');
+                                }
+                                break;
+                            case 'runtime': val = mediaData.runtime || ""; break;
+                        }
+                        if (val !== undefined && obj.dataTag !== 'overview') obj.set({ text: String(val) });
+                    }
+                });
+                
+                Promise.all(promises).then(() => {
+                    updateVerticalLayout();
+                    resolve();
+                });
+            });
+        }
+
+        let detectedBaseColor = null;
+
+        function autoDetectBgColor(forceRecalc) {
+            if (!mainBg) return;
+            
+            if (forceRecalc || !detectedBaseColor) {
+                const img = mainBg.getElement();
+                const cvs = document.createElement('canvas');
+                cvs.width = img.naturalWidth || img.width;
+                cvs.height = img.naturalHeight || img.height;
+                const ctx = cvs.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                
+                const frame = 50; 
+                const w = cvs.width, h = cvs.height;
+                let r=0, g=0, b=0, count=0;
+                
+                try {
+                    const data = ctx.getImageData(0, 0, w, h).data;
+                    const step = 20; 
+                    for (let y=0; y<h; y+=step) {
+                        for (let x=0; x<w; x+=step) {
+                            if (x < frame || x > w-frame || y < frame || y > h-frame) {
+                                const i = (y*w + x)*4;
+                                r += data[i]; g += data[i+1]; b += data[i+2];
+                                count++;
+                            }
+                        }
+                    }
+                } catch(e) { console.error("Pixel access error", e); return; }
+                
+                if (count > 0) {
+                    detectedBaseColor = { r: Math.floor(r/count), g: Math.floor(g/count), b: Math.floor(b/count) };
+                }
+            }
+            applyBrightness();
+        }
+
+        function adjustAutoBrightness() {
+            document.getElementById('brightVal').innerText = document.getElementById('bgBrightness').value + '%';
+            if (detectedBaseColor) {
+                applyBrightness();
+            } else if (mainBg) {
+                autoDetectBgColor(true);
+            }
+        }
+
+        function applyBrightness() {
+            if (!detectedBaseColor) return;
+            const factor = parseInt(document.getElementById('bgBrightness').value) / 100;
+            let r = Math.floor(detectedBaseColor.r * factor);
+            let g = Math.floor(detectedBaseColor.g * factor);
+            let b = Math.floor(detectedBaseColor.b * factor);
+            const hex = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+            document.getElementById('bgColor').value = hex;
+            updateBgColor();
+        }
+
+        function addMetadataTag(type, placeholder) {
+            let textObj;
+            const count = canvas.getObjects().filter(o => o.dataTag).length;
+            
+            const is4K = document.getElementById('resSelect').value === '2160';
+            const baseSize = is4K ? 54 : 35;
+            const titleSize = is4K ? 120 : 80;
+            const step = is4K ? 150 : 100;
+            const props = { left: 100 + (count * 30), top: 100 + (count * step), fontFamily: 'Segoe UI', fontSize: type === 'title' ? titleSize : baseSize, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
+            
+            if (type === 'rating_star') {
+                const starUrl = 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Gold_Star.svg/1024px-Gold_Star.svg.png';
+                const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(starUrl)}`;
+                fabric.Image.fromURL(proxiedUrl, function(img) {
+                    if(!img) return;
+                    img.scaleToHeight(props.fontSize).set({dataTag: 'rating_star_img'});
+                    const text = new fabric.IText(placeholder, { ...props, left: img.getScaledWidth() + 10, top: 0, shadow: undefined, editable: false });
+                    const group = new fabric.Group([img, text], { left: props.left, top: props.top, dataTag: type });
+                    canvas.add(group);
+                    canvas.setActiveObject(group);
+                    if (lastFetchedData) previewTemplate(lastFetchedData);
+                    else canvas.requestRenderAll();
+                }, { crossOrigin: 'anonymous' });
+                return;
+            }
+
+            if (type === 'overview') {
+                textObj = new fabric.Textbox(placeholder, { ...props, width: 600, height: 300, fixedHeight: 300, splitByGrapheme: false, lockScalingY: false, fullMediaText: placeholder, editable: false });
+            } else {
+                textObj = new fabric.IText(placeholder, { ...props, editable: false });
+            }
+            canvas.add(textObj);
+            canvas.setActiveObject(textObj);
+            if (lastFetchedData) previewTemplate(lastFetchedData);
+            else canvas.requestRenderAll();
+        }
+
+        function addLogo(url) {
+            const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
+            fabric.Image.fromURL(proxiedUrl, function(img) {
+                if(!img) return;
+                img.scaleToWidth(100);
+                const count = canvas.getObjects().length;
+                const offset = count * 20;
+                img.set({ left: 100 + offset, top: 100 + offset });
+                canvas.add(img);
+                canvas.setActiveObject(img);
+                canvas.requestRenderAll();
+            }, { crossOrigin: 'anonymous' });
+        }
+        
+        function updateGenreLimit() {
+            const val = document.getElementById('genreLimitSlider').value;
+            document.getElementById('genreLimitVal').innerText = (val == 6) ? "Max" : val;
+            if (lastFetchedData) previewTemplate(lastFetchedData);
+        }
+
+        function groupElementsByRow(elements, threshold = 30) {
+            if (!elements.length) return [];
+            
+            elements.sort((a, b) => a.top - b.top);
+            
+            const rows = [];
+            let currentRow = [elements[0]];
+            
+            for (let i = 1; i < elements.length; i++) {
+                if (Math.abs(elements[i].top - currentRow[0].top) < threshold) {
+                    currentRow.push(elements[i]);
+                } else {
+                    rows.push(currentRow);
+                    currentRow = [elements[i]];
+                }
+            }
+            rows.push(currentRow);
+            return rows;
+        }
+
+        function updateVerticalLayout() {
+            const padding = 20; // This is the minimum vertical distance
+            const hPadding = 20; // Horizontal spacing between tags
+            const rowThreshold = 30; // How close elements must be to be considered in the same row
+            const centerTags = document.getElementById('centerTagsToggle').checked;
+            const anchor = canvas.getObjects().find(o => o.dataTag === 'title');
+            if (!anchor) { canvas.requestRenderAll(); return; }
+
+            let current_y = anchor.top + anchor.getScaledHeight() + padding;
+            const elements = canvas.getObjects().filter(o => o.dataTag && o.dataTag !== 'title' && o.dataTag !== 'guide' && o.visible);
+            const rows = groupElementsByRow(elements, rowThreshold);
+
+            const anchorLeft = anchor.left;
+            const anchorWidth = anchor.getScaledWidth();
+
+            rows.forEach(row => {
+                // Sort elements in this row by their X position (left to right)
+                row.sort((a, b) => a.left - b.left);
+                
+                // Calculate total width of this row
+                let totalRowWidth = 0;
+                row.forEach((el, index) => {
+                    totalRowWidth += el.getScaledWidth();
+                    if (index < row.length - 1) totalRowWidth += hPadding;
+                });
+
+                // Determine starting X: Center if narrower than logo, else align left
+                let current_x = (centerTags && totalRowWidth < anchorWidth) ? anchorLeft + (anchorWidth - totalRowWidth) / 2 : anchorLeft;
+
+                const maxRowHeight = Math.max(...row.map(el => el.getScaledHeight()));
+                
+                // Stack elements horizontally starting from the calculated current_x
+                row.forEach(el => {
+                    el.set({ top: current_y, left: current_x });
+                    el.setCoords(); // Update coordinates for accurate width calculation
+                    current_x += el.getScaledWidth() + hPadding;
+                });
+                
+                current_y += maxRowHeight + padding;
+            });
+
+            canvas.getObjects().forEach(o => o.setCoords());
+            canvas.requestRenderAll();
+        }
+
+        function toggleGrid() {
+            gridEnabled = !gridEnabled;
+            if (gridEnabled) drawGrid();
+            else removeGrid();
+            canvas.requestRenderAll();
+        }
+
+        function drawGrid() {
+            removeGrid();
+            const w = canvas.width, h = canvas.height;
+            const opts = { stroke: '#555', strokeDashArray: [5, 5], selectable: false, evented: false, isGridLine: true };
+            for (let i = 1; i < (w / gridSize); i++) canvas.add(new fabric.Line([ i * gridSize, 0, i * gridSize, h], opts));
+            for (let i = 1; i < (h / gridSize); i++) canvas.add(new fabric.Line([ 0, i * gridSize, w, i * gridSize], opts));
+            
+            canvas.getObjects().filter(o => o.isGridLine).forEach(o => canvas.sendToBack(o));
+            if (mainBg) canvas.sendToBack(mainBg);
+        }
+        
+        function drawGuide(x1, y1, x2, y2) {
+            const l = new fabric.Line([x1, y1, x2, y2], { stroke: 'cyan', strokeWidth: 1, strokeDashArray: [4, 4], selectable: false, evented: false, dataTag: 'guide' });
+            canvas.add(l); guideLines.push(l);
+        }
+        function clearGuides() { guideLines.forEach(l => canvas.remove(l)); guideLines = []; }
+
+        function removeGrid() {
+            const gridLines = canvas.getObjects().filter(o => o.isGridLine);
+            gridLines.forEach(o => canvas.remove(o));
+        }
+
+        function init() {
+            canvas = new fabric.Canvas('mainCanvas', { width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true });
+            canvas.renderOnAddRemove = false;
+            fabric.Object.prototype.objectCaching = true;
+
+            canvas.on('object:scaling', (e) => {
+                const t = e.target;
+                if (t instanceof fabric.Textbox) {
+                    t.set({ width: t.width * t.scaleX, fixedHeight: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
+                    if (t.dataTag === 'overview') { clearTimeout(scalingTimeout); scalingTimeout = setTimeout(() => applyTruncation(t, t.fullMediaText), 50); }
+                }
+                if (t === mainBg) updateFades();
+                canvas.requestRenderAll();
+            });
+
+            canvas.on('mouse:down', (e) => {
+                const active = e.target;
+                if (!active || !active.selectable || active === mainBg) return;
+                snapLines = { v: [], h: [] };
+                if (!gridEnabled) {
+                    canvas.getObjects().forEach(obj => {
+                        if (obj === active || !obj.selectable || !obj.visible || obj.dataTag === 'guide') return;
+                        const b = obj.getBoundingRect();
+                        snapLines.h.push(b.top, b.top + b.height, b.top + b.height / 2);
+                        snapLines.v.push(b.left, b.left + b.width, b.left + b.width / 2);
+                    });
+                }
+            });
+            
+            canvas.on('object:moving', (e) => { 
+                const active = e.target;
+                if (active === mainBg) { updateFades(); return; }
+
+                if (gridEnabled) {
+                    active.set({
+                        left: Math.round(active.left / gridSize) * gridSize,
+                        top: Math.round(active.top / gridSize) * gridSize
+                    });
+                } else { 
+                    const threshold = 10;
+                    const b = active.getBoundingRect();
+                    const pts = { x: [b.left, b.left + b.width, b.left + b.width/2], y: [b.top, b.top + b.height, b.top + b.height/2] };
+                    
+                    clearGuides();
+
+                    for (const line of snapLines.v) {
+                        for (const pt of pts.x) {
+                            if (Math.abs(pt - line) < threshold) {
+                                active.set({ left: active.left + (line - pt) });
+                                drawGuide(line, 0, line, canvas.height);
+                                canvas.requestRenderAll();
+                                return;
+                            }
+                        }
+                    }
+                    for (const line of snapLines.h) {
+                        for (const pt of pts.y) {
+                            if (Math.abs(pt - line) < threshold) {
+                                active.set({ top: active.top + (line - pt) });
+                                drawGuide(0, line, canvas.width, line);
+                                canvas.requestRenderAll();
+                                return;
+                            }
+                        }
+                    }
+                }
+            });
+            
+            canvas.on('mouse:up', (e) => {
+                try {
+                    clearGuides();
+                    if (e.target && e.target.dataTag) {
+                        setTimeout(() => updateVerticalLayout(), 0);
+                    }
+                } catch (err) { console.error("Error in mouse:up", err); }
+            });
+
+            canvas.on('selection:created', updateSelectionUI);
+            canvas.on('selection:updated', updateSelectionUI);
+            canvas.on('selection:cleared', updateSelectionUI);
+            
+            window.addEventListener('keydown', (e) => {
+                const active = canvas.getActiveObject();
+                if (active && (active.type === 'i-text' || active.type === 'textbox') && active.isEditing) return;
+
+                if (e.key === "Delete" || e.key === "Backspace") {
+                    canvas.getActiveObjects().forEach(obj => { if (obj === mainBg) mainBg = null; canvas.remove(obj); });
+                    canvas.discardActiveObject().requestRenderAll();
+                } else if (active && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                    e.preventDefault();
+                    const step = e.shiftKey ? 10 : 1;
+                    if (e.key === 'ArrowUp') active.top -= step;
+                    if (e.key === 'ArrowDown') active.top += step;
+                    if (e.key === 'ArrowLeft') active.left -= step;
+                    if (e.key === 'ArrowRight') active.left += step;
+                    active.setCoords();
+                    canvas.requestRenderAll();
+                    if (active === mainBg) updateFades();
+                }
+            });
+
+            loadBackground("{{ data.backdrop_url }}");
+            updateFadeControls();
+        }
+
+        function loadBackground(url, skipRender = false) {
+            return new Promise((resolve) => {
+                const proxiedUrl = url.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(url)}` : url;
+                fabric.Image.fromURL(proxiedUrl, function(img, isError) {
+                    if (isError || !img) { resolve(); return; }
+                    if (mainBg) canvas.remove(mainBg);
+                    mainBg = img;
+                    img.set({ left: 0, top: 0, selectable: true });
+                
+                    const targetWidth = canvas.width * 0.70;
+                    img.scaleToWidth(targetWidth);
+                    img.set({ left: canvas.width - targetWidth, top: 0 });
+                
+                    canvas.add(img); canvas.sendToBack(img); updateFades(skipRender);
+                    resolve();
+                }, { crossOrigin: 'anonymous' });
+            });
+        }
+
+        function updateFadeControls() {
+            const type = document.getElementById('fadeEffect').value;
+            const show = (id) => document.getElementById(id).style.display = 'block';
+            const hide = (id) => document.getElementById(id).style.display = 'none';
+            const radiusLabel = document.querySelector('label[for="fadeRadius"]');
+
+            ['ctrl-fade-radius', 'ctrl-fade-left', 'ctrl-fade-right', 'ctrl-fade-top', 'ctrl-fade-bottom'].forEach(show);
+
+            if (type === 'custom') {
+                hide('ctrl-fade-radius');
+            } else if (type === 'bottom-left') {
+                hide('ctrl-fade-top');
+                hide('ctrl-fade-right');
+                radiusLabel.innerText = "Corner Radius";
+            } else if (type === 'bottom-right') {
+                hide('ctrl-fade-top');
+                hide('ctrl-fade-left');
+                radiusLabel.innerText = "Corner Radius";
+            } else if (type === 'top-left') {
+                hide('ctrl-fade-bottom');
+                hide('ctrl-fade-right');
+                radiusLabel.innerText = "Corner Radius";
+            } else if (type === 'top-right') {
+                hide('ctrl-fade-bottom');
+                hide('ctrl-fade-left');
+                radiusLabel.innerText = "Corner Radius";
+            } else if (type === 'vignette') {
+                hide('ctrl-fade-left');
+                hide('ctrl-fade-right');
+                hide('ctrl-fade-top');
+                hide('ctrl-fade-bottom');
+                radiusLabel.innerText = "Vignette Radius";
+            }
+            updateFades();
+        }
+
+        function updateFades(skipRender = false) {
+            if (!mainBg) return;
+            const type = document.getElementById('fadeEffect').value;
+            
+            Object.values(fades).forEach(obj => { if(obj) canvas.remove(obj); });
+            fades = { left: null, right: null, top: null, bottom: null, corner: null };
+
+            const addLinear = (side) => {
+                const el = document.getElementById('fade' + side.charAt(0).toUpperCase() + side.slice(1));
+                if (el && el.value > 0) {
+                    fades[side] = createFadeRect(side, el.value);
+                    canvas.add(fades[side]);
+                    fades[side].moveTo(canvas.getObjects().indexOf(mainBg) + 1);
+                }
+            };
+
+            if (type === 'custom') {
+                ['left', 'right', 'top', 'bottom'].forEach(addLinear);
+            } else if (type === 'bottom-left') {
+                addCornerFade('bottom-left');
+                addLinear('left');
+                addLinear('bottom');
+            } else if (type === 'bottom-right') {
+                addCornerFade('bottom-right');
+                addLinear('right');
+                addLinear('bottom');
+            } else if (type === 'top-left') {
+                addCornerFade('top-left');
+                addLinear('left');
+                addLinear('top');
+            } else if (type === 'top-right') {
+                addCornerFade('top-right');
+                addLinear('right');
+                addLinear('top');
+            } else if (type === 'vignette') {
+                addVignette();
+            }
+            if (!skipRender) canvas.requestRenderAll();
+        }
+
+        function addCornerFade(pos) {
+            const r = parseInt(document.getElementById('fadeRadius').value);
+            if (r <= 0) return;
+            const bgColor = document.getElementById('bgColor').value;
+            const w = mainBg.getScaledWidth(), h = mainBg.getScaledHeight();
+            let rectLeft, rectTop, gradCx, gradCy;
+
+            if (pos === 'bottom-left') {
+                rectLeft = mainBg.left; rectTop = mainBg.top + h - r;
+                gradCx = 0; gradCy = r;
+            } else if (pos === 'bottom-right') {
+                rectLeft = mainBg.left + w - r; rectTop = mainBg.top + h - r;
+                gradCx = r; gradCy = r;
+            } else if (pos === 'top-left') {
+                rectLeft = mainBg.left; rectTop = mainBg.top;
+                gradCx = 0; gradCy = 0;
+            } else if (pos === 'top-right') {
+                rectLeft = mainBg.left + w - r; rectTop = mainBg.top;
+                gradCx = r; gradCy = 0;
+            }
+
+            const grad = new fabric.Gradient({
+                type: 'radial',
+                coords: { r1: 0, r2: r, x1: gradCx, y1: gradCy, x2: gradCx, y2: gradCy },
+                colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }]
+            });
+
+            fades.corner = new fabric.Rect({ left: rectLeft, top: rectTop, width: r, height: h, fill: grad, selectable: false, evented: false });
+            canvas.add(fades.corner);
+            fades.corner.moveTo(canvas.getObjects().indexOf(mainBg) + 1);
+        }
+
+        function addVignette() {
+            const r = parseInt(document.getElementById('fadeRadius').value);
+            if (r <= 0) return;
+            const bgColor = document.getElementById('bgColor').value;
+            const w = mainBg.getScaledWidth(), h = mainBg.getScaledHeight();
+            
+            const grad = new fabric.Gradient({
+                type: 'radial',
+                coords: { r1: 0, r2: r, x1: w/2, y1: h/2, x2: w/2, y2: h/2 },
+                colorStops: [{ offset: 0, color: hexToRgba(bgColor, 0) }, { offset: 1, color: bgColor }]
+            });
+
+            fades.corner = new fabric.Rect({ left: mainBg.left, top: mainBg.top, width: w, height: h, fill: grad, selectable: false, evented: false });
+            canvas.add(fades.corner);
+            fades.corner.moveTo(canvas.getObjects().indexOf(mainBg) + 1);
+        }
+
+        function createFadeRect(type, size) {
+            const bgColor = document.getElementById('bgColor').value;
+            const b = 2, wImg = mainBg.getScaledWidth(), hImg = mainBg.getScaledHeight();
+            let w, h, x, y, c;
+            if (type === 'left') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 1, y2: 0 }; }
+            else if (type === 'right') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left + wImg - size; y = mainBg.top - b; c = { x1: 1, y1: 0, x2: 0, y2: 0 }; }
+            else if (type === 'top') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 0, y2: 1 }; }
+            else if (type === 'bottom') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top + hImg - size; c = { x1: 0, y1: 1, x2: 0, y2: 0 }; }
+            return new fabric.Rect({
+                left: x, top: y, width: w, height: h, selectable: false, evented: false,
+                fill: new fabric.Gradient({ type: 'linear', gradientUnits: 'percentage', coords: c, colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] })
+            });
+        }
+
+        function hexToRgba(hex, a) {
+            let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${a === 0 ? 0.005 : a})`;
+        }
+
+        function updateBgColor() { if(!canvas) return; canvas.setBackgroundColor(document.getElementById('bgColor').value, () => { updateFades(); canvas.requestRenderAll(); }); }
+        function openTab(evt, tabId) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active')); document.getElementById(tabId).classList.add('active'); evt.currentTarget.classList.add('active'); }
+        async function saveSettings() {
+            const config = {
+                general: {
+                    overwrite_existing: document.getElementById('set-gen-overwrite').checked
+                },
+                jellyfin: {
+                    url: document.getElementById('set-jf-url').value,
+                    api_key: document.getElementById('set-jf-key').value,
+                    user_id: document.getElementById('set-jf-user').value,
+                    excluded_libraries: document.getElementById('set-jf-exclude').value
+                },
+                plex: {
+                    url: document.getElementById('set-plex-url').value,
+                    token: document.getElementById('set-plex-token').value
+                },
+                tmdb: {
+                    api_key: document.getElementById('set-tmdb-key').value,
+                    language: document.getElementById('set-tmdb-lang').value
+                },
+                radarr: {
+                    url: document.getElementById('set-radarr-url').value,
+                    api_key: document.getElementById('set-radarr-key').value
+                },
+                sonarr: {
+                    url: document.getElementById('set-sonarr-url').value,
+                    api_key: document.getElementById('set-sonarr-key').value
+                },
+                jellyseerr: {
+                    url: document.getElementById('set-jellyseerr-url').value,
+                    api_key: document.getElementById('set-jellyseerr-key').value
+                },
+                trakt: {
+                    api_key: document.getElementById('set-trakt-key').value,
+                    username: document.getElementById('set-trakt-user').value,
+                    listname: document.getElementById('set-trakt-list').value
+                },
+                editor: {
+                    resolution: document.getElementById('resSelect').value
+                }
+            };
+            const resp = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
+            if(resp.ok) alert("Settings saved!");
+        }
+        function changeResolution() {
+            if (gridEnabled) removeGrid();
+            const res = document.getElementById('resSelect').value;
+            const targetW = (res === '2160') ? 3840 : 1920;
+            const scale = targetW / canvas.width;
+            canvas.setDimensions({ width: targetW, height: (res === '2160' ? 2160 : 1080) });
+            canvas.getObjects().forEach(obj => { obj.scaleX *= scale; obj.scaleY *= scale; obj.left *= scale; obj.top *= scale; obj.setCoords(); });
+            if (gridEnabled) drawGrid();
+            updateFades();
+        }
+
+        function openLightbox(layoutKey, index) {
+            if (!loadedGalleryData || !loadedGalleryData[layoutKey]) return;
+            
+            lightboxImages = loadedGalleryData[layoutKey];
+            currentLightboxIndex = index;
+            
+            document.getElementById('lightbox').style.display = 'flex';
+            document.addEventListener('keydown', handleLightboxKeys);
+            
+            showLightboxImage(currentLightboxIndex);
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').style.display = 'none';
+            document.removeEventListener('keydown', handleLightboxKeys);
+        }
+
+        function showLightboxImage(index) {
+            if (index < 0) index = lightboxImages.length - 1;
+            if (index >= lightboxImages.length) index = 0;
+            currentLightboxIndex = index;
+            
+            const layoutKey = Object.keys(loadedGalleryData).find(k => loadedGalleryData[k] === lightboxImages);
+            const imgSrc = `/api/gallery/image/${layoutKey}/${lightboxImages[index]}`;
+            document.getElementById('lightbox-img').src = imgSrc;
+            document.getElementById('lightbox-edit-btn').onclick = () => editGalleryImage(layoutKey, lightboxImages[index]);
+        }
+
+        function changeLightboxImage(direction) {
+            showLightboxImage(currentLightboxIndex + direction);
+        }
+
+        function handleLightboxKeys(e) {
+            if (e.key === 'ArrowRight') {
+                changeLightboxImage(1);
+            } else if (e.key === 'ArrowLeft') {
+                changeLightboxImage(-1);
+            } else if (e.key === 'Escape') {
+                closeLightbox();
+            }
+        }
+
+        async function loadGallery() {
+            const container = document.getElementById('gallery-content');
+            container.innerHTML = '<p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>';
+            
+            try {
+                const resp = await fetch('/api/gallery/list');
+                const data = await resp.json();
+                loadedGalleryData = data;
+                
+                if (Object.keys(data).length === 0) {
+                    container.innerHTML = '<p style="color:#888; text-align:center; margin-top:50px;">No generated images found.</p>';
+                    return;
+                }
+
+                let html = '';
+                for (const [folder, images] of Object.entries(loadedGalleryData)) {
+                    html += `<div class="gallery-section"><h2>${folder}</h2><div class="gallery-horizontal">`;
+                    images.forEach((img, index) => {
+                        const src = `/api/gallery/image/${folder}/${img}`;
+                        html += `
+                            <div class="gallery-item">
+                                <img src="${src}" loading="lazy" onclick="openLightbox('${folder}', ${index})">
+                                <div class="caption">${img}</div>
+                                <button onclick="editGalleryImage('${folder}', '${img}')" style="position:absolute; top:5px; right:5px; width:auto; padding:4px 8px; font-size:12px; background:rgba(0,0,0,0.7); border:1px solid #fff; cursor:pointer; color:white;">✏️</button>
+                            </div>`;
+                    });
+                    html += `</div></div>`;
+                }
+                container.innerHTML = html;
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = '<p style="color:red; text-align:center;">Error loading gallery.</p>';
+            }
+        }
+        function saveImage() { 
+            const l = document.createElement('a'); 
+            l.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 }); 
+            let fname = 'tv-background.jpg';
+            if (lastFetchedData && lastFetchedData.title) {
+                const safeTitle = lastFetchedData.title.replace(/[^a-z0-9\s\.\-_]/gi, '').trim();
+                const parts = [safeTitle];
+                if(lastFetchedData.year && lastFetchedData.year !== 'N/A') parts.push(lastFetchedData.year);
+                if(lastFetchedData.imdb_id) parts.push(lastFetchedData.imdb_id);
+                fname = parts.join(' - ') + '.jpg';
+            }
+            l.download = fname; 
+            l.click(); 
+        }
+        async function saveToGallery() {
+            // Clear editing state if saving as new
+            currentEditingFile = null;
+            document.getElementById('btn-save-changes').style.display = 'none';
+            await saveToGalleryInternal(document.getElementById('layoutName').value || "Default");
+            alert("Image saved to Gallery!");
+            loadGallery();
+        }
+
+        async function saveToGalleryInternal(layoutName, overwriteFilename = null) {
+            const dataURL = canvas.toDataURL({ format: 'jpeg', quality: 0.95 });
+            const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable']);
+            
+            const payload = { image: dataURL, layout_name: layoutName, canvas_json: json, overwrite_filename: overwriteFilename };
+            
+            if (lastFetchedData) {
+                payload.metadata = { title: lastFetchedData.title, year: lastFetchedData.year, imdb_id: lastFetchedData.imdb_id };
+            }
+            await fetch('/api/save_image', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+        }
+
+        async function editGalleryImage(folder, filename) {
+            const resp = await fetch(`/api/gallery/data/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`);
+            const data = await resp.json();
+            
+            if (data.status === 'error') {
+                alert("Cannot edit this image (no layout data found). Only images generated with the new editor version can be edited.");
+                return;
+            }
+            
+            canvas.loadFromJSON(data, () => {
+                canvas.requestRenderAll();
+                closeLightbox();
+                openTab({currentTarget: document.querySelector('.tab-link')}, 'editor-tab');
+                
+                currentEditingFile = { folder: folder, filename: filename };
+                document.getElementById('btn-save-changes').style.display = 'block';
+                
+                if (folder.startsWith("Layout: ")) {
+                    document.getElementById('layoutName').value = folder.replace("Layout: ", "");
+                }
+            });
+        }
+
+        async function saveEditedImage() {
+            if (!currentEditingFile) return;
+            
+            const layoutName = document.getElementById('layoutName').value || "Default";
+            let overwrite = null;
+            if (currentEditingFile.folder === `Layout: ${layoutName}`) {
+                overwrite = currentEditingFile.filename;
+            }
+            
+            await saveToGalleryInternal(layoutName, overwrite);
+            alert("Changes saved!");
+            loadGallery();
+        }
+
+        async function saveLayout() {
+            const name = document.getElementById('layoutName').value;
+            if (!name) return alert("Please enter a layout name");
+            const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable']);
+            
+            layout.custom_effects = {
+                bgColor: document.getElementById('bgColor').value,
+                bgBrightness: document.getElementById('bgBrightness').value,
+                fadeEffect: document.getElementById('fadeEffect').value,
+                fadeRadius: document.getElementById('fadeRadius').value,
+                fadeLeft: document.getElementById('fadeLeft').value,
+                fadeRight: document.getElementById('fadeRight').value,
+                fadeTop: document.getElementById('fadeTop').value,
+                fadeBottom: document.getElementById('fadeBottom').value,
+                centerTags: document.getElementById('centerTagsToggle').checked,
+                genreLimit: document.getElementById('genreLimitSlider').value
+            };
+
+            const resp = await fetch('/api/layouts/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, layout}) });
+            if(!resp.ok) return alert("Error saving layout");
+
+            const btn = document.querySelector('button[onclick="saveLayout()"]');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+
+            try {
+                for(let i=0; i<10; i++) {
+                    btn.innerText = `Generating Previews (${i+1}/10)...`;
+                    await fetchRandomPreview();
+                    await saveToGalleryInternal(name);
+                }
+            } catch(e) { console.error(e); }
+            
+            btn.innerText = originalText;
+            btn.disabled = false;
+            alert("Layout saved and 10 example images generated!");
+            loadLayoutsList();
+        }
+
+        async function loadLayoutsList() {
+            const container = document.getElementById('layouts-content');
+            const resp = await fetch('/api/layouts/list');
+            const layouts = await resp.json();
+            
+            const galResp = await fetch('/api/gallery/list');
+            loadedGalleryData = await galResp.json();
+
+            let html = '';
+            layouts.forEach(l => {
+                const key = `Layout: ${l}`;
+                let previews = '';
+                if (loadedGalleryData[key]) {
+                    loadedGalleryData[key].slice(0, 10).forEach((img, index) => {
+                        const src = `/api/gallery/image/${key}/${img}`;
+                        previews += `<img src="${src}" onclick="openLightbox('${key}', ${index})">`;
+                    });
+                } else { previews = '<span style="font-size:11px; color:#666;">No generated images yet.</span>'; }
+
+                html += `<div class="layout-card">
+                    <div class="layout-header">
+                        <h3 style="margin:0; color:#fff; font-size:16px;">${l}</h3>
+                        <div>
+                            <button onclick="loadLayout('${l}')" style="width:auto; padding:5px 15px; font-size:12px;">📂 Load</button>
+                            <button onclick="deleteLayout('${l}')" style="width:auto; padding:5px 15px; font-size:12px; background-color: #c62828; margin-left: 5px;">🗑️ Delete</button>
+                        </div>
+                    </div>
+                    <div class="layout-previews">${previews}</div>
+                </div>`;
+            });
+            container.innerHTML = html || '<p style="text-align:center; color:#666;">No saved layouts.</p>';
+        }
+
+        async function loadLayout(name) {
+            const resp = await fetch(`/api/layouts/load/${name}`);
+            if(!resp.ok) return alert("Error loading layout");
+            const data = await resp.json();
+            
+            canvas.loadFromJSON(data, () => {
+                canvas.renderAll();
+                document.getElementById('layoutName').value = name;
+                
+                if (data.custom_effects) {
+                    const eff = data.custom_effects;
+                    if(eff.bgColor) { document.getElementById('bgColor').value = eff.bgColor; canvas.setBackgroundColor(eff.bgColor); }
+                    if(eff.bgBrightness) document.getElementById('bgBrightness').value = eff.bgBrightness;
+                    if(eff.fadeEffect) document.getElementById('fadeEffect').value = eff.fadeEffect;
+                    if(eff.fadeRadius) document.getElementById('fadeRadius').value = eff.fadeRadius;
+                    if(eff.fadeLeft) document.getElementById('fadeLeft').value = eff.fadeLeft;
+                    if(eff.fadeRight) document.getElementById('fadeRight').value = eff.fadeRight;
+                    if(eff.fadeTop) document.getElementById('fadeTop').value = eff.fadeTop;
+                    if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
+                    if(eff.centerTags !== undefined) document.getElementById('centerTagsToggle').checked = eff.centerTags;
+                    if(eff.limitGenres !== undefined) {
+                        const val = eff.limitGenres ? 2 : 6;
+                        document.getElementById('genreLimitSlider').value = val;
+                        document.getElementById('genreLimitVal').innerText = (val == 6) ? "Max" : val;
+                    }
+                    if(eff.genreLimit !== undefined) {
+                        document.getElementById('genreLimitSlider').value = eff.genreLimit;
+                        document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
+                    }
+                    
+                    updateFadeControls();
+                    updateBgColor();
+                }
+                
+                openTab({currentTarget: document.querySelector('.tab-link')}, 'editor-tab');
+                alert(`Layout "${name}" loaded!`);
+            });
+        }
+
+        async function deleteLayout(name) {
+            if (!confirm(`Are you sure you want to delete the layout "${name}" and all its generated images? This cannot be undone.`)) {
+                return;
+            }
+            const resp = await fetch(`/api/layouts/delete/${name}`, { method: 'POST' });
+            if (resp.ok) {
+                loadLayoutsList();
+                loadGallery();
+            } else {
+                alert("Error deleting layout.");
+            }
+        }
+
+        function mirrorBackground() {
+            if (!mainBg) return;
+            mainBg.set('flipX', !mainBg.flipX);
+            canvas.requestRenderAll();
+        }
+        window.onload = init;
+    </script>
+</body>
+</html>
