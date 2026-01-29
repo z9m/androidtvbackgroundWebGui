@@ -57,6 +57,7 @@ excluded_keywords = ['XX', 'XX', 'XX', 'XX', 'XX', 'XX', 'XX','XX']  # like ['ad
 
 # Filter movies by release date and TV shows by last air date
 max_air_date = datetime.now() - timedelta(days=90)  # specify the number of days since the movie release or the TV show last air date, shows before this date will be excluded
+overwrite_existing = False
 
 # Save font locally
 truetype_url = 'https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Light.ttf'
@@ -305,6 +306,11 @@ def get_logo(media_type, media_id, language):
     return sorted(logos, key=lambda x: x.get("vote_average", 0), reverse=True)[0]["file_path"]
 
 def process_image(image_url, title, is_movie, genre, year, rating, duration=None, seasons=None):
+    filename = os.path.join(background_dir, f"{clean_filename(title)}.jpg")
+    if not overwrite_existing and os.path.exists(filename):
+        print(f"Skipping {title} - Background already exists.")
+        return
+
     # Download the background image with a timeout of 10 seconds
     response = requests.get(image_url, timeout=10)
     if response.status_code == 200:
@@ -332,78 +338,56 @@ def process_image(image_url, title, is_movie, genre, year, rating, duration=None
         font_overview = ImageFont.truetype(truetype_path, size=50)
         font_custom = ImageFont.truetype(truetype_path, size=60)
 
-        # Text color
+        # --- DYNAMIC LAYOUT ---
+        padding = 25
         shadow_color = "black"
-        main_color = "white"
-        overview_color = (150, 150, 150)  # Grey color for the summary
-        metadata_color = "white"
-
-        # Text position
-        title_position = (200, 420)
-        overview_position = (210, 730)
         shadow_offset = 2
-        info_position = (210, 650)  # Adjusted position for logo and info
-        custom_position = (210, 870)
+        current_x = 210
+        current_y = 200 # Starting Y
 
-        # Wrap overview text
-        wrapped_overview = "\n".join(textwrap.wrap(overview, width=70, max_lines=2, placeholder=" ..."))
-
-        # Draw Overview for info
-        draw.text((overview_position[0] + shadow_offset, overview_position[1] + shadow_offset), wrapped_overview, font=font_overview, fill=shadow_color)
-        draw.text(overview_position, wrapped_overview, font=font_overview, fill=metadata_color)
-
-        # Determine genre text and additional info
-        if is_movie:
-            genre_text = genre
-            additional_info = f"{duration}"
-        else:
-            genre_text = genre
-            additional_info = f"{seasons} {'Season' if seasons == 1 else 'Seasons'}"
-
-        rating_text = "TMDB: " + str(rating)
-        year_text = truncate(str(year), 7)
-        info_text = f"{genre_text}  \u2022  {year_text}  \u2022  {additional_info}  \u2022  {rating_text}"
-
-        # Draw metadata
-        draw.text((info_position[0] + shadow_offset, info_position[1] + shadow_offset), info_text, font=font_overview, fill=shadow_color)
-        draw.text(info_position, info_text, font=font_overview, fill=overview_color)
-
-        # Get logo image URL
-        if is_movie:
-            logo_path = get_logo("movie", movie['id'], language="en")
-        else:
-            logo_path = get_logo("tv", tvshow['id'], language="en")
-
-        logo_drawn = False  # Flag to track if logo is drawn
-
+        # 1. Logo or Title
+        logo_drawn = False
+        logo_path = get_logo("movie" if is_movie else "tv", movie['id'] if is_movie else tvshow['id'], language="en")
         if logo_path:
             logo_url = f"https://image.tmdb.org/t/p/original{logo_path}"
             logo_response = requests.get(logo_url)
             if logo_response.status_code == 200:
                 try:
-                    logo_image = Image.open(BytesIO(logo_response.content))
-                    # Resize the logo image to fit within a box while maintaining aspect ratio
+                    logo_image = Image.open(BytesIO(logo_response.content)).convert('RGBA')
                     logo_image = resize_logo(logo_image, 1000, 500)
-                    logo_position = (210, info_position[1] - logo_image.height - 25)  # Position for logo
-                    logo_image = logo_image.convert('RGBA')
-
-                    # Paste the logo onto the image
-                    bckg.paste(logo_image, logo_position, logo_image)
-                    logo_drawn = True  # Logo was successfully drawn
+                    bckg.paste(logo_image, (current_x, current_y), logo_image)
+                    current_y += logo_image.height + padding
+                    logo_drawn = True
                 except Exception as e:
                     print(f"Failed to draw logo for {title}: {e}")
-
         if not logo_drawn:
-            # Draw title text if logo is not available or failed to draw
-            draw.text((title_position[0] + shadow_offset, title_position[1] + shadow_offset), title, font=font_title, fill=shadow_color)
-            draw.text(title_position, title, font=font_title, fill=main_color)
+            title_bbox = draw.textbbox((0,0), title, font=font_title)
+            draw.text((current_x - 10 + shadow_offset, current_y + shadow_offset), title, font=font_title, fill=shadow_color)
+            draw.text((current_x - 10, current_y), title, font=font_title, fill="white")
+            current_y += (title_bbox[3] - title_bbox[1]) + padding
 
-        # Draw custom text
-        draw.text((custom_position[0] + shadow_offset, custom_position[1] + shadow_offset), custom_text, font=font_custom, fill=shadow_color)
-        draw.text(custom_position, custom_text, font=font_custom, fill=metadata_color)
+        # 2. Info Text
+        additional_info = f"{duration}" if is_movie else f"{seasons} {'Season' if seasons == 1 else 'Seasons'}"
+        rating_text = "TMDB: " + str(rating)
+        year_text = truncate(str(year), 7)
+        info_text = f"{genre}  •  {year_text}  •  {additional_info}  •  {rating_text}"
+        draw.text((current_x + shadow_offset, current_y + shadow_offset), info_text, font=font_overview, fill=shadow_color)
+        draw.text((current_x, current_y), info_text, font=font_overview, fill=(150, 150, 150))
+        info_bbox = draw.textbbox((0,0), info_text, font=font_overview)
+        current_y += (info_bbox[3] - info_bbox[1]) + padding
+
+        # 3. Overview
+        wrapped_overview = "\n".join(textwrap.wrap(overview, width=70, max_lines=2, placeholder=" ..."))
+        draw.text((current_x + shadow_offset, current_y + shadow_offset), wrapped_overview, font=font_overview, fill=shadow_color)
+        draw.text((current_x, current_y), wrapped_overview, font=font_overview, fill="white")
+        overview_bbox = draw.textbbox((0,0), wrapped_overview, font=font_overview)
+        current_y += (overview_bbox[3] - overview_bbox[1]) + padding * 2
+
+        # 4. Custom Text
+        draw.text((current_x + shadow_offset, current_y + shadow_offset), custom_text, font=font_custom, fill=shadow_color)
+        draw.text((current_x, current_y), custom_text, font=font_custom, fill="white")
 
         # Save the resized image
-        filename = os.path.join(background_dir, f"{clean_filename(title)}.jpg")
         bckg = bckg.convert('RGB')
         bckg.save(filename)
         print(f"Image saved: {filename}")

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from io import BytesIO
 import os, shutil, textwrap
+import json
 from dotenv import load_dotenv
 load_dotenv(verbose=True)
 
@@ -20,6 +21,13 @@ TMDB_BASE_URL = os.getenv('TMDB_BASE_URL')
 TMDB_IMG_BASE = os.getenv('TMDB_IMG_BASE')
 RADARR_SONARR_LOGO = os.getenv('RADARR_SONARR_LOGO')
 LANGUAGE = os.getenv("TMDB_LANGUAGE", "en-US")
+overwrite_existing = False
+
+if os.path.exists('config.json'):
+    try:
+        with open('config.json', 'r') as f:
+            overwrite_existing = json.load(f).get('general', {}).get('overwrite_existing', False)
+    except: pass
 
 
 try:
@@ -233,6 +241,11 @@ def generate_background_fast(input_img, target_width=3000):
 
 
 def process_image(image_url, title, overview, genre, year, rating, custom_text, is_movie, tmdb_id, duration=None, seasons=None):
+    filename = os.path.join(background_dir, f"{clean_filename(title)}.jpg")
+    if not overwrite_existing and os.path.exists(filename):
+        print(f"Skipping {title} - Background already exists.")
+        return
+
     try:
         # --- Download main image ---
         response = requests.get(image_url, timeout=10)
@@ -255,20 +268,13 @@ def process_image(image_url, title, overview, genre, year, rating, custom_text, 
         font_overview = ImageFont.truetype(font_path, size=50)
         font_custom = ImageFont.truetype(font_path, size=60)
 
+        # --- DYNAMIC LAYOUT ---
+        padding = 25
         shadow_offset = 2
-        title_pos = (200, 420)
-        overview_pos = (210, 730)
-        info_pos = (210, 650)
-        custom_pos = (210, 870)
+        current_x = 210
+        current_y = 200 # Starting Y
 
-        # --- Prepare text ---
-        wrapped_overview = wrap_text(overview)
-        additional = format_duration(duration) if is_movie else f"{seasons} season{'s' if seasons and seasons > 1 else ''}"
-        rating_text = f"TMDB: {rating:.1f}" if rating else "TMDB: N/A"
-        year_text = truncate(str(year), 7)
-        info_text = f"{genre}  •  {year_text}  •  {additional}  •  {rating_text}"
-
-        # --- Download TMDB logo if available ---
+        # 1. Logo or Title
         logo_drawn = False
         logo_path = get_logo("movie" if is_movie else "tv", tmdb_id, language="en")
         if logo_path:
@@ -277,22 +283,35 @@ def process_image(image_url, title, overview, genre, year, rating, custom_text, 
             if logo_resp.status_code == 200:
                 logo_img = Image.open(BytesIO(logo_resp.content))
                 logo_img = resize_logo(logo_img, 1000, 500).convert("RGBA")
-                logo_pos = (210, info_pos[1] - logo_img.height - 25)
-                bckg.paste(logo_img, logo_pos, logo_img)
+                bckg.paste(logo_img, (current_x, current_y), logo_img)
+                current_y += logo_img.height + padding
                 logo_drawn = True
-
-        # --- Draw title if logo missing ---
         if not logo_drawn:
-            draw.text((title_pos[0] + shadow_offset, title_pos[1] + shadow_offset), title, font=font_title, fill="black")
-            draw.text(title_pos, title, font=font_title, fill="white")
+            title_bbox = draw.textbbox((0,0), title, font=font_title)
+            draw.text((current_x - 10 + shadow_offset, current_y + shadow_offset), title, font=font_title, fill="black")
+            draw.text((current_x - 10, current_y), title, font=font_title, fill="white")
+            current_y += (title_bbox[3] - title_bbox[1]) + padding
 
-        # --- Draw other texts ---
-        draw.text((overview_pos[0] + shadow_offset, overview_pos[1] + shadow_offset), wrapped_overview, font=font_overview, fill="black")
-        draw.text(overview_pos, wrapped_overview, font=font_overview, fill="white")
-        draw.text((info_pos[0] + shadow_offset, info_pos[1] + shadow_offset), info_text, font=font_overview, fill="black")
-        draw.text(info_pos, info_text, font=font_overview, fill="white")
-        draw.text((custom_pos[0] + shadow_offset, custom_pos[1] + shadow_offset), custom_text, font=font_custom, fill="black")
-        draw.text(custom_pos, custom_text, font=font_custom, fill="white")
+        # 2. Info Text
+        additional = format_duration(duration) if is_movie else f"{seasons} season{'s' if seasons and seasons > 1 else ''}"
+        rating_text = f"TMDB: {rating:.1f}" if rating else "TMDB: N/A"
+        year_text = truncate(str(year), 7)
+        info_text = f"{genre}  •  {year_text}  •  {additional}  •  {rating_text}"
+        draw.text((current_x + shadow_offset, current_y + shadow_offset), info_text, font=font_overview, fill="black")
+        draw.text((current_x, current_y), info_text, font=font_overview, fill="white")
+        info_bbox = draw.textbbox((0,0), info_text, font=font_overview)
+        current_y += (info_bbox[3] - info_bbox[1]) + padding
+
+        # 3. Overview
+        wrapped_overview = wrap_text(overview)
+        draw.text((current_x + shadow_offset, current_y + shadow_offset), wrapped_overview, font=font_overview, fill="black")
+        draw.text((current_x, current_y), wrapped_overview, font=font_overview, fill="white")
+        overview_bbox = draw.textbbox((0,0), wrapped_overview, font=font_overview)
+        current_y += (overview_bbox[3] - overview_bbox[1]) + padding * 2
+
+        # 4. Custom Text
+        draw.text((current_x + shadow_offset, current_y + shadow_offset), custom_text, font=font_custom, fill="black")
+        draw.text((current_x, current_y), custom_text, font=font_custom, fill="white")
 
         # --- Paste static radarr_sonaar logo ---
         radarr_sonaarlogo_path = os.path.join(os.path.dirname(__file__), RADARR_SONARR_LOGO)
@@ -302,7 +321,6 @@ def process_image(image_url, title, overview, genre, year, rating, custom_text, 
             bckg.paste(radarr_sonaarlogo, logo_position, radarr_sonaarlogo)
 
         # --- Save final image ---
-        filename = os.path.join(background_dir, f"{clean_filename(title)}.jpg")
         bckg.save(filename, quality=95)
         print(f"Generated: {filename}")
 

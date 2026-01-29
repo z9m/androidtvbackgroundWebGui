@@ -9,6 +9,7 @@ import unicodedata
 from io import BytesIO
 from typing import Tuple
 import textwrap
+import json
 
 # === Third-Party Imports ===
 import requests
@@ -25,6 +26,14 @@ order_by = 'added'      # 'aired', 'added', or 'mix'
 download_movies = True
 download_series = True
 limit = 5
+overwrite_existing = False
+
+if os.path.exists('config.json'):
+    try:
+        with open('config.json', 'r') as f:
+            overwrite_existing = json.load(f).get('general', {}).get('overwrite_existing', False)
+    except: pass
+
 debug = False
 
 logo_variant = 'white'
@@ -211,6 +220,13 @@ def generate_background_for_item(item, media_type, order_type, plex_logo, target
         print(f"[WARN] No art for {item.title}")
         return
 
+    today = datetime.today().strftime("%Y%m%d")
+    safe = clean_filename(unicodedata.normalize("NFKD",item.title).encode("ASCII","ignore").decode())
+    out_path = os.path.join(target_folder,f"{safe}.jpg")
+    if not overwrite_existing and os.path.exists(out_path):
+        print(f"Skipping {item.title} - Background already exists.")
+        return
+
     try:
         r = requests.get(art_url, timeout=10); r.raise_for_status()
         art = Image.open(BytesIO(r.content)).convert("RGB")
@@ -226,7 +242,24 @@ def generate_background_for_item(item, media_type, order_type, plex_logo, target
     ft_summary = ImageFont.truetype(env_font_name, size=50)
     ft_custom  = ImageFont.truetype(env_font_name, size=60)
 
-    # Metadata
+    # --- DYNAMIC LAYOUT ---
+    padding = 25
+    current_x = 210
+    current_y = 200 # Starting Y
+
+    # 1. Logo or Title
+    clogo = download_logo_in_memory(item, plex._baseurl, plex._token)
+    if clogo:
+        clogo = resize_logo(clogo,1300,400).convert("RGBA")
+        canvas.paste(clogo,(current_x, current_y),clogo)
+        current_y += clogo.height + padding
+    else:
+        title_text = truncate_summary(item.title,30)
+        title_bbox = draw.textbbox((0,0), title_text, font=ft_title)
+        draw_text_with_shadow(draw,(current_x - 10, current_y),title_text,ft_title,main_color,shadow_color,(shadow_offset,)*2)
+        current_y += (title_bbox[3] - title_bbox[1]) + padding
+
+    # 2. Info Text
     if media_type == "movie":
         genres = [g.tag for g in item.genres][:3]
         dur    = item.duration and f"{item.duration//3600000}h {(item.duration//60000)%60}min"
@@ -237,52 +270,31 @@ def generate_background_for_item(item, media_type, order_type, plex_logo, target
         seasons= len(item.seasons())
         rating = item.audienceRating or item.rating or ""
         parts  = [str(item.year)] + genres + ([f"{seasons} Season" if seasons==1 else f"{seasons} Seasons"]) + ([f"IMDb: {rating}"] if rating else [])
-    info_text = "  •  ".join(parts)
-    draw_text_with_shadow(draw, (210,650), info_text, ft_info, info_color, shadow_color, (shadow_offset,)*2)
+    info_text = "  •  ".join(filter(None, parts))
+    draw_text_with_shadow(draw, (current_x, current_y), info_text, ft_info, info_color, shadow_color, (shadow_offset,)*2)
+    info_bbox = draw.textbbox((0,0), info_text, font=ft_info)
+    current_y += (info_bbox[3] - info_bbox[1]) + padding
 
-    # Summary
+    # 3. Summary
     summary = truncate_summary(item.summary, max_summary_chars)
     lines = wrap_summary_with_line_limit(summary, ft_summary, max_summary_width, draw, max_lines=summary_max_lines)
     wrapped = "\n".join(lines)
-    draw_text_with_shadow(draw, (210,730), wrapped, ft_summary, summary_color, shadow_color, (shadow_offset,)*2)
+    draw_text_with_shadow(draw, (current_x, current_y), wrapped, ft_summary, summary_color, shadow_color, (shadow_offset,)*2)
+    summary_bbox = draw.textbbox((0,0), wrapped, font=ft_summary)
+    current_y += (summary_bbox[3] - summary_bbox[1]) + padding * 2
 
-    # Label (include friend's server name)
+    # 4. Label and Plex Logo
     if friend:
-        # When added: "Now Available on <Friend>'s Plex"
-        if order_type == "added":
-            lbl = f"{added_label} {friend}'s"
-        # For aired keep generic (you can also include friend if you prefer)
-        elif order_type == "aired":
-            lbl = aired_label
-        elif order_type == "random":
-            lbl = f"{random_label} {friend}'s"
-        else:
-            lbl = f"{default_label} {friend}'s"
+        lbl = f"{added_label} {friend}'s" if order_type == "added" else aired_label if order_type == "aired" else f"{random_label} {friend}'s" if order_type == "random" else f"{default_label} {friend}'s"
     else:
         lbl = {"added": added_label, "aired": aired_label, "random": random_label}.get(order_type, default_label)
-
-    bbox = draw.textbbox((0,0), wrapped, font=ft_summary)
-    y0 = 730 + (bbox[3]-bbox[1]) + 30
-    draw_text_with_shadow(draw,(210,y0),lbl,ft_custom,metadata_color,shadow_color,(shadow_offset,)*2)
-
-    # Plex logo
+    draw_text_with_shadow(draw,(current_x, current_y),lbl,ft_custom,metadata_color,shadow_color,(shadow_offset,)*2)
     w0 = draw.textbbox((0,0), lbl, font=ft_custom)[2]
-    lx = 210 + w0 + 20 + plex_logo_horizontal_offset
-    ly = y0 + plex_logo_vertical_offset + 15
+    lx = current_x + w0 + 20 + plex_logo_horizontal_offset
+    ly = current_y + plex_logo_vertical_offset + 15
     canvas.paste(plex_logo,(lx,ly),plex_logo)
 
-    # ClearLogo or Title
-    clogo = download_logo_in_memory(item, plex._baseurl, plex._token)
-    if clogo:
-        clogo = resize_logo(clogo,1300,400).convert("RGBA")
-        canvas.paste(clogo,(210,650-clogo.height-25),clogo)
-    else:
-        draw_text_with_shadow(draw,(200,420),truncate_summary(item.title,30),ft_title,main_color,shadow_color,(shadow_offset,)*2)
-
     # Save
-    today = datetime.today().strftime("%Y%m%d")
-    safe = clean_filename(unicodedata.normalize("NFKD",item.title).encode("ASCII","ignore").decode())
-    out_path = os.path.join(target_folder,f"{safe}.jpg")
     canvas.convert("RGB").save(out_path,quality=95)
     print(f"Saved: {out_path}")
 

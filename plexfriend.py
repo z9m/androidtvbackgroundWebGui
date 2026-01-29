@@ -10,6 +10,7 @@ import unicodedata
 from io import BytesIO
 from typing import Tuple
 import textwrap
+import json
 
 # === Third-Party Imports ===
 import requests
@@ -25,6 +26,14 @@ order_by = 'added'      # 'aired', 'added', or 'mix'
 download_movies = True
 download_series = True
 limit = 5
+overwrite_existing = False
+
+if os.path.exists('config.json'):
+    try:
+        with open('config.json', 'r') as f:
+            overwrite_existing = json.load(f).get('general', {}).get('overwrite_existing', False)
+    except: pass
+
 debug = False
 
 logo_variant = 'white'
@@ -175,6 +184,10 @@ def generate_background_for_item(item, media_type, group_type,
     safe = clean_filename(safe) + "_" + today
     out_path = os.path.join(target_folder,  f"{safe}.jpg")
 
+    if not overwrite_existing and os.path.exists(out_path):
+        print(f"Skipping {item.title} - Background already exists.")
+        return
+
     # compose canvas
     canvas = base_background.copy()
     over   = overlay.copy()
@@ -192,52 +205,59 @@ def generate_background_for_item(item, media_type, group_type,
         print(f"[ERROR] Font load: {e}")
         return
 
-    # metadata text
+    # --- DYNAMIC LAYOUT ---
+    padding = 25
+    current_x = 210
+    current_y = 200 # Starting Y
+
+    # 1. Logo or Title
+    clogo = download_logo_in_memory(item, plex._baseurl, plex._token)
+    if clogo:
+        clogo = resize_logo(clogo,1300,400).convert('RGBA')
+        canvas.paste(clogo,(current_x, current_y),clogo)
+        current_y += clogo.height + padding
+    else:
+        title, _ = truncate_summary(item.title,30)
+        title_bbox = draw.textbbox((0,0), title, font=ft_title)
+        draw_text_with_shadow(draw,(current_x - 10, current_y),title,ft_title,main_color,shadow_color,(shadow_offset,)*2)
+        current_y += (title_bbox[3] - title_bbox[1]) + padding
+
+    # 2. Info Text
     if media_type=='movie':
         genres = [g.tag for g in item.genres][:3]
         dur    = item.duration and f"{item.duration//3600000}h {(item.duration//60000)%60}min"
         rating = item.audienceRating or item.rating or ''
-        parts  = [str(item.year)] + genres + ([dur] if dur else []) + ([item.contentRating] if item.contentRating else []) + ([f"IMDb: {rating}"] if rating else [])
+        parts  = [str(item.year)] + genres + ([dur] if dur else []) + ([f"IMDb: {rating}"] if rating else [])
     else:
         genres = [g.tag for g in item.genres][:3]
         seasons= len(item.seasons())
-        parts  = [str(item.year)] + genres + ([f"{seasons} Season" if seasons==1 else f"{seasons} Seasons"]) + ([item.contentRating] if item.contentRating else []) + ([f"IMDb: {item.audienceRating or item.rating}"])
-    info_text = "  •  ".join(parts)
+        rating = item.audienceRating or item.rating or ""
+        parts  = [str(item.year)] + genres + ([f"{seasons} Season" if seasons==1 else f"{seasons} Seasons"]) + ([f"IMDb: {rating}"] if rating else [])
+    info_text = "  •  ".join(filter(None, parts))
+    draw_text_with_shadow(draw, (current_x, current_y), info_text, ft_info, info_color, shadow_color, (shadow_offset,)*2)
+    info_bbox = draw.textbbox((0,0), info_text, font=ft_info)
+    current_y += (info_bbox[3] - info_bbox[1]) + padding
 
-    # draw info
-    draw_text_with_shadow(draw, (210,650), info_text, ft_info, info_color, shadow_color, (shadow_offset,)*2)
-
-    # summary: truncate then wrap
+    # 3. Summary
     max_chars  = max_summary_chars or 150
     max_pixels = max_summary_width or 1800
     summary, _ = truncate_summary(item.summary, max_chars)
     lines      = wrap_text_by_pixel_width(summary, ft_summary, max_pixels, draw)
     wrapped    = "\n".join(lines)
-    draw_text_with_shadow(draw, (210,730), wrapped, ft_summary, summary_color, shadow_color, (shadow_offset,)*2)
+    draw_text_with_shadow(draw, (current_x, current_y), wrapped, ft_summary, summary_color, shadow_color, (shadow_offset,)*2)
+    summary_bbox = draw.textbbox((0,0), wrapped, font=ft_summary)
+    current_y += (summary_bbox[3] - summary_bbox[1]) + padding * 2
 
-
-    # label
+    # 4. Label and Plex Logo
     label_map = {'added':added_label + " " + friend + "'s", 'aired':aired_label, 'random':random_label}
     lbl = label_map.get(group_type, default_label)
-    # position label + logo
-    bbox = draw.textbbox((0,0), wrapped, font=ft_summary)
-    y0  = 730 + (bbox[3]-bbox[1]) + 30
-    draw_text_with_shadow(draw, (210,y0), lbl, ft_custom, metadata_color, shadow_color, (shadow_offset,)*2)
+    draw_text_with_shadow(draw, (current_x, current_y), lbl, ft_custom, metadata_color, shadow_color, (shadow_offset,)*2)
     w0 = draw.textbbox((0,0), lbl, font=ft_custom)[2]
-    lx = 210 + w0 + 20 + plex_logo_horizontal_offset
+    lx = current_x + w0 + 20 + plex_logo_horizontal_offset
     lh = plex_logo.height
     asc,des = ft_custom.getmetrics()
-    ly = y0 + ((asc+des)-lh)//2 + plex_logo_vertical_offset
+    ly = current_y + ((asc+des)-lh)//2 + plex_logo_vertical_offset
     canvas.paste(plex_logo,(lx,ly),plex_logo)
-
-    # clearLogo / fallback title
-    clogo = download_logo_in_memory(item, plex._baseurl, plex._token)
-    if clogo:
-        clogo = resize_logo(clogo,1300,400).convert('RGBA')
-        canvas.paste(clogo,(210,650-clogo.height-25),clogo)
-    else:
-        title, _ = truncate_summary(item.title,30)
-        draw_text_with_shadow(draw,(200,420),title,ft_title,main_color,shadow_color,(shadow_offset,)*2)
 
     # save
     canvas.convert('RGB').save(out_path)

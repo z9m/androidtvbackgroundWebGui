@@ -6,6 +6,7 @@ from io import BytesIO
 import unicodedata
 import shutil
 import textwrap
+import json
 from dotenv import load_dotenv
 load_dotenv(verbose=True)
 
@@ -50,6 +51,14 @@ order_by = 'DateCreated' # 'DateCreated', 'DateLastContentAdded', 'PremiereDate'
 download_movies = True
 download_series = True
 limit = 10
+overwrite_existing = False
+
+if os.path.exists('config.json'):
+    try:
+        with open('config.json', 'r') as f:
+            overwrite_existing = json.load(f).get('general', {}).get('overwrite_existing', False)
+    except: pass
+
 excluded_genres = ['Horror', 'Thriller']
 excluded_tags = ['Adult', 'Violence']
 excluded_libraries = ['Web Videos']
@@ -154,14 +163,18 @@ def download_latest_media(order_by, limit, media_type):
 
         if background_url:
             try:
+                filename_safe_title = unicodedata.normalize('NFKD', item['Name']).encode('ASCII', 'ignore').decode('utf-8')
+                filename_safe_title = clean_filename(filename_safe_title)
+                background_filename = os.path.join(background_dir, f"{filename_safe_title}_{item['ProductionYear']}.jpg")
+                
+                if not overwrite_existing and os.path.exists(background_filename):
+                    print(f"Skipping {item['Name']} - Background already exists.")
+                    continue
+
                 # Download the background image with a timeout of 10 seconds
                 response = requests.get(background_url, timeout=10)
 
                 if response.status_code == 200:
-                    filename_safe_title = unicodedata.normalize('NFKD', item['Name']).encode('ASCII', 'ignore').decode('utf-8')
-                    filename_safe_title = clean_filename(filename_safe_title)
-                    background_filename = os.path.join(background_dir, f"{filename_safe_title}_{item['ProductionYear']}.jpg")
-                    
                     with open(background_filename, 'wb') as f:
                         f.write(response.content)
                     
@@ -187,79 +200,70 @@ def download_latest_media(order_by, limit, media_type):
                     font_summary = ImageFont.truetype(truetype_path, size=50)
                     font_metadata = ImageFont.truetype(truetype_path, size=50)
                     font_custom = ImageFont.truetype(truetype_path, size=60)                 
-                    
-                    title_text = f"{item['Name']}"
-                    logo_image = download_logo_in_memory(item)
 
-                    if media_type == 'Movie':
-                        if 'CommunityRating' in item:
-                            rating_text = f" IMDb: {item['CommunityRating']:.1f}"
-                        else:
-                            rating_text = ""
-                        duration_ticks = item['RunTimeTicks']
-                        duration_minutes = duration_ticks // (10**7 * 60)
-                        duration_text = f"{duration_minutes // 60}h{duration_minutes % 60}min"
-                        info_text = f"{item['PremiereDate'][:4]}  •  {', '.join(item['Genres'])}  •  {duration_text}  •  {rating_text}"
-                    else:
-                        if 'CommunityRating' in item:
-                            rating_text = f" IMDb: {item['CommunityRating']:.1f}"
-                        else:
-                            rating_text = ""
-                        
-                        seasons_url = f"{baseurl}/Shows/{item['Id']}/Seasons?api_key={token}"
-                        response = requests.get(seasons_url, timeout=10)
-
-                        if response.status_code == 200:
-                            full_response_data = response.json()
-                            
-                            if 'Items' in full_response_data and isinstance(full_response_data['Items'], list):
-                                actual_seasons = [
-                                    s for s in full_response_data['Items'] 
-                                    if s.get('Type') == 'Season' and s.get('IndexNumber', 0) > 0
-                                ]
-                                
-                                seasons_count = len(actual_seasons)
-                                seasons_text = f"Season" if seasons_count == 1 else f"Seasons"
-                                seasons_text = f"{seasons_count} {seasons_text} • " 
-                            else:
-                                seasons_text = ""
-                        else:
-                            seasons_text = ""
-                        
-                        info_text = f"{item['PremiereDate'][:4]}  •  {', '.join(item['Genres'])}  •  {seasons_text}{rating_text}"
-
-                    summary_text = truncate_summary(item['Overview'], 175)
-                    custom_text = "Now Available on"
-
-                    # Draw Text (with shadow for better visibility)
-                    shadow_color = "black"
-                    main_color = "white"
-                    info_color = (150, 150, 150)
-                    summary_color = "white"
-                    metadata_color = "white"
-                    wrapped_summary = "\n".join(textwrap.wrap(summary_text, width=95))
-
-                    title_position = (200, 420)
-                    summary_position = (210, 730)
+                    # --- DYNAMIC LAYOUT ---
+                    padding = 25
                     shadow_offset = 2
-                    info_position = (210, 650)
-                    metadata_position = (210, 820)
-                    custom_position = (210, 870)
+                    current_x = 210
+                    current_y = 200 # Starting Y
 
-                    draw.text((info_position[0] + shadow_offset, info_position[1] + shadow_offset), info_text, font=font_info, fill=shadow_color)
-                    draw.text(info_position, info_text, font=font_info, fill=info_color)
-                    draw.text((summary_position[0] + shadow_offset, summary_position[1] + shadow_offset), wrapped_summary, font=font_summary, fill=shadow_color)
-                    draw.text(summary_position, wrapped_summary, font=font_summary, fill=summary_color)
-                    draw.text((custom_position[0] + shadow_offset, custom_position[1] + shadow_offset), custom_text, font=font_custom, fill=shadow_color)
-                    draw.text(custom_position, custom_text, font=font_custom, fill=metadata_color)
-
+                    # 1. Logo or Title
+                    logo_image = download_logo_in_memory(item)
                     if logo_image:
                         logo_resized = resize_logo(logo_image, 1300, 400).convert('RGBA')
-                        logo_position = (210, info_position[1] - logo_resized.height - 25)
+                        logo_position = (current_x, current_y)
                         bckg.paste(logo_resized, logo_position, logo_resized)
+                        current_y += logo_resized.height + padding
                     else:
-                        draw.text((title_position[0] + shadow_offset, title_position[1] + shadow_offset), truncate_summary(title_text,30), font=font_title, fill=shadow_color)
-                        draw.text(title_position, truncate_summary(title_text,30), font=font_title, fill=main_color)
+                        title_text = truncate_summary(item['Name'], 30)
+                        title_bbox = draw.textbbox((0,0), title_text, font=font_title)
+                        title_height = title_bbox[3] - title_bbox[1]
+                        title_position = (current_x - 10, current_y) # Adjust X for title font
+                        draw.text((title_position[0] + shadow_offset, title_position[1] + shadow_offset), title_text, font=font_title, fill="black")
+                        draw.text(title_position, title_text, font=font_title, fill="white")
+                        current_y += title_height + padding
+
+                    # 2. Info Text
+                    if media_type == 'Movie':
+                        rating_text = f" IMDb: {item['CommunityRating']:.1f}" if 'CommunityRating' in item else ""
+                        duration_ticks = item.get('RunTimeTicks', 0)
+                        duration_minutes = duration_ticks // (10**7 * 60)
+                        duration_text = f"{duration_minutes // 60}h{duration_minutes % 60}min"
+                        info_text = f"{item.get('PremiereDate', 'N/A')[:4]}  •  {', '.join(item.get('Genres', []))}  •  {duration_text}  •  {rating_text}"
+                    else: # Series
+                        rating_text = f" IMDb: {item['CommunityRating']:.1f}" if 'CommunityRating' in item else ""
+                        seasons_response = requests.get(f"{baseurl}/Shows/{item['Id']}/Seasons?api_key={token}", timeout=10)
+                        seasons_count = len([s for s in seasons_response.json().get('Items', []) if s.get('Type') == 'Season' and s.get('IndexNumber', 0) > 0]) if seasons_response.ok else 0
+                        seasons_text = f"{seasons_count} {'Season' if seasons_count == 1 else 'Seasons'} • " if seasons_count > 0 else ""
+                        info_text = f"{item.get('PremiereDate', 'N/A')[:4]}  •  {', '.join(item.get('Genres', []))}  •  {seasons_text}{rating_text}"
+
+                    info_position = (current_x, current_y)
+                    draw.text((info_position[0] + shadow_offset, info_position[1] + shadow_offset), info_text, font=font_info, fill="black")
+                    draw.text(info_position, info_text, font=font_info, fill=(150, 150, 150))
+                    info_bbox = draw.textbbox((0,0), info_text, font=font_info)
+                    current_y += (info_bbox[3] - info_bbox[1]) + padding
+
+                    # 3. Summary
+                    summary_text = truncate_summary(item.get('Overview', ''), 175)
+                    custom_text = "Now Available on"
+                    wrapped_summary = "\n".join(textwrap.wrap(summary_text, width=95))
+                    summary_position = (current_x, current_y)
+                    draw.text((summary_position[0] + shadow_offset, summary_position[1] + shadow_offset), wrapped_summary, font=font_summary, fill="black")
+                    draw.text(summary_position, wrapped_summary, font=font_summary, fill="white")
+                    summary_bbox = draw.textbbox((0,0), wrapped_summary, font=font_summary)
+                    current_y += (summary_bbox[3] - summary_bbox[1]) + padding * 2
+
+                    # 4. Custom Text & Jellyfin Logo
+                    custom_position = (current_x, current_y)
+                    draw.text((custom_position[0] + shadow_offset, custom_position[1] + shadow_offset), custom_text, font=font_custom, fill="black")
+                    draw.text(custom_position, custom_text, font=font_custom, fill="white")
+                    
+                    custom_bbox = draw.textbbox((0,0), custom_text, font=font_custom)
+                    logo_x = custom_position[0] + (custom_bbox[2] - custom_bbox[0]) + 15
+                    custom_font_metrics = font_custom.getmetrics()
+                    custom_text_height = custom_font_metrics[0] + custom_font_metrics[1]
+                    logo_y = custom_position[1] + (custom_text_height - jellyfinlogo.height) // 2
+                    bckg.paste(jellyfinlogo, (logo_x, logo_y), jellyfinlogo)
 
                     bckg = bckg.convert('RGB')
                     bckg.save(background_filename)

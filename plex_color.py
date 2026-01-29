@@ -8,6 +8,7 @@ import random
 import shutil
 import textwrap
 import unicodedata
+import json
 from io import BytesIO
 
 # === Third-Party Imports ===
@@ -38,6 +39,14 @@ order_by = 'mix'            # 'aired', 'added', or 'mix' (mix will round up limi
 download_movies = True      # Allow background generation for Plex movies
 download_series = True      # Allow background generation for Plex TV series
 limit = 10                  # Max backgrounds per content type (TV/movies), so total can be up to limit × enabled types
+overwrite_existing = False  # Skip generation if background already exists
+
+if os.path.exists('config.json'):
+    try:
+        with open('config.json', 'r') as f:
+            overwrite_existing = json.load(f).get('general', {}).get('overwrite_existing', False)
+    except: pass
+
 debug = False               # Enable debug message printing
 
 # Plex logo settings
@@ -435,6 +444,17 @@ def generate_background_for_item(item, media_type, group_type='',
     if not background_url:
         debug and print(f"No background art URL for {item.title}")
         return
+    
+    # Safe filename
+    filename_safe_title = unicodedata.normalize('NFKD', item.title).encode('ASCII', 'ignore').decode('utf-8')
+    filename_safe_title = clean_filename(filename_safe_title)
+
+    # Save into target_folder instead of background_dir
+    background_filename = os.path.join(target_folder, f"{filename_safe_title}.jpg")
+
+    if not overwrite_existing and os.path.exists(background_filename):
+        print(f"Skipping {item.title} - Background already exists.")
+        return
 
     try:
         # Download the background image from Plex
@@ -443,13 +463,6 @@ def generate_background_for_item(item, media_type, group_type='',
 
         # Load image directly from bytes into memory
         image = Image.open(BytesIO(response.content))
-
-        # Safe filename
-        filename_safe_title = unicodedata.normalize('NFKD', item.title).encode('ASCII', 'ignore').decode('utf-8')
-        filename_safe_title = clean_filename(filename_safe_title)
-
-        # Save into target_folder instead of background_dir
-        background_filename = os.path.join(target_folder, f"{filename_safe_title}.jpg")
 
         # Make copies of cached base background and overlay
         canvas = generate_background_fast(image)
@@ -467,8 +480,25 @@ def generate_background_for_item(item, media_type, group_type='',
         except (OSError, IOError) as e:
             print(f"[ERROR] Stopped background generation. Failed to load font from '{truetype_path}': {e}")
             return  # Exit the function early; image generation cannot proceed without fonts
+        
+        # --- DYNAMIC LAYOUT ---
+        padding = 25
+        current_x = 210
+        current_y = 200 # Starting Y
 
-        # Info text
+        # 1. Logo or Title
+        logo_image = download_logo_in_memory(item)
+        if logo_image:
+            logo_resized = resize_logo(logo_image, 1300, 400).convert('RGBA')
+            canvas.paste(logo_resized, (current_x, current_y), logo_resized)
+            current_y += logo_resized.height + padding
+        else:
+            title_text, _ = truncate_summary(item.title, 30)
+            title_bbox = draw.textbbox((0,0), title_text, font=font_title)
+            draw_text_with_shadow(draw, (current_x - 10, current_y), title_text, font_title, main_color, shadow_color, (shadow_offset, shadow_offset))
+            current_y += (title_bbox[3] - title_bbox[1]) + padding
+
+        # 2. Info Text
         if media_type == 'movie':
             max_genres = 3
             genres_list = [genre.tag for genre in item.genres][:max_genres]
@@ -476,158 +506,49 @@ def generate_background_for_item(item, media_type, group_type='',
             rating = getattr(item, "audienceRating", None) or getattr(item, "rating", None) or ""
             rating_text = f" IMDb: {rating}" if rating else ""
             duration = getattr(item, "duration", None)
-            if duration:
-                duration_hours = duration // (60 * 60 * 1000)
-                duration_minutes = (duration // (60 * 1000)) % 60
-                duration_text = f"{duration_hours}h {duration_minutes}min"
-            else:
-                duration_text = ""
+            duration_text = f"{(duration // 3600000)}h {(duration // 60000) % 60}min" if duration else ""
             contentrating = getattr(item, "contentRating", "")
-            contentrating_text = f" {contentrating}" if contentrating else ""
-
-            info_parts = [str(item.year)]
-
-            if genres_text:
-                info_parts.append(genres_text)
-
-            if duration_text:
-                info_parts.append(duration_text)
-
-            if contentrating_text:
-                info_parts.append(contentrating_text)
-
-            if rating_text:
-                info_parts.append(rating_text)
-
-            info_text = "  •  ".join(info_parts)
+            info_parts = [str(item.year), genres_text, duration_text, contentrating, rating_text]
         else:
             max_genres = 3
             genres_list = [genre.tag for genre in item.genres][:max_genres]
             genres_text = ', '.join(genres_list)
             rating = getattr(item, "audienceRating", None) or getattr(item, "rating", None) or ""
             rating_text = f"IMDb: {rating}" if rating else ""
-            contentrating = getattr(item, "contentRating", None) or ""
-            contentrating_text = contentrating if contentrating else ""
             seasons = getattr(item, "seasons", lambda: [])()
             seasons_count = len(seasons)
             seasons_text = f"{seasons_count} Season" if seasons_count == 1 else f"{seasons_count} Seasons" if seasons_count else ""
+            info_parts = [str(item.year), genres_text, seasons_text, getattr(item, "contentRating", ""), rating_text]
+        
+        info_text = "  •  ".join(filter(None, info_parts))
+        draw_text_with_shadow(draw, (current_x, current_y), info_text, font_info, info_color, shadow_color, (shadow_offset, shadow_offset))
+        info_bbox = draw.textbbox((0,0), info_text, font=font_info)
+        current_y += (info_bbox[3] - info_bbox[1]) + padding
 
-            info_parts = [str(item.year)]
-
-            if genres_text:
-                info_parts.append(genres_text)
-
-            if seasons_text:
-                info_parts.append(seasons_text)
-
-            if contentrating_text:
-                info_parts.append(contentrating_text)
-
-            if rating_text:
-                info_parts.append(rating_text)
-
-            info_text = "  •  ".join(info_parts)
-
-        # Summary text
-
-        # Use default max length for summary if not explicitly set
+        # 3. Summary
         summary_max_chars = max_summary_chars if max_summary_chars is not None else 525
-
-        # Use default max width if not explicitly set
         summary_pixel_width = max_summary_width if max_summary_width is not None else 2100
-
-        # Truncate and wrap summary text
         summary_text, was_truncated = truncate_summary(item.summary, summary_max_chars)
-        wrapped_summary_lines = wrap_text_by_pixel_width(
-            summary_text,
-            font_summary,
-            max_width=summary_pixel_width,
-            draw=draw
-        )
-        # Adds a newline between each summary line, may not be enough for fonts
-        # with fancy flourishes but should work most of the time. Can improve this
-        # logic if it causes issues with line overlap to allow for a custom line spacing
+        wrapped_summary_lines = wrap_text_by_pixel_width(summary_text, font_summary, max_width=summary_pixel_width, draw=draw)
         wrapped_summary = "\n".join(wrapped_summary_lines)
+        summary_position = (current_x, current_y)
+        draw_text_with_shadow(draw, summary_position, wrapped_summary, font_summary, summary_color, shadow_color, (shadow_offset, shadow_offset))
+        summary_bbox = draw.textbbox((0,0), wrapped_summary, font=font_summary)
+        current_y += (summary_bbox[3] - summary_bbox[1]) + padding * 2
 
-        # Custom label text, uses the user-defined custom text options
-        if group_type == 'added':
-            custom_text = added_label
-        elif group_type == 'aired':
-            custom_text = aired_label
-        elif group_type == 'random':
-            custom_text = random_label
-        else:
-            custom_text = default_label
+        # 4. Custom Label & Plex Logo
+        custom_text = {'added': added_label, 'aired': aired_label, 'random': random_label}.get(group_type, default_label)
+        custom_position = (current_x, current_y)
+        draw_text_with_shadow(draw, custom_position, custom_text, font_custom, metadata_color, shadow_color, (shadow_offset, shadow_offset))
 
-        # Info text
-        info_position = (210, 650)
-        draw_text_with_shadow(
-            draw,
-            info_position,
-            info_text,
-            font_info,
-            fill_color=info_color,
-            shadow_color=shadow_color,
-            shadow_offset=(shadow_offset, shadow_offset)
-)
-        # Summary block
-        summary_position = (210, 730)
-        draw_text_with_shadow(
-            draw,
-            summary_position,
-            wrapped_summary,
-            font_summary,
-            fill_color=summary_color,
-            shadow_color=shadow_color,
-            shadow_offset=(shadow_offset, shadow_offset)
-)
-
-        # Custom label and attempt at Plex logo positioning
-        draw_bbox = draw.textbbox((0, 0), custom_text, font=font_custom)
-        text_width = draw_bbox[2] - draw_bbox[0]
-        summary_bbox = draw.textbbox((0, 0), wrapped_summary, font=font_summary)
-        summary_block_height = summary_bbox[3] - summary_bbox[1]
-        custom_x = 210
-        custom_y = summary_position[1] + summary_block_height + 30
+        text_bbox = draw.textbbox((0,0), custom_text, font=font_custom)
+        text_width = text_bbox[2] - text_bbox[0]
         custom_ascent, custom_descent = font_custom.getmetrics()
         text_height = custom_ascent + custom_descent
-
         logo_width, logo_height = plex_logo.size
-        padding = 20
-        logo_x = custom_x + text_width + padding + plex_logo_horizontal_offset
-        logo_y = custom_y + (text_height - logo_height) // 2 + plex_logo_vertical_offset
-
-        draw_text_with_shadow(
-            draw,
-            (custom_x, custom_y),
-            custom_text,
-            font_custom,
-            fill_color=metadata_color,
-            shadow_color=shadow_color,
-            shadow_offset=(shadow_offset, shadow_offset)
-        )
-
-        # Paste Plex Logo
+        logo_x = custom_position[0] + text_width + 20 + plex_logo_horizontal_offset
+        logo_y = custom_position[1] + (text_height - logo_height) // 2 + plex_logo_vertical_offset
         canvas.paste(plex_logo, (logo_x, logo_y), plex_logo)
-
-        # Logo or fallback title
-        logo_image = download_logo_in_memory(item)
-        if logo_image:
-            logo_resized = resize_logo(logo_image, 1300, 400).convert('RGBA')
-            logo_position = (210, info_position[1] - logo_resized.height - 25)
-            canvas.paste(logo_resized, logo_position, logo_resized)
-        else:
-            title_position = (200, 420)
-            title_text, _ = truncate_summary(item.title, 30)
-            draw_text_with_shadow(
-                draw,
-                title_position,
-                title_text,
-                font_title,
-                fill_color=main_color,
-                shadow_color=shadow_color,
-                shadow_offset=(shadow_offset, shadow_offset)
-            )
 
         # Save final image
         canvas = canvas.convert('RGB')

@@ -4,6 +4,7 @@ from io import BytesIO
 import os
 import shutil
 import textwrap
+import json
 from dotenv import load_dotenv
 
 load_dotenv(verbose=True)
@@ -14,6 +15,13 @@ TRAKT_USERNAME = os.getenv('TRAKT_USERNAME')
 TRAKT_LISTNAME = os.getenv('TRAKT_LISTNAME')
 TMDB_BEARER_TOKEN = os.getenv('TMDB_BEARER_TOKEN')
 TMDB_BASE_URL = os.getenv('TMDB_BASE_URL')
+overwrite_existing = False
+
+if os.path.exists('config.json'):
+    try:
+        with open('config.json', 'r') as f:
+            overwrite_existing = json.load(f).get('general', {}).get('overwrite_existing', False)
+    except: pass
 
 # Set your TMDB API Read Access Token key here after Bearer
 tmdb_headers = {
@@ -123,6 +131,11 @@ def fetch_and_save_background_images(movies, shows):
         os.makedirs(directory)
     
     for title, tmdb_id in shows + movies:
+        image_path = os.path.join(directory, f"{clean_filename(title)}.jpg")
+        if not overwrite_existing and os.path.exists(image_path):
+            print(f"Skipping {title} - Background already exists.")
+            continue
+
         if tmdb_id:
             bckg = Image.open(os.path.join(os.path.dirname(__file__), "bckg.png"))
             overlay = Image.open(os.path.join(os.path.dirname(__file__), "overlay.png"))
@@ -157,40 +170,32 @@ def fetch_and_save_background_images(movies, shows):
                     overview_color = "white"
                     metadata_color = (150, 150, 150)
 
-                    # Text position
-                    title_position = (200, 420)
-                    overview_position = (210, 730)
+                    # --- DYNAMIC LAYOUT ---
+                    padding = 25
                     shadow_offset = 2
-                    info_position = (210, 650)
-                    custom_position = (210, 870)
+                    current_x = 210
+                    current_y = 200 # Starting Y
 
-                    #paste overlay
-                    bckg.paste(overlay, (bckg.width - overlay.width, 0), overlay)
-
-                    #paste logo and if no logo exists in english draw show title  
+                    # 1. Logo or Title
                     logo_path = get_logo(media_type, tmdb_id)
                     if logo_path:
                         logo_url = f"https://image.tmdb.org/t/p/original{logo_path}"
-                        logo_response = requests.get(logo_url)                        
-                        try:
-                            if logo_response.status_code == 200:
+                        logo_response = requests.get(logo_url)
+                        if logo_response.status_code == 200:
+                            try:
                                 logo_image = Image.open(BytesIO(logo_response.content))
-                                logo_image = resize_logo(logo_image, 1000, 500)
-                                logo_image = logo_image.convert("RGBA")
-                                logo_position = (210, info_position[1] - logo_image.height - 25)
-                                bckg.paste(logo_image, logo_position, logo_image)
-                            else:
-                                print(f"Error downloading logo for {title}: status code {logo_response.status_code}")
-                                draw.text(title_position, title, fill="white", font=font_title)
-                        except UnidentifiedImageError:
-                            print(f"Error identifying logo image for {title}")
-                            draw.text(title_position, title, fill="white", font=font_title)
-                    else:
-                        draw.text(title_position, title, fill="white", font=font_title)
+                                logo_image = resize_logo(logo_image, 1000, 500).convert("RGBA")
+                                bckg.paste(logo_image, (current_x, current_y), logo_image)
+                                current_y += logo_image.height + padding
+                            except UnidentifiedImageError:
+                                logo_path = None # Fallback to title
+                    if not logo_path:
+                        title_bbox = draw.textbbox((0,0), title, font=font_title)
+                        draw.text((current_x - 10, current_y), title, fill="white", font=font_title)
+                        current_y += (title_bbox[3] - title_bbox[1]) + padding
 
-                    #get metadata
+                    # 2. Info Text
                     info = ""
-                    overview = ""
                     if media_type == "movie":
                         movie_details = get_movie_details(tmdb_id)
                         genres = ", ".join([genre['name'] for genre in movie_details.get('genres', [])])
@@ -207,26 +212,30 @@ def fetch_and_save_background_images(movies, shows):
                         seasons = tv_details.get('number_of_seasons', 0)
                         tmdb_score = round(tv_details.get('vote_average', 0),1)
                         overview = tv_details.get('overview')
-                        info = f"{genres}  •  {year}  •  {seasons} {'Season' if seasons == 1 else 'Seasons'}  •  TMDB: {tmdb_score}"
+                        info = f"{genres}  •  {year}  •  {seasons} {'Season' if seasons == 1 else 'Seasons'}  •  TMDB: {tmdb_score}"                    
+                    draw.text((current_x + shadow_offset, current_y + shadow_offset), info, font=font_info, fill=shadow_color)
+                    draw.multiline_text((current_x, current_y), info, font=font_info, fill=metadata_color)
+                    info_bbox = draw.textbbox((0,0), info, font=font_info)
+                    current_y += (info_bbox[3] - info_bbox[1]) + padding
 
-                    #draw show info
-                    draw.text((info_position[0] + shadow_offset, info_position[1] + shadow_offset), info, font=font_info, fill=shadow_color)
-                    draw.multiline_text(info_position, info, font=font_info, fill=metadata_color)
-
-                    #draw overview
+                    # 3. Overview
                     wrapped_overview = "\n".join(textwrap.wrap(overview, width=70, max_lines=2, placeholder=" ..."))
-                    overview_position = (210, info_position[1] + 70)
-                    draw.text((overview_position[0] + shadow_offset, overview_position[1] + shadow_offset), wrapped_overview, font=font_overview, fill=shadow_color)
-                    draw.multiline_text(overview_position, wrapped_overview, font=font_overview, fill=overview_color)
+                    draw.text((current_x + shadow_offset, current_y + shadow_offset), wrapped_overview, font=font_overview, fill=shadow_color)
+                    draw.multiline_text((current_x, current_y), wrapped_overview, font=font_overview, fill=overview_color)
+                    overview_bbox = draw.textbbox((0,0), wrapped_overview, font=font_overview)
+                    current_y += (overview_bbox[3] - overview_bbox[1]) + padding * 2
 
-                    #draw custom text and paste trakt logo
+                    # 4. Custom Text & Trakt Logo
                     custom_text = f"Now on my {list_name} "
-                    draw.text((custom_position[0] + shadow_offset, custom_position[1] + shadow_offset), custom_text, font=font_custom, fill=shadow_color)
-                    draw.text(custom_position, custom_text, font=font_custom, fill=overview_color)
-                    bckg.paste(traktlogo, (780, 885), traktlogo)
+                    draw.text((current_x + shadow_offset, current_y + shadow_offset), custom_text, font=font_custom, fill=shadow_color)
+                    draw.text((current_x, current_y), custom_text, font=font_custom, fill=overview_color)
+                    custom_bbox = draw.textbbox((0,0), custom_text, font=font_custom)
+                    logo_x = current_x + (custom_bbox[2] - custom_bbox[0]) + 15
+                    logo_y = current_y + (font_custom.getmetrics()[0] - traktlogo.height) // 2 + 5
+                    bckg.paste(traktlogo, (logo_x, logo_y), traktlogo)
 
-                    #save image
-                    image_path = os.path.join(directory, f"{clean_filename(title)}.jpg")
+                    # Paste overlay and save
+                    bckg.paste(overlay, (bckg.width - overlay.width, 0), overlay)
                     bckg = bckg.convert('RGB')
                     bckg.save(image_path, "JPEG")
                 else:
