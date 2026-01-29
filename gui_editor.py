@@ -657,7 +657,7 @@ EDITOR_TEMPLATE = """
                 const response = await fetch('/api/media/random');
                 const data = await response.json();
                 lastFetchedData = data;
-                if (data.backdrop_url) await loadBackground(data.backdrop_url);
+                if (data.backdrop_url) await loadBackground(data.backdrop_url, true);
                 await previewTemplate(data);
                 indicator.innerText = "Source: " + data.source;
             } catch (err) { console.error(err); indicator.innerText = "Error loading preview"; }
@@ -982,7 +982,7 @@ EDITOR_TEMPLATE = """
             updateFadeControls();
         }
 
-        function loadBackground(url) {
+        function loadBackground(url, skipRender = false) {
             return new Promise((resolve) => {
                 const proxiedUrl = url.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(url)}` : url;
                 fabric.Image.fromURL(proxiedUrl, function(img, isError) {
@@ -995,7 +995,7 @@ EDITOR_TEMPLATE = """
                     img.scaleToWidth(targetWidth);
                     img.set({ left: canvas.width - targetWidth, top: 0 });
                 
-                    canvas.add(img); canvas.sendToBack(img); updateFades();
+                    canvas.add(img); canvas.sendToBack(img); updateFades(skipRender);
                     resolve();
                 }, { crossOrigin: 'anonymous' });
             });
@@ -1037,7 +1037,7 @@ EDITOR_TEMPLATE = """
             updateFades();
         }
 
-        function updateFades() {
+        function updateFades(skipRender = false) {
             if (!mainBg) return;
             const type = document.getElementById('fadeEffect').value;
             
@@ -1074,7 +1074,7 @@ EDITOR_TEMPLATE = """
             } else if (type === 'vignette') {
                 addVignette();
             }
-            canvas.requestRenderAll();
+            if (!skipRender) canvas.requestRenderAll();
         }
 
         function addCornerFade(pos) {
