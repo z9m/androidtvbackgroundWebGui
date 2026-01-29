@@ -584,7 +584,17 @@
             if (!anchor) { canvas.requestRenderAll(); return; }
 
             let current_y = anchor.top + anchor.getScaledHeight() + padding;
-            const elements = canvas.getObjects().filter(o => o.dataTag && o.dataTag !== 'title' && o.dataTag !== 'guide' && o.visible);
+            
+            const elements = canvas.getObjects().filter(o => {
+                if (o === mainBg) return false; // Explicitly exclude mainBg
+                if (o.dataTag === 'background') return false;
+                if (o.dataTag === 'title') return false;
+                if (o.dataTag === 'guide') return false;
+                if (o.dataTag === 'fade_effect') return false;
+                if (!o.dataTag) return false;
+                if (!o.visible) return false;
+                return true;
+            });
             const rows = groupElementsByRow(elements, rowThreshold);
 
             const anchorLeft = anchor.left;
@@ -662,6 +672,7 @@
                 }
                 if (t === mainBg) updateFades();
                 canvas.requestRenderAll();
+                saveToLocalStorage();
             });
 
             canvas.on('mouse:down', (e) => {
@@ -721,7 +732,10 @@
                 try {
                     clearGuides();
                     if (e.target && e.target.dataTag) {
-                        setTimeout(() => updateVerticalLayout(), 0);
+                        setTimeout(() => {
+                            updateVerticalLayout();
+                            saveToLocalStorage();
+                        }, 0);
                     }
                 } catch (err) { console.error("Error in mouse:up", err); }
             });
@@ -729,6 +743,11 @@
             canvas.on('selection:created', updateSelectionUI);
             canvas.on('selection:updated', updateSelectionUI);
             canvas.on('selection:cleared', updateSelectionUI);
+            
+            canvas.on('object:modified', saveToLocalStorage);
+            canvas.on('object:added', saveToLocalStorage);
+            canvas.on('object:removed', saveToLocalStorage);
+            canvas.on('text:changed', saveToLocalStorage);
             
             window.addEventListener('keydown', (e) => {
                 const active = canvas.getActiveObject();
@@ -747,10 +766,13 @@
                     active.setCoords();
                     canvas.requestRenderAll();
                     if (active === mainBg) updateFades();
+                    saveToLocalStorage();
                 }
             });
 
-            loadBackground("{{ data.backdrop_url }}");
+            if (!loadFromLocalStorage()) {
+                loadBackground("{{ data.backdrop_url }}");
+            }
             updateFadeControls();
         }
 
@@ -761,7 +783,7 @@
                     if (isError || !img) { resolve(); return; }
                     if (mainBg) canvas.remove(mainBg);
                     mainBg = img;
-                    img.set({ left: 0, top: 0, selectable: true });
+                    img.set({ left: 0, top: 0, selectable: true, dataTag: 'background' });
                 
                     const targetWidth = canvas.width * 0.70;
                     img.scaleToWidth(targetWidth);
@@ -769,6 +791,7 @@
                 
                     canvas.add(img); canvas.sendToBack(img); updateFades(skipRender);
                     resolve();
+                    saveToLocalStorage();
                 }, { crossOrigin: 'anonymous' });
             });
         }
@@ -812,9 +835,10 @@
         function updateFades(skipRender = false) {
             if (!mainBg) return;
             const type = document.getElementById('fadeEffect').value;
-            
-            Object.values(fades).forEach(obj => { if(obj) canvas.remove(obj); });
-            fades = { left: null, right: null, top: null, bottom: null, corner: null };
+
+            // Remove ALL existing fade effects from canvas to prevent stacking
+            canvas.getObjects().filter(o => o.dataTag === 'fade_effect').forEach(o => canvas.remove(o));
+            fades = {}; // Reset tracker
 
             const addLinear = (side) => {
                 const el = document.getElementById('fade' + side.charAt(0).toUpperCase() + side.slice(1));
@@ -876,7 +900,7 @@
                 colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }]
             });
 
-            fades.corner = new fabric.Rect({ left: rectLeft, top: rectTop, width: r, height: h, fill: grad, selectable: false, evented: false });
+            fades.corner = new fabric.Rect({ left: rectLeft, top: rectTop, width: r, height: h, fill: grad, selectable: false, evented: false, dataTag: 'fade_effect' });
             canvas.add(fades.corner);
             fades.corner.moveTo(canvas.getObjects().indexOf(mainBg) + 1);
         }
@@ -893,7 +917,7 @@
                 colorStops: [{ offset: 0, color: hexToRgba(bgColor, 0) }, { offset: 1, color: bgColor }]
             });
 
-            fades.corner = new fabric.Rect({ left: mainBg.left, top: mainBg.top, width: w, height: h, fill: grad, selectable: false, evented: false });
+            fades.corner = new fabric.Rect({ left: mainBg.left, top: mainBg.top, width: w, height: h, fill: grad, selectable: false, evented: false, dataTag: 'fade_effect' });
             canvas.add(fades.corner);
             fades.corner.moveTo(canvas.getObjects().indexOf(mainBg) + 1);
         }
@@ -908,7 +932,8 @@
             else if (type === 'bottom') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top + hImg - size; c = { x1: 0, y1: 1, x2: 0, y2: 0 }; }
             return new fabric.Rect({
                 left: x, top: y, width: w, height: h, selectable: false, evented: false,
-                fill: new fabric.Gradient({ type: 'linear', gradientUnits: 'percentage', coords: c, colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] })
+                fill: new fabric.Gradient({ type: 'linear', gradientUnits: 'percentage', coords: c, colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] }),
+                dataTag: 'fade_effect'
             });
         }
 
@@ -1144,6 +1169,10 @@
             };
 
             const resp = await fetch('/api/layouts/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, layout}) });
+            
+            // Filter out fade effects from the saved layout to prevent duplication on load
+            layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect');
+            
             if(!resp.ok) return alert("Error saving layout");
 
             const btn = document.querySelector('button[onclick="saveLayout()"]');
@@ -1253,6 +1282,83 @@
             if (!mainBg) return;
             mainBg.set('flipX', !mainBg.flipX);
             canvas.requestRenderAll();
+        }
+
+        function saveToLocalStorage() {
+            if (!canvas) return;
+            const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable']);
+            
+            // Filter out fade effects so they aren't saved as static objects
+            json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect');
+            
+            json.custom_effects = {
+                bgColor: document.getElementById('bgColor').value,
+                bgBrightness: document.getElementById('bgBrightness').value,
+                fadeEffect: document.getElementById('fadeEffect').value,
+                fadeRadius: document.getElementById('fadeRadius').value,
+                fadeLeft: document.getElementById('fadeLeft').value,
+                fadeRight: document.getElementById('fadeRight').value,
+                fadeTop: document.getElementById('fadeTop').value,
+                fadeBottom: document.getElementById('fadeBottom').value,
+                centerTags: document.getElementById('centerTagsToggle').checked,
+                genreLimit: document.getElementById('genreLimitSlider').value
+            };
+            json.lastFetchedData = lastFetchedData;
+            localStorage.setItem('autosave_layout', JSON.stringify(json));
+        }
+
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('autosave_layout');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    lastFetchedData = data.lastFetchedData || null;
+                    canvas.loadFromJSON(data, () => {
+                        canvas.renderAll();
+                        mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
+                        
+                        // Cleanup: Remove any existing fade effects (tagged or untagged ghosts)
+                        const ghosts = canvas.getObjects().filter(o => o.dataTag === 'fade_effect' || (o.type === 'rect' && !o.selectable && !o.evented));
+                        ghosts.forEach(g => canvas.remove(g));
+                        
+                        
+                        // Fallback: If no background tag found, assume the first large image is the background
+                        if (!mainBg && canvas.getObjects().length > 0) {
+                            const firstObj = canvas.item(0);
+                            if (firstObj && firstObj.type === 'image' && firstObj.width > 500) {
+                                mainBg = firstObj;
+                                mainBg.set('dataTag', 'background');
+                            }
+                        }
+                        
+                        if (data.custom_effects) {
+                            const eff = data.custom_effects;
+                            if(eff.bgColor) { document.getElementById('bgColor').value = eff.bgColor; canvas.setBackgroundColor(eff.bgColor, () => {}); }
+                            if(eff.bgBrightness) document.getElementById('bgBrightness').value = eff.bgBrightness;
+                            if(eff.fadeEffect) document.getElementById('fadeEffect').value = eff.fadeEffect;
+                            if(eff.fadeRadius) document.getElementById('fadeRadius').value = eff.fadeRadius;
+                            if(eff.fadeLeft) document.getElementById('fadeLeft').value = eff.fadeLeft;
+                            if(eff.fadeRight) document.getElementById('fadeRight').value = eff.fadeRight;
+                            if(eff.fadeTop) document.getElementById('fadeTop').value = eff.fadeTop;
+                            if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
+                            if(eff.centerTags !== undefined) document.getElementById('centerTagsToggle').checked = eff.centerTags;
+                            if(eff.limitGenres !== undefined) {
+                                const val = eff.limitGenres ? 2 : 6;
+                                document.getElementById('genreLimitSlider').value = val;
+                                document.getElementById('genreLimitVal').innerText = (val == 6) ? "Max" : val;
+                            }
+                            if(eff.genreLimit !== undefined) {
+                                document.getElementById('genreLimitSlider').value = eff.genreLimit;
+                                document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
+                            }
+                            updateFadeControls();
+                        }
+                        updateFades();
+                    });
+                    return true;
+                } catch(e) { console.error("Autosave load error", e); }
+            }
+            return false;
         }
         window.onload = init;
     </script>
