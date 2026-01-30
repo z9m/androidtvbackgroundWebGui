@@ -6,6 +6,7 @@ import requests
 import time
 import base64
 import shutil
+import re
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
 
 # --- IMPORT IMAGE ENGINE ---
@@ -131,6 +132,8 @@ def format_jellyfin_item(item, clean_url, api_key):
         "runtime": runtime_str,
         "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={api_key}",
         "logo_url": logo_url,
+        "officialRating": item.get('OfficialRating'),
+        "inheritedParentalRatingValue": item.get('InheritedParentalRatingValue'),
         "imdb_id": item.get('ProviderIds', {}).get('Imdb'),
         "source": "Jellyfin"
     }
@@ -158,7 +161,7 @@ def get_random_media():
             except Exception as e:
                 print(f"Error fetching libraries: {e}")
 
-        url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&SortBy=Random&Limit=50&Fields=Type,Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks,ImageTags,Path,ProviderIds"
+        url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&SortBy=Random&Limit=50&Fields=Type,Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks,ImageTags,Path,ProviderIds,OfficialRating,InheritedParentalRatingValue"
         
         try:
             r = requests.get(url, headers=headers, timeout=5)
@@ -214,7 +217,7 @@ def get_media_list():
                 print(f"Error fetching libraries: {e}")
 
         # Fetch all items sorted by name
-        base_params = "Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&Fields=Name,Path"
+        base_params = "Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&Fields=Name,Path,OfficialRating,InheritedParentalRatingValue"
         sort_params = "&SortBy=SortName"
         
         if filter_mode == 'recent':
@@ -230,7 +233,8 @@ def get_media_list():
             # but usually CommunityRating is the best proxy. We'll stick to CommunityRating for simplicity or custom filtering.
             sort_params = f"&SortBy=CommunityRating&SortOrder=Descending&MinCommunityRating={filter_val}"
         elif filter_mode == 'official_rating':
-            sort_params = f"&SortBy=SortName&OfficialRatings={filter_val}"
+            # We filter in python to be more flexible with formats (e.g. "6" vs "FSK 6" vs "DE-6")
+            pass
         elif filter_mode == 'custom':
             min_year = request.args.get('min_year')
             max_year = request.args.get('max_year')
@@ -269,6 +273,33 @@ def get_media_list():
             for item in items:
                 if excluded_paths and item.get('Path') and any(ex in item['Path'] for ex in excluded_paths):
                     continue
+                
+                if filter_mode == 'official_rating':
+                    f_val = str(filter_val).strip().lower()
+                    i_rating = item.get('InheritedParentalRatingValue')
+                    o_rating = str(item.get('OfficialRating', '') or '').lower()
+                    
+                    match = False
+                    # 1. Numeric Search (e.g. "6")
+                    if f_val.isdigit():
+                        # Check InheritedParentalRatingValue
+                        if i_rating is not None and int(i_rating) == int(f_val):
+                            match = True
+                        # Check OfficialRating for exact number (e.g. "FSK 6", "DE-6") using Regex
+                        # This finds "6" in "FSK 6" or "DE-6" but NOT in "16"
+                        elif f_val in re.findall(r'\d+', o_rating):
+                            match = True
+                    # 2. String Search (e.g. "FSK 6")
+                    else:
+                        # Normalize both to alphanumeric only
+                        f_norm = "".join(c for c in f_val if c.isalnum())
+                        o_norm = "".join(c for c in o_rating if c.isalnum())
+                        if f_norm and f_norm in o_norm:
+                            match = True
+                            
+                    if not match:
+                        continue
+
                 valid_items.append({"Id": item['Id'], "Name": item['Name']})
             
             return jsonify(valid_items)
@@ -277,6 +308,26 @@ def get_media_list():
             
     return jsonify([])
 
+@gui_editor_bp.route('/api/media/search')
+def search_media():
+    query = request.args.get('q')
+    if not query: return jsonify([])
+    
+    config = load_config()
+    jf = config.get('jellyfin', {})
+    if not jf.get('url') or not jf.get('api_key'): return jsonify([])
+    
+    headers = {"X-Emby-Token": jf['api_key']}
+    clean_url = jf['url'].rstrip('/')
+    url = f"{clean_url}/Users/{jf['user_id']}/Items?Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&SearchTerm={query}&Limit=10&Fields=Name,ProductionYear"
+    
+    try:
+        r = requests.get(url, headers=headers, timeout=5)
+        r.raise_for_status()
+        return jsonify(r.json().get('Items', []))
+    except:
+        return jsonify([])
+
 @gui_editor_bp.route('/api/media/item/<item_id>')
 def get_media_item(item_id):
     config = load_config()
@@ -284,7 +335,7 @@ def get_media_item(item_id):
     if jf.get('url') and jf.get('api_key'):
         headers = {"X-Emby-Token": jf['api_key']}
         clean_url = jf['url'].rstrip('/')
-        url = f"{clean_url}/Users/{jf['user_id']}/Items/{item_id}?Fields=Type,Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks,ImageTags,Path,ProviderIds"
+        url = f"{clean_url}/Users/{jf['user_id']}/Items/{item_id}?Fields=Type,Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks,ImageTags,Path,ProviderIds,OfficialRating,InheritedParentalRatingValue"
         try:
             r = requests.get(url, headers=headers, timeout=5)
             r.raise_for_status()
@@ -320,6 +371,11 @@ def save_layout():
     path = os.path.join(LAYOUTS_DIR, f"{safe_name}.json")
     with open(path, 'w') as f:
         json.dump(layout, f)
+    
+    # Clear existing previews for this layout to avoid mixing old and new images
+    preview_dir_path = os.path.join(LAYOUT_PREVIEWS_DIR, safe_name)
+    if os.path.exists(preview_dir_path):
+        shutil.rmtree(preview_dir_path)
     
     # Save Preview Image (Thumbnail)
     if preview_image:
@@ -358,7 +414,6 @@ def delete_layout(name):
     json_path = os.path.join(LAYOUTS_DIR, f"{safe_name}.json")
     preview_path = os.path.join(LAYOUT_PREVIEWS_DIR, f"{safe_name}.jpg")
     preview_dir_path = os.path.join(LAYOUT_PREVIEWS_DIR, safe_name)
-    img_dir_path = os.path.join(os.path.dirname(__file__), "editor_backgrounds", safe_name)
 
     try:
         if os.path.exists(json_path):
@@ -367,8 +422,6 @@ def delete_layout(name):
             os.remove(preview_path)
         if os.path.exists(preview_dir_path):
             shutil.rmtree(preview_dir_path)
-        if os.path.exists(img_dir_path):
-            shutil.rmtree(img_dir_path)
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -417,6 +470,7 @@ def save_editor_image():
     canvas_json = data.get('canvas_json')
     overwrite_filename = data.get('overwrite_filename')
     target_type = data.get('target_type', 'gallery')
+    organize_by_genre = data.get('organize_by_genre', False)
 
     if not image_data:
         return jsonify({"status": "error", "message": "No image data"}), 400
@@ -435,6 +489,14 @@ def save_editor_image():
     if not safe_layout: safe_layout = "Default"
     
     full_path = os.path.join(base_path, folder, safe_layout)
+    
+    # Genre Sorting Logic
+    if organize_by_genre and metadata and metadata.get('genres'):
+        # Get the first genre from the comma-separated list
+        first_genre = str(metadata.get('genres', '')).split(',')[0].strip()
+        safe_genre = "".join(c for c in first_genre if c.isalnum() or c in " ._-").strip()
+        if safe_genre:
+            full_path = os.path.join(full_path, safe_genre)
     
     if not os.path.exists(full_path):
         os.makedirs(full_path)
