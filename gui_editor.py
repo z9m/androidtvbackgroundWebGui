@@ -27,8 +27,11 @@ KNOWN_DIRS = [
 ]
 
 LAYOUTS_DIR = 'layouts'
+LAYOUT_PREVIEWS_DIR = os.path.join(LAYOUTS_DIR, 'previews')
 if not os.path.exists(LAYOUTS_DIR):
     os.makedirs(LAYOUTS_DIR)
+if not os.path.exists(LAYOUT_PREVIEWS_DIR):
+    os.makedirs(LAYOUT_PREVIEWS_DIR)
 
 # --- CONFIGURATION LOGIC ---
 def load_config():
@@ -108,6 +111,29 @@ def generate_preview_server():
     # 3. Return Image
     return send_file(engine.get_bytes(), mimetype='image/jpeg')
 
+def format_jellyfin_item(item, clean_url, api_key):
+    # Check for Logo availability
+    has_logo = 'Logo' in item.get('ImageTags', {})
+    logo_url = f"{clean_url}/Items/{item['Id']}/Images/Logo?api_key={api_key}" if has_logo else None
+
+    # Convert Ticks to Runtime
+    ticks = item.get('RunTimeTicks', 0)
+    minutes = (ticks // 600000000) if ticks else 0
+    h, m = divmod(minutes, 60)
+    runtime_str = f"{h}h {m}min" if h > 0 else f"{m}min"
+
+    return {
+        "title": item.get('Name'),
+        "year": item.get('ProductionYear', 'N/A'),
+        "rating": item.get('CommunityRating', 'N/A'),
+        "overview": item.get('Overview', ''),
+        "genres": ", ".join(item.get('Genres', [])),
+        "runtime": runtime_str,
+        "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={api_key}",
+        "logo_url": logo_url,
+        "imdb_id": item.get('ProviderIds', {}).get('Imdb'),
+        "source": "Jellyfin"
+    }
 
 @gui_editor_bp.route('/api/media/random')
 def get_random_media():
@@ -149,29 +175,7 @@ def get_random_media():
             
             if valid_items:
                 item = random.choice(valid_items)
-                
-                # Check for Logo availability
-                has_logo = 'Logo' in item.get('ImageTags', {})
-                logo_url = f"{clean_url}/Items/{item['Id']}/Images/Logo?api_key={jf['api_key']}" if has_logo else None
-
-                # Convert Ticks to Runtime
-                ticks = item.get('RunTimeTicks', 0)
-                minutes = (ticks // 600000000) if ticks else 0
-                h, m = divmod(minutes, 60)
-                runtime_str = f"{h}h {m}min" if h > 0 else f"{m}min"
-
-                return jsonify({
-                    "title": item.get('Name'),
-                    "year": item.get('ProductionYear', 'N/A'),
-                    "rating": item.get('CommunityRating', 'N/A'),
-                    "overview": item.get('Overview', ''),
-                    "genres": ", ".join(item.get('Genres', [])),
-                    "runtime": runtime_str,
-                    "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={jf['api_key']}",
-                    "logo_url": logo_url,
-                    "imdb_id": item.get('ProviderIds', {}).get('Imdb'),
-                    "source": "Jellyfin"
-                })
+                return jsonify(format_jellyfin_item(item, clean_url, jf['api_key']))
         except Exception as e:
             print(f"DEBUG: Jellyfin Error: {e}")
 
@@ -183,6 +187,111 @@ def get_random_media():
     sample = random.choice(mock_samples)
     sample["source"] = "Demo Mode"
     return jsonify(sample)
+
+@gui_editor_bp.route('/api/media/list')
+def get_media_list():
+    config = load_config()
+    filter_mode = request.args.get('mode', 'all')
+    filter_val = request.args.get('val', '')
+    jf = config.get('jellyfin', {})
+    excluded_libs = jf.get('excluded_libraries', "")
+    excluded_list = [x.strip() for x in excluded_libs.split(',') if x.strip()]
+
+    if jf.get('url') and jf.get('api_key'):
+        headers = {"X-Emby-Token": jf['api_key']}
+        clean_url = jf['url'].rstrip('/')
+        
+        excluded_paths = []
+        if excluded_list:
+            try:
+                r_libs = requests.get(f"{clean_url}/Library/VirtualFolders", headers=headers, timeout=5)
+                if r_libs.status_code == 200:
+                    libs = r_libs.json()
+                    for lib in libs:
+                        if lib.get('Name') in excluded_list:
+                            excluded_paths.extend(lib.get('Locations', []))
+            except Exception as e:
+                print(f"Error fetching libraries: {e}")
+
+        # Fetch all items sorted by name
+        base_params = "Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&Fields=Name,Path"
+        sort_params = "&SortBy=SortName"
+        
+        if filter_mode == 'recent':
+            sort_params = "&SortBy=DateCreated&SortOrder=Descending"
+        elif filter_mode == 'year':
+            sort_params = f"&SortBy=SortName&Years={filter_val}"
+        elif filter_mode == 'genre':
+            sort_params = f"&SortBy=SortName&Genres={filter_val}"
+        elif filter_mode == 'rating':
+            sort_params = f"&SortBy=CommunityRating&SortOrder=Descending&MinCommunityRating={filter_val}"
+        elif filter_mode == 'imdb':
+            # Jellyfin doesn't always allow sorting by ProviderIds directly in simple queries easily, 
+            # but usually CommunityRating is the best proxy. We'll stick to CommunityRating for simplicity or custom filtering.
+            sort_params = f"&SortBy=CommunityRating&SortOrder=Descending&MinCommunityRating={filter_val}"
+        elif filter_mode == 'official_rating':
+            sort_params = f"&SortBy=SortName&OfficialRatings={filter_val}"
+        elif filter_mode == 'custom':
+            min_year = request.args.get('min_year')
+            max_year = request.args.get('max_year')
+            min_rating = request.args.get('min_rating')
+            genre = request.args.get('genre')
+            
+            c_params = []
+            if min_year or max_year:
+                try:
+                    current_year = time.localtime().tm_year
+                    start = int(min_year) if min_year else 1900
+                    end = int(max_year) if max_year else current_year
+                    if start > end: start, end = end, start
+                    # Jellyfin expects comma separated years for the Years parameter
+                    years_str = ",".join(str(y) for y in range(start, end + 1))
+                    c_params.append(f"Years={years_str}")
+                except: pass
+            
+            if min_rating:
+                c_params.append(f"MinCommunityRating={min_rating}")
+            if genre:
+                c_params.append(f"Genres={genre}")
+            
+            sort_params = "&SortBy=SortName"
+            if c_params:
+                sort_params += "&" + "&".join(c_params)
+
+        url = f"{clean_url}/Users/{jf['user_id']}/Items?{base_params}{sort_params}"
+
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            items = r.json().get('Items', [])
+            
+            valid_items = []
+            for item in items:
+                if excluded_paths and item.get('Path') and any(ex in item['Path'] for ex in excluded_paths):
+                    continue
+                valid_items.append({"Id": item['Id'], "Name": item['Name']})
+            
+            return jsonify(valid_items)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+            
+    return jsonify([])
+
+@gui_editor_bp.route('/api/media/item/<item_id>')
+def get_media_item(item_id):
+    config = load_config()
+    jf = config.get('jellyfin', {})
+    if jf.get('url') and jf.get('api_key'):
+        headers = {"X-Emby-Token": jf['api_key']}
+        clean_url = jf['url'].rstrip('/')
+        url = f"{clean_url}/Users/{jf['user_id']}/Items/{item_id}?Fields=Type,Overview,Genres,CommunityRating,ProductionYear,RunTimeTicks,ImageTags,Path,ProviderIds"
+        try:
+            r = requests.get(url, headers=headers, timeout=5)
+            r.raise_for_status()
+            return jsonify(format_jellyfin_item(r.json(), clean_url, jf['api_key']))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "Jellyfin not configured"}), 400
 
 @gui_editor_bp.route('/api/settings', methods=['POST'])
 def update_settings():
@@ -201,6 +310,7 @@ def save_layout():
     data = request.json
     name = data.get('name')
     layout = data.get('layout')
+    preview_image = data.get('preview_image')
     if not name or not layout:
         return jsonify({"status": "error", "message": "Missing name or layout data"}), 400
     
@@ -210,6 +320,18 @@ def save_layout():
     path = os.path.join(LAYOUTS_DIR, f"{safe_name}.json")
     with open(path, 'w') as f:
         json.dump(layout, f)
+    
+    # Save Preview Image (Thumbnail)
+    if preview_image:
+        if ',' in preview_image:
+            preview_image = preview_image.split(',')[1]
+        try:
+            preview_path = os.path.join(LAYOUT_PREVIEWS_DIR, f"{safe_name}.jpg")
+            with open(preview_path, "wb") as f:
+                f.write(base64.b64decode(preview_image))
+        except Exception as e:
+            print(f"Error saving layout preview: {e}")
+            
     return jsonify({"status": "success"})
 
 @gui_editor_bp.route('/api/layouts/load/<name>')
@@ -221,6 +343,12 @@ def load_layout(name):
             return jsonify(json.load(f))
     return jsonify({"status": "error", "message": "Layout not found"}), 404
 
+@gui_editor_bp.route('/api/layouts/preview/<name>')
+def get_layout_preview(name):
+    safe_name = "".join(c for c in name if c.isalnum() or c in " ._-").strip()
+    filename = f"{safe_name}.jpg"
+    return send_from_directory(LAYOUT_PREVIEWS_DIR, filename)
+
 @gui_editor_bp.route('/api/layouts/delete/<name>', methods=['POST'])
 def delete_layout(name):
     safe_name = "".join(c for c in name if c.isalnum() or c in " ._-").strip()
@@ -228,13 +356,54 @@ def delete_layout(name):
         return jsonify({"status": "error", "message": "Invalid name"}), 400
 
     json_path = os.path.join(LAYOUTS_DIR, f"{safe_name}.json")
+    preview_path = os.path.join(LAYOUT_PREVIEWS_DIR, f"{safe_name}.jpg")
+    preview_dir_path = os.path.join(LAYOUT_PREVIEWS_DIR, safe_name)
     img_dir_path = os.path.join(os.path.dirname(__file__), "editor_backgrounds", safe_name)
 
     try:
         if os.path.exists(json_path):
             os.remove(json_path)
+        if os.path.exists(preview_path):
+            os.remove(preview_path)
+        if os.path.exists(preview_dir_path):
+            shutil.rmtree(preview_dir_path)
         if os.path.exists(img_dir_path):
             shutil.rmtree(img_dir_path)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@gui_editor_bp.route('/api/gallery/delete_all', methods=['POST'])
+def delete_all_gallery_images():
+    data = request.json
+    folder = data.get('folder')
+    if not folder:
+        return jsonify({"status": "error", "message": "Missing folder"}), 400
+
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    target_dir = None
+
+    if folder.startswith("Layout: "):
+        layout_name = folder.replace("Layout: ", "").strip()
+        safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
+        target_dir = os.path.join(base_path, "editor_backgrounds", safe_layout)
+    elif folder.startswith("LayoutPreview: "):
+        layout_name = folder.replace("LayoutPreview: ", "").strip()
+        safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
+        target_dir = os.path.join(base_path, "layouts", "previews", safe_layout)
+    elif folder == "Editor (Unsorted)":
+        target_dir = os.path.join(base_path, "editor_backgrounds")
+    elif folder in KNOWN_DIRS:
+        target_dir = os.path.join(base_path, folder)
+    
+    if not target_dir or not os.path.exists(target_dir):
+        return jsonify({"status": "error", "message": "Invalid or non-existent folder"}), 400
+
+    try:
+        for filename in os.listdir(target_dir):
+            file_path = os.path.join(target_dir, filename)
+            if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.jpeg', '.png', '.json')):
+                os.remove(file_path)
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -247,6 +416,7 @@ def save_editor_image():
     layout_name = data.get('layout_name', 'Default')
     canvas_json = data.get('canvas_json')
     overwrite_filename = data.get('overwrite_filename')
+    target_type = data.get('target_type', 'gallery')
 
     if not image_data:
         return jsonify({"status": "error", "message": "No image data"}), 400
@@ -254,7 +424,11 @@ def save_editor_image():
     if ',' in image_data:
         image_data = image_data.split(',')[1]
     
-    folder = "editor_backgrounds"
+    if target_type == 'layout_preview':
+        folder = os.path.join("layouts", "previews")
+    else:
+        folder = "editor_backgrounds"
+        
     base_path = os.path.dirname(os.path.abspath(__file__))
     
     safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
@@ -306,6 +480,10 @@ def get_gallery_image_data(folder, filename):
         layout_name = folder.replace("Layout: ", "").strip()
         safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
         target_dir = os.path.join(base_path, "editor_backgrounds", safe_layout)
+    elif folder.startswith("LayoutPreview: "):
+        layout_name = folder.replace("LayoutPreview: ", "").strip()
+        safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
+        target_dir = os.path.join(base_path, "layouts", "previews", safe_layout)
     elif folder == "Editor (Unsorted)":
         target_dir = os.path.join(base_path, "editor_backgrounds")
     elif folder in KNOWN_DIRS:
@@ -321,6 +499,11 @@ def get_gallery_image_data(folder, filename):
             return jsonify(json.load(f))
     
     return jsonify({"status": "error", "message": "No layout data found for this image"}), 404
+
+@gui_editor_bp.route('/api/certification/<path:filename>')
+def get_certification_image(filename):
+    cert_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'certification')
+    return send_from_directory(cert_dir, filename)
 
 @gui_editor_bp.route('/get_local_background')
 def get_local_background():
@@ -354,6 +537,17 @@ def list_gallery_images():
                             images = [f for f in os.listdir(sub_path) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
                             if images: gallery[f"Layout: {subdir}"] = sorted(images)
                 except: pass
+            elif folder == "layouts":
+                # Scan previews subdirectory
+                previews_dir = os.path.join(folder_path, "previews")
+                if os.path.exists(previews_dir):
+                    try:
+                        subdirs = [d for d in os.listdir(previews_dir) if os.path.isdir(os.path.join(previews_dir, d))]
+                        for subdir in subdirs:
+                            sub_path = os.path.join(previews_dir, subdir)
+                            images = [f for f in os.listdir(sub_path) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                            if images: gallery[f"LayoutPreview: {subdir}"] = sorted(images)
+                    except: pass
             elif folder != "layouts":
                 images = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
                 if images:
@@ -369,6 +563,11 @@ def get_gallery_image(folder, filename):
         layout_name = folder.replace("Layout: ", "").strip()
         safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
         return send_from_directory(os.path.join(base_path, "editor_backgrounds", safe_layout), filename)
+    
+    if folder.startswith("LayoutPreview: "):
+        layout_name = folder.replace("LayoutPreview: ", "").strip()
+        safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
+        return send_from_directory(os.path.join(base_path, "layouts", "previews", safe_layout), filename)
     
     if folder == "Editor (Unsorted)":
         return send_from_directory(os.path.join(base_path, "editor_backgrounds"), filename)

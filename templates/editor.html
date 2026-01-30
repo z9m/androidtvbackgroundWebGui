@@ -28,14 +28,13 @@
         canvas { width: 100% !important; height: 100% !important; }
         #settings-tab { padding: 40px; overflow-y: auto; flex-direction: column; align-items: center;}
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; width: 100%; max-width: 1000px; }
-        .gallery-container { padding: 20px; width: 100%; overflow-y: auto; }
-        .gallery-section { margin-bottom: 40px; }
-        .gallery-section h2 { color: #eee; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; font-size: 18px; }
-        .gallery-horizontal { display: flex; overflow-x: auto; gap: 15px; padding-bottom: 15px; scrollbar-width: thin; scrollbar-color: var(--primary) #222; }
-        .gallery-horizontal::-webkit-scrollbar { height: 8px; }
-        .gallery-horizontal::-webkit-scrollbar-track { background: #222; }
-        .gallery-horizontal::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
-        .gallery-item { position: relative; height: 20vh; aspect-ratio: 16/9; overflow: hidden; border-radius: 4px; border: 1px solid #333; cursor: pointer; transition: transform 0.2s; flex-shrink: 0; }
+        .gallery-container { padding: 0; width: 100%; overflow-y: auto; display: flex; flex-direction: column; }
+        .sub-nav-tabs { display: flex; background: #111; padding: 10px 20px; border-bottom: 1px solid #333; overflow-x: auto; gap: 10px; scrollbar-width: thin; position: sticky; top: 0; z-index: 20; }
+        .sub-tab-link { padding: 8px 15px; cursor: pointer; border-radius: 4px; font-size: 13px; background: #222; color: #aaa; border: 1px solid #333; white-space: nowrap; transition: all 0.2s; }
+        .sub-tab-link:hover { background: #333; }
+        .sub-tab-link.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; padding: 20px; }
+        .gallery-item { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 4px; border: 1px solid #333; cursor: pointer; transition: transform 0.2s; }
         .gallery-item:hover { transform: scale(1.05); z-index: 10; border-color: var(--primary); }
         .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
         .gallery-item .caption { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; padding: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -43,6 +42,13 @@
         .layout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .layout-previews { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
         .layout-previews img { height: 60px; border-radius: 4px; border: 1px solid #444; cursor: pointer; }
+        .console-log { background: #000; color: #0f0; font-family: monospace; padding: 10px; height: 200px; overflow-y: auto; border: 1px solid #333; border-radius: 4px; font-size: 12px; margin-top: 10px; white-space: pre-wrap; }
+        .progress-container { width: 100%; background-color: #333; border-radius: 4px; margin-top: 10px; height: 20px; overflow: hidden; }
+        .progress-bar { width: 0%; height: 100%; background-color: var(--primary); transition: width 0.3s; text-align: center; line-height: 20px; font-size: 11px; color: white; }
+        .batch-grid { display: grid; grid-template-columns: 300px 1fr; gap: 20px; height: 100%; }
+        #preview-popup { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; flex-direction:column; padding:40px; box-sizing:border-box; }
+        #preview-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:20px; width:100%; height:100%; overflow-y:auto; padding-right:10px; }
+        #preview-grid .gallery-item { height:auto; aspect-ratio:16/9; }
     </style>
 </head>
 <body>
@@ -51,6 +57,7 @@
         <div class="tab-link active" onclick="openTab(event, 'editor-tab')">🎨 Layout Editor</div>
         <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()">💾 Saved Layouts</div>
         <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()">🖼️ Gallery</div>
+        <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()">⚡ Batch Processing</div>
         <div class="tab-link" onclick="openTab(event, 'settings-tab')">⚙️ Provider Settings</div>
     </div>
 
@@ -101,6 +108,7 @@
                     <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
                     <button onclick="addMetadataTag('overview', 'Movie description...')">Overview</button>
                     <button onclick="addMetadataTag('provider_source', 'Now available on...')">Provider Info</button>
+                    <button onclick="addMetadataTag('certification', 'FSK 16')">Age Rating (Image)</button>
                 </div>
             </div>
 
@@ -250,6 +258,101 @@
         </div>
     </div>
 
+    <div id="batch-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px; align-items: flex-start;">
+            <div class="batch-grid" style="width: 100%; max-width: 1200px;">
+                <div class="sidebar" style="width: 100%; height: auto; border: 1px solid #333; border-radius: 8px;">
+                    <h3>Batch Configuration</h3>
+                    
+                    <label for="batchLayoutSelect">Select Layout</label>
+                    <select id="batchLayoutSelect"></select>
+                    
+                    <label for="batchMode">Source Mode</label>
+                    <select id="batchMode" onchange="toggleBatchInputs()">
+                        <option value="random">Random Selection</option>
+                        <option value="library">Full Library (Jellyfin)</option>
+                    </select>
+
+                    <div id="batchFilterSettings" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <label for="batchFilterMode">Filter Strategy</label>
+                        <select id="batchFilterMode" onchange="toggleBatchInputs()">
+                            <option value="all">None (All Items A-Z)</option>
+                            <option value="recent">Recently Added</option>
+                            <option value="year">By Year</option>
+                            <option value="genre">By Genre</option>
+                            <option value="rating">By Minimum Rating</option>
+                            <option value="official_rating">By Age Rating</option>
+                            <option value="custom">Custom (Advanced)</option>
+                        </select>
+
+                        <div id="filterInputYear" style="display:none;">
+                            <label>Year</label>
+                            <input type="number" id="batchFilterYear" placeholder="e.g. 2024" value="2024">
+                        </div>
+                        <div id="filterInputGenre" style="display:none;">
+                            <label>Genre</label>
+                            <input type="text" id="batchFilterGenre" placeholder="e.g. Action">
+                        </div>
+                        <div id="filterInputRating" style="display:none;">
+                            <label>Min Rating (0-10)</label>
+                            <input type="number" id="batchFilterRating" value="7.0" step="0.1" min="0" max="10">
+                        </div>
+                        <div id="filterInputOfficialRating" style="display:none;">
+                            <label>Age Rating (e.g. FSK 16, PG-13)</label>
+                            <input type="text" id="batchFilterOfficialRating" placeholder="e.g. FSK 16">
+                        </div>
+                        <div id="filterInputCustom" style="display:none;">
+                            <div style="display:flex; gap:10px; margin-bottom:5px;">
+                                <div style="flex:1;">
+                                    <label>Min Year</label>
+                                    <input type="number" id="batchFilterMinYear" placeholder="e.g. 2015">
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Max Year</label>
+                                    <input type="number" id="batchFilterMaxYear" placeholder="e.g. 2025">
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <div style="flex:1;">
+                                    <label>Min Rating</label>
+                                    <input type="number" id="batchFilterMinRating" step="0.1" min="0" max="10" placeholder="e.g. 6.0">
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Genre</label>
+                                    <input type="text" id="batchFilterCustomGenre" placeholder="e.g. Action">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="batchRandomSettings">
+                        <label for="batchCount">Number of Images</label>
+                        <input type="number" id="batchCount" value="10" min="1" max="100">
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                        <input type="checkbox" id="batchOverwrite" style="width:20px; height:20px; margin:0;" {% if config.general.overwrite_existing %}checked{% endif %}>
+                        <label for="batchOverwrite" style="margin:0; cursor:pointer;">Overwrite Existing</label>
+                    </div>
+
+                    <button id="btn-start-batch" onclick="startBatchProcess()" style="margin-top: 20px; background: #2e7d32;">▶ Start Batch</button>
+                    <button id="btn-stop-batch" onclick="stopBatchProcess()" style="margin-top: 10px; background: #c62828; display: none;">⏹ Stop</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div class="progress-container">
+                        <div id="batchProgressBar" class="progress-bar">0%</div>
+                    </div>
+                    <div id="batchLog" class="console-log">Ready to start...</div>
+                    <!-- Optional: Live Preview Image -->
+                    <div style="flex: 1; background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        <img id="batchPreviewImg" style="max-width: 100%; max-height: 400px; opacity: 0.5;" src="">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="layouts-tab" class="tab-content">
         <div class="gallery-container" id="layouts-content">
             <p style="color:#888; text-align:center; margin-top:50px;">Loading layouts...</p>
@@ -264,14 +367,6 @@
 
     <div id="settings-tab" class="tab-content">
         <div class="settings-grid">
-            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
-                <h3>General</h3>
-                <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
-                    <input type="checkbox" id="set-gen-overwrite" style="width:20px; height:20px; margin:0;" {% if config.general.overwrite_existing %}checked{% endif %}>
-                    <label for="set-gen-overwrite" style="margin:0; cursor:pointer;">Overwrite Existing Images</label>
-                </div>
-            </div>
-
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Jellyfin</h3>
                 <label for="set-jf-url">Server URL</label>
@@ -340,6 +435,14 @@
         <button id="lightbox-edit-btn" style="position:absolute; bottom:20px; right:20px; width:auto; padding:10px 20px; font-size:16px; background:#d32f2f; color:white; border:none; cursor:pointer; z-index:1001; border-radius:4px;">✏️ Edit</button>
     </div>
 
+    <div id="preview-popup">
+        <div style="display:flex; justify-content:space-between; width:100%; max-width:1600px; margin:0 auto 20px auto; color:white; align-items:center;">
+            <h2 style="margin:0; font-size:24px;">Generated Previews</h2>
+            <span onclick="closePreviewPopup()" style="font-size:40px; cursor:pointer; line-height:1;">&times;</span>
+        </div>
+        <div id="preview-grid" style="width:100%; max-width:1600px; margin:0 auto;"></div>
+    </div>
+
     <script>
         // --- GLOBAL FIXES ---
         (function() {
@@ -370,8 +473,8 @@
 
         let canvas, mainBg = null;
         let fades = { left: null, right: null, top: null, bottom: null, corner: null };
-        let scalingTimeout = null, lastFetchedData = null, lightboxImages = [], currentLightboxIndex = 0, loadedGalleryData = {};
-        let gridEnabled = false, movingObjects = [], snapLines = { v: [], h: [] }, guideLines = [], currentEditingFile = null;
+        let scalingTimeout = null, lastFetchedData = null, lightboxImages = [], currentLightboxIndex = 0, loadedGalleryData = {}, currentGalleryTab = null;
+        let gridEnabled = false, movingObjects = [], snapLines = { v: [], h: [] }, guideLines = [], currentEditingFile = null, isBatchRunning = false;
         const gridSize = 50;
 
         function updateSelectionUI(e) {
@@ -387,7 +490,7 @@
 
             if (!activeObj) return;
 
-            if (activeObj.type === 'image' && activeObj.dataTag === 'icon') {
+            if (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification')) {
                 if (iconPanel) {
                     iconPanel.style.display = 'block';
                     document.getElementById('iconSizeInput').value = Math.round(activeObj.getScaledHeight());
@@ -628,17 +731,42 @@
             canvas.requestRenderAll();
         }
 
+        function toggleBatchInputs() {
+            const mode = document.getElementById('batchMode').value;
+            const filterMode = document.getElementById('batchFilterMode').value;
+            
+            document.getElementById('batchRandomSettings').style.display = (mode === 'random') ? 'block' : 'none';
+            document.getElementById('batchFilterSettings').style.display = (mode === 'library') ? 'block' : 'none';
+            
+            // Filter Inputs
+            document.getElementById('filterInputYear').style.display = (mode === 'library' && filterMode === 'year') ? 'block' : 'none';
+            document.getElementById('filterInputGenre').style.display = (mode === 'library' && filterMode === 'genre') ? 'block' : 'none';
+            document.getElementById('filterInputRating').style.display = (mode === 'library' && (filterMode === 'rating' || filterMode === 'imdb')) ? 'block' : 'none';
+            document.getElementById('filterInputOfficialRating').style.display = (mode === 'library' && filterMode === 'official_rating') ? 'block' : 'none';
+            document.getElementById('filterInputCustom').style.display = (mode === 'library' && filterMode === 'custom') ? 'block' : 'none';
+            
+            // Update label for count based on context
+            const countLabel = document.querySelector('label[for="batchCount"]');
+            if (mode === 'library') countLabel.innerText = "Limit (Max Images)";
+            else countLabel.innerText = "Number of Images";
+        }
+
         async function fetchRandomPreview() {
+            await fetchMediaData(null);
+        }
+
+        async function fetchMediaData(itemId = null) {
             const btn = document.getElementById('btn-shuffle');
             const indicator = document.getElementById('source-indicator');
             
             btn.disabled = true;
             const originalText = btn.innerText;
-            btn.innerText = "⏳ Loading...";
-            indicator.innerText = "Fetching...";
+            if (!isBatchRunning) btn.innerText = "⏳ Loading...";
+            if (!isBatchRunning) indicator.innerText = "Fetching...";
             
             try {
-                const response = await fetch('/api/media/random');
+                const url = itemId ? `/api/media/item/${itemId}` : '/api/media/random';
+                const response = await fetch(url);
                 const data = await response.json();
                 lastFetchedData = data;
                 
@@ -677,7 +805,7 @@
                 await previewTemplate(data, true, newLogoImg);
                 saveToLocalStorage();
                 canvas.requestRenderAll();
-                indicator.innerText = "Source: " + data.source;
+                if (!isBatchRunning) indicator.innerText = "Source: " + data.source;
             } catch (err) { console.error(err); indicator.innerText = "Error loading preview"; }
             finally {
                 btn.disabled = false;
@@ -791,6 +919,29 @@
                                     val = `Now available on ${pName}`;
                                 }
                                 break;
+                            case 'certification':
+                                let cert = mediaData.officialRating || mediaData.certification || mediaData.OfficialRating;
+                                if (cert) {
+                                    const certUrl = getCertificationImageUrl(cert);
+                                    if (certUrl) {
+                                        const p = new Promise(r => {
+                                            const urlToLoad = certUrl.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(certUrl)}` : certUrl;
+                                            fabric.Image.fromURL(urlToLoad, function(img) {
+                                                if (!img) { r(); return; }
+                                                const targetHeight = obj.getScaledHeight(); 
+                                                img.scaleToHeight(targetHeight);
+                                                img.set({ left: obj.left, top: obj.top, dataTag: 'certification' });
+                                                if (obj.matchHeight) img.matchHeight = true;
+                                                canvas.remove(obj);
+                                                canvas.add(img);
+                                                r();
+                                            }, { crossOrigin: 'anonymous', dataTag: 'certification' });
+                                        });
+                                        promises.push(p);
+                                        return;
+                                    }
+                                }
+                                break;
                         }
                         if (val !== undefined && obj.dataTag !== 'overview') obj.set({ text: String(val) });
                     }
@@ -886,6 +1037,21 @@
                 }, { crossOrigin: 'anonymous' });
                 return;
             }
+
+            if (type === 'certification') {
+                const defaultUrl = '/api/certification/FSK_16.svg';
+                const urlToLoad = defaultUrl.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(defaultUrl)}` : defaultUrl;
+                fabric.Image.fromURL(urlToLoad, function(img, isError) {
+                    if(isError || !img) { console.error("Failed to load certification image"); return; }
+                    img.scaleToHeight(props.fontSize * 1.5);
+                    img.set({ left: props.left, top: props.top, dataTag: type });
+                    canvas.add(img);
+                    canvas.setActiveObject(img);
+                    if (lastFetchedData) previewTemplate(lastFetchedData);
+                    else canvas.requestRenderAll();
+                }, { crossOrigin: 'anonymous', dataTag: type });
+                return;
+            }
             
             if (type === 'rating') {
                 const logoUrl = 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/IMDB_Logo_2016.svg/1200px-IMDB_Logo_2016.svg.png';
@@ -932,6 +1098,31 @@
             }, { crossOrigin: 'anonymous', dataTag: 'icon' });
         }
         
+        function getCertificationImageUrl(rating) {
+            if (!rating) return null;
+            const r = String(rating).toUpperCase().replace('-', '').replace(' ', '');
+            // FSK
+            if (r === 'FSK0') return '/api/certification/FSK_0.svg';
+            if (r === 'FSK6') return '/api/certification/FSK_6.svg';
+            if (r === 'FSK12') return '/api/certification/FSK_12.svg';
+            if (r === 'FSK16') return '/api/certification/FSK_16.svg';
+            if (r === 'FSK18') return '/api/certification/FSK_18.svg';
+            // MPAA
+            if (r === 'G') return 'https://upload.wikimedia.org/wikipedia/commons/0/05/RATED_G.svg';
+            if (r === 'PG') return 'https://upload.wikimedia.org/wikipedia/commons/b/bc/RATED_PG.svg';
+            if (r === 'PG13') return 'https://upload.wikimedia.org/wikipedia/commons/c/c0/RATED_PG-13.svg';
+            if (r === 'R') return 'https://upload.wikimedia.org/wikipedia/commons/7/7e/RATED_R.svg';
+            if (r === 'NC17') return 'https://upload.wikimedia.org/wikipedia/commons/5/50/RATED_NC-17.svg';
+            // TV Ratings (US)
+            if (r === 'TVY') return 'https://upload.wikimedia.org/wikipedia/commons/2/25/TV-Y_icon.svg';
+            if (r === 'TVY7') return 'https://upload.wikimedia.org/wikipedia/commons/5/5a/TV-Y7_icon.svg';
+            if (r === 'TVG') return 'https://upload.wikimedia.org/wikipedia/commons/5/5e/TV-G_icon.svg';
+            if (r === 'TVPG') return 'https://upload.wikimedia.org/wikipedia/commons/9/9a/TV-PG_icon.svg';
+            if (r === 'TV14') return 'https://upload.wikimedia.org/wikipedia/commons/c/c3/TV-14_icon.svg';
+            if (r === 'TVMA') return 'https://upload.wikimedia.org/wikipedia/commons/3/34/TV-MA_icon.svg';
+            return null;
+        }
+
         function updateGenreLimit() {
             const val = document.getElementById('genreLimitSlider').value;
             document.getElementById('genreLimitVal').innerText = (val == 6) ? "Max" : val;
@@ -1437,11 +1628,33 @@
                 });
             });
         }
+
+        function setUIInteraction(enabled) {
+            const elements = document.querySelectorAll('button, input, select, textarea, .tab-link');
+            elements.forEach(el => {
+                if (el.classList.contains('tab-link')) {
+                    el.style.pointerEvents = enabled ? 'auto' : 'none';
+                    el.style.opacity = enabled ? '1' : '0.5';
+                } else {
+                    el.disabled = !enabled;
+                }
+            });
+            
+            // Disable canvas interaction
+            const canvasWrapper = document.getElementById('canvas-wrapper');
+            if (canvasWrapper) {
+                canvasWrapper.style.pointerEvents = enabled ? 'auto' : 'none';
+                canvasWrapper.style.opacity = enabled ? '1' : '0.8';
+            }
+            
+            if (enabled) updateSelectionUI();
+        }
+
         function openTab(evt, tabId) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active')); document.getElementById(tabId).classList.add('active'); evt.currentTarget.classList.add('active'); }
         async function saveSettings() {
             const config = {
                 general: {
-                    overwrite_existing: document.getElementById('set-gen-overwrite').checked
+                    overwrite_existing: document.getElementById('batchOverwrite').checked
                 },
                 jellyfin: {
                     url: document.getElementById('set-jf-url').value,
@@ -1517,7 +1730,14 @@
             const layoutKey = Object.keys(loadedGalleryData).find(k => loadedGalleryData[k] === lightboxImages);
             const imgSrc = `/api/gallery/image/${layoutKey}/${lightboxImages[index]}`;
             document.getElementById('lightbox-img').src = imgSrc;
-            document.getElementById('lightbox-edit-btn').onclick = () => editGalleryImage(layoutKey, lightboxImages[index]);
+            
+            const editBtn = document.getElementById('lightbox-edit-btn');
+            if (layoutKey && layoutKey.startsWith("LayoutPreview: ")) {
+                editBtn.style.display = 'none';
+            } else {
+                editBtn.style.display = 'block';
+                editBtn.onclick = () => editGalleryImage(layoutKey, lightboxImages[index]);
+            }
         }
 
         function changeLightboxImage(direction) {
@@ -1534,35 +1754,73 @@
             }
         }
 
+        function renderGalleryUI() {
+            const container = document.getElementById('gallery-content');
+            const folders = Object.keys(loadedGalleryData).filter(f => !f.startsWith("LayoutPreview: ")).sort();
+            const images = loadedGalleryData[currentGalleryTab] || [];
+            
+            let tabsHtml = '<div class="sub-nav-tabs" style="overflow: hidden; justify-content: space-between; align-items: center;">';
+            tabsHtml += '<div style="display: flex; gap: 10px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 5px; flex: 1; margin-right: 10px;">';
+            folders.forEach(folder => {
+                const activeClass = folder === currentGalleryTab ? 'active' : '';
+                const displayName = folder.replace('Layout: ', '');
+                tabsHtml += `<div class="sub-tab-link ${activeClass}" onclick="switchGalleryTab('${folder}')">${displayName}</div>`;
+            });
+            tabsHtml += '</div>';
+            
+            if (images.length > 0) {
+                tabsHtml += `<button onclick="deleteAllGalleryImages('${currentGalleryTab}')" style="background: #c62828; width: auto; padding: 6px 12px; font-size: 12px; border: 1px solid #ff5252; white-space: nowrap; flex-shrink: 0;">🗑️ Delete All</button>`;
+            }
+            tabsHtml += '</div>';
+
+            let imagesHtml = '<div class="gallery-grid">';
+            
+            if (images.length === 0) {
+                 imagesHtml += '<p style="grid-column: 1/-1; text-align:center; color:#666; margin-top: 20px;">No images in this folder.</p>';
+            } else {
+                images.forEach((img, index) => {
+                    const src = `/api/gallery/image/${currentGalleryTab}/${img}`;
+                    imagesHtml += `
+                        <div class="gallery-item">
+                            <img src="${src}" loading="lazy" onclick="openLightbox('${currentGalleryTab}', ${index})">
+                            <div class="caption">${img}</div>
+                            <button onclick="editGalleryImage('${currentGalleryTab}', '${img}')" style="position:absolute; top:5px; right:5px; width:auto; padding:4px 8px; font-size:12px; background:rgba(0,0,0,0.7); border:1px solid #fff; cursor:pointer; color:white;">✏️</button>
+                        </div>`;
+                });
+            }
+            imagesHtml += '</div>';
+            
+            container.innerHTML = tabsHtml + imagesHtml;
+        }
+
+        function switchGalleryTab(folder) {
+            currentGalleryTab = folder;
+            renderGalleryUI();
+        }
+
         async function loadGallery() {
             const container = document.getElementById('gallery-content');
-            container.innerHTML = '<p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>';
+            // container.innerHTML = '<p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>';
             
             try {
                 const resp = await fetch('/api/gallery/list');
                 const data = await resp.json();
                 loadedGalleryData = data;
+                const visibleFolders = Object.keys(data).filter(f => !f.startsWith("LayoutPreview: "));
                 
-                if (Object.keys(data).length === 0) {
+                if (visibleFolders.length === 0) {
                     container.innerHTML = '<p style="color:#888; text-align:center; margin-top:50px;">No generated images found.</p>';
                     return;
                 }
 
-                let html = '';
-                for (const [folder, images] of Object.entries(loadedGalleryData)) {
-                    html += `<div class="gallery-section"><h2>${folder}</h2><div class="gallery-horizontal">`;
-                    images.forEach((img, index) => {
-                        const src = `/api/gallery/image/${folder}/${img}`;
-                        html += `
-                            <div class="gallery-item">
-                                <img src="${src}" loading="lazy" onclick="openLightbox('${folder}', ${index})">
-                                <div class="caption">${img}</div>
-                                <button onclick="editGalleryImage('${folder}', '${img}')" style="position:absolute; top:5px; right:5px; width:auto; padding:4px 8px; font-size:12px; background:rgba(0,0,0,0.7); border:1px solid #fff; cursor:pointer; color:white;">✏️</button>
-                            </div>`;
-                    });
-                    html += `</div></div>`;
+                // Default tab selection
+                if (!currentGalleryTab || !data[currentGalleryTab] || currentGalleryTab.startsWith("LayoutPreview: ")) {
+                    const folders = visibleFolders.sort();
+                    if (data["Editor (Unsorted)"]) currentGalleryTab = "Editor (Unsorted)";
+                    else currentGalleryTab = folders[0];
                 }
-                container.innerHTML = html;
+
+                renderGalleryUI();
             } catch (e) {
                 console.error(e);
                 container.innerHTML = '<p style="color:red; text-align:center;">Error loading gallery.</p>';
@@ -1591,20 +1849,21 @@
             loadGallery();
         }
 
-        async function saveToGalleryInternal(layoutName, overwriteFilename = null) {
+        async function saveToGalleryInternal(layoutName, overwriteFilename = null, targetType = 'gallery') {
             const dataURL = canvas.toDataURL({ format: 'jpeg', quality: 0.95 });
             const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
             
-            const payload = { image: dataURL, layout_name: layoutName, canvas_json: json, overwrite_filename: overwriteFilename };
+            const payload = { image: dataURL, layout_name: layoutName, canvas_json: json, overwrite_filename: overwriteFilename, target_type: targetType };
             
             if (lastFetchedData) {
                 payload.metadata = { title: lastFetchedData.title, year: lastFetchedData.year, imdb_id: lastFetchedData.imdb_id };
             }
-            await fetch('/api/save_image', {
+            const resp = await fetch('/api/save_image', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
             });
+            return await resp.json();
         }
 
         async function editGalleryImage(folder, filename) {
@@ -1638,15 +1897,153 @@
             if (currentEditingFile.folder === `Layout: ${layoutName}`) {
                 overwrite = currentEditingFile.filename;
             }
+            // Note: Editing LayoutPreviews is not explicitly handled to overwrite in place, it will save to gallery by default or we can add logic.
             
             await saveToGalleryInternal(layoutName, overwrite);
             alert("Changes saved!");
             loadGallery();
         }
 
+        async function deleteAllGalleryImages(folder) {
+            if (!confirm(`⚠️ DANGER ⚠️\n\nAre you sure you want to delete ALL images in "${folder}"?\n\nThis action cannot be undone!`)) {
+                return;
+            }
+            
+            const resp = await fetch('/api/gallery/delete_all', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ folder: folder })
+            });
+            
+            if (resp.ok) {
+                loadGallery();
+            } else {
+                const err = await resp.json();
+                alert("Error: " + (err.message || "Unknown error"));
+            }
+        }
+
+        async function loadBatchLayouts() {
+            const select = document.getElementById('batchLayoutSelect');
+            const resp = await fetch('/api/layouts/list');
+            const layouts = await resp.json();
+            select.innerHTML = '';
+            layouts.forEach(l => {
+                const opt = document.createElement('option');
+                opt.value = l;
+                opt.innerText = l;
+                select.appendChild(opt);
+            });
+            // Select current layout if possible
+            const current = document.getElementById('layoutName').value;
+            if (layouts.includes(current)) select.value = current;
+        }
+
+        function logBatch(msg) {
+            const log = document.getElementById('batchLog');
+            const time = new Date().toLocaleTimeString();
+            log.innerText += `[${time}] ${msg}\n`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function stopBatchProcess() {
+            isBatchRunning = false;
+            logBatch("Stopping batch process...");
+            document.getElementById('btn-start-batch').style.display = 'block';
+            document.getElementById('btn-stop-batch').style.display = 'none';
+        }
+
+        async function startBatchProcess() {
+            if (isBatchRunning) return;
+            isBatchRunning = true;
+            
+            const layoutName = document.getElementById('batchLayoutSelect').value;
+            const mode = document.getElementById('batchMode').value;
+            const filterMode = document.getElementById('batchFilterMode').value;
+            const count = parseInt(document.getElementById('batchCount').value);
+            const delay = 1500; // Fixed generous delay for stability
+            const overwrite = document.getElementById('batchOverwrite').checked;
+            
+            document.getElementById('btn-start-batch').style.display = 'none';
+            document.getElementById('btn-stop-batch').style.display = 'block';
+            document.getElementById('batchLog').innerText = "";
+            
+            logBatch(`Starting batch for layout: "${layoutName}"`);
+            
+            let itemsToProcess = [];
+            if (mode === 'library') {
+                let qs = `?mode=${filterMode}`;
+                if (filterMode === 'year') qs += `&val=${document.getElementById('batchFilterYear').value}`;
+                if (filterMode === 'genre') qs += `&val=${document.getElementById('batchFilterGenre').value}`;
+                if (filterMode === 'rating') qs += `&val=${document.getElementById('batchFilterRating').value}`;
+                if (filterMode === 'official_rating') qs += `&val=${document.getElementById('batchFilterOfficialRating').value}`;
+                if (filterMode === 'custom') {
+                    qs += `&min_year=${document.getElementById('batchFilterMinYear').value}`;
+                    qs += `&max_year=${document.getElementById('batchFilterMaxYear').value}`;
+                    qs += `&min_rating=${document.getElementById('batchFilterMinRating').value}`;
+                    qs += `&genre=${document.getElementById('batchFilterCustomGenre').value}`;
+                }
+
+                logBatch(`Fetching library list (Filter: ${filterMode})...`);
+                const resp = await fetch('/api/media/list' + qs);
+                const list = await resp.json();
+                if (list.error) { logBatch("Error: " + list.error); stopBatchProcess(); return; }
+                
+                itemsToProcess = list.map(i => ({id: i.Id, name: i.Name}));
+                logBatch(`Found ${itemsToProcess.length} matching items.`);
+                
+                // Limit to batch count
+                if (itemsToProcess.length > count) {
+                    itemsToProcess = itemsToProcess.slice(0, count);
+                    logBatch(`Limiting processing to first ${count} items.`);
+                }
+            } else {
+                logBatch(`Target: ${count} random images`);
+                itemsToProcess = Array(count).fill(null);
+            }
+
+            // 1. Load the selected layout first
+            await loadLayout(layoutName); // This loads it onto the main canvas
+            logBatch("Layout loaded successfully.");
+
+            const total = itemsToProcess.length;
+            for (let i = 0; i < total; i++) {
+                if (!isBatchRunning) break;
+                
+                const progress = Math.round(((i) / total) * 100);
+                document.getElementById('batchProgressBar').style.width = `${progress}%`;
+                document.getElementById('batchProgressBar').innerText = `${progress}%`;
+
+                const item = itemsToProcess[i];
+                const label = item ? item.name : `Random #${i+1}`;
+                logBatch(`Processing (${i+1}/${total}): ${label}`);
+                
+                await fetchMediaData(item ? item.id : null); 
+                await saveToGalleryInternal(layoutName, overwrite ? null : null); // Logic for overwrite is handled in backend if filename matches, but here we rely on title generation
+                
+                // Update preview image in batch tab
+                document.getElementById('batchPreviewImg').src = canvas.toDataURL({ format: 'jpeg', quality: 0.5 });
+
+                if (delay > 0) await new Promise(r => setTimeout(r, delay));
+            }
+
+            document.getElementById('batchProgressBar').style.width = `100%`;
+            document.getElementById('batchProgressBar').innerText = `100%`;
+            logBatch("Batch processing finished!");
+            stopBatchProcess();
+            loadGallery();
+        }
+
         async function saveLayout() {
             const name = document.getElementById('layoutName').value;
             if (!name) return alert("Please enter a layout name");
+            
+            const btn = document.querySelector('button[onclick="saveLayout()"]');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "Saving Layout...";
+            setUIInteraction(false);
+
             const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
             
             // Filter out fade effects and grid lines BEFORE saving
@@ -1665,26 +2062,60 @@
                 genreLimit: document.getElementById('genreLimitSlider').value
             };
 
-            const resp = await fetch('/api/layouts/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, layout}) });
-            
-            if(!resp.ok) return alert("Error saving layout");
+            // Generate Preview Thumbnail (smaller size)
+            const previewData = canvas.toDataURL({ format: 'jpeg', quality: 0.8, multiplier: 0.5 });
 
-            const btn = document.querySelector('button[onclick="saveLayout()"]');
-            const originalText = btn.innerText;
-            btn.disabled = true;
+            const resp = await fetch('/api/layouts/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, layout, preview_image: previewData}) });
+            if(!resp.ok) {
+                alert("Error saving layout");
+                btn.innerText = originalText;
+                btn.disabled = false;
+                setUIInteraction(true);
+                return;
+            }
 
+            // Generate 10 Previews
+            const generatedImages = [];
+            isBatchRunning = true; // Suppress UI updates in fetchRandomPreview
             try {
                 for(let i=0; i<10; i++) {
-                    btn.innerText = `Generating Previews (${i+1}/10)...`;
+                    btn.innerText = `Generating ${i+1}/10...`;
                     await fetchRandomPreview();
-                    await saveToGalleryInternal(name);
+                    const res = await saveToGalleryInternal(name, null, 'layout_preview');
+                    if(res && res.status === 'success') generatedImages.push(res.filename);
                 }
             } catch(e) { console.error(e); }
-            
-            btn.innerText = originalText;
-            btn.disabled = false;
-            alert("Layout saved and 10 example images generated!");
+            finally {
+                isBatchRunning = false;
+                btn.innerText = originalText;
+                btn.disabled = false;
+                setUIInteraction(true);
+            }
+
             loadLayoutsList();
+            await loadGallery(); // Refresh gallery data so lightbox works
+            showPreviewPopup(name, generatedImages);
+        }
+
+        function showPreviewPopup(layoutName, images) {
+            const grid = document.getElementById('preview-grid');
+            grid.innerHTML = '';
+            const layoutKey = `LayoutPreview: ${layoutName}`;
+            
+            images.forEach(img => {
+                const src = `/api/gallery/image/${encodeURIComponent(layoutKey)}/${encodeURIComponent(img)}`;
+                grid.innerHTML += `
+                    <div class="gallery-item">
+                        <img src="${src}" onclick="closePreviewPopup(); openLightbox('${layoutKey}', ${loadedGalleryData[layoutKey].indexOf(img)})">
+                        <div class="caption">${img}</div>
+                        <button onclick="closePreviewPopup(); editGalleryImage('${layoutKey}', '${img}')" style="position:absolute; top:5px; right:5px; width:auto; padding:4px 8px; font-size:12px; background:rgba(0,0,0,0.7); border:1px solid #fff; cursor:pointer; color:white;">✏️</button>
+                    </div>`;
+            });
+            document.getElementById('preview-popup').style.display = 'flex';
+        }
+
+        function closePreviewPopup() {
+            document.getElementById('preview-popup').style.display = 'none';
         }
 
         async function loadLayoutsList() {
@@ -1697,8 +2128,12 @@
 
             let html = '';
             layouts.forEach(l => {
-                const key = `Layout: ${l}`;
+                const key = `LayoutPreview: ${l}`;
                 let previews = '';
+                
+                // Layout Thumbnail URL (with timestamp to force refresh)
+                const thumbSrc = `/api/layouts/preview/${encodeURIComponent(l)}?t=${new Date().getTime()}`;
+
                 if (loadedGalleryData[key]) {
                     loadedGalleryData[key].slice(0, 10).forEach((img, index) => {
                         const src = `/api/gallery/image/${key}/${img}`;
@@ -1708,7 +2143,10 @@
 
                 html += `<div class="layout-card">
                     <div class="layout-header">
-                        <h3 style="margin:0; color:#fff; font-size:16px;">${l}</h3>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <img src="${thumbSrc}" style="height:40px; width:71px; object-fit:cover; border-radius:4px; border:1px solid #555;" onerror="this.style.display='none'">
+                            <h3 style="margin:0; color:#fff; font-size:16px;">${l}</h3>
+                        </div>
                         <div>
                             <button onclick="loadLayout('${l}')" style="width:auto; padding:5px 15px; font-size:12px;">📂 Load</button>
                             <button onclick="deleteLayout('${l}')" style="width:auto; padding:5px 15px; font-size:12px; background-color: #c62828; margin-left: 5px;">🗑️ Delete</button>
