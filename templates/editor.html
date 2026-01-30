@@ -61,10 +61,12 @@
                 <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;">💾 Save Changes</button>
                 <label>Layout Name</label>
                 <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default">
-                <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
-                    <input type="checkbox" id="centerTagsToggle" onchange="updateVerticalLayout()" style="width:20px; height:20px; margin:0;" checked>
-                    <label for="centerTagsToggle" style="margin:0; cursor:pointer; font-size:11px;">Auto-Center Tags</label>
-                </div>
+                <label>Tag Alignment</label>
+                <select id="tagAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
+                    <option value="left">Left</option>
+                    <option value="center" selected>Center</option>
+                    <option value="right">Right</option>
+                </select>
                 <div style="margin-top:5px;">
                     <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
                     <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
@@ -98,6 +100,7 @@
                     <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
                     <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
                     <button onclick="addMetadataTag('overview', 'Movie description...')">Overview</button>
+                    <button onclick="addMetadataTag('provider_source', 'Now available on...')">Provider Info</button>
                 </div>
             </div>
 
@@ -210,6 +213,25 @@
                         <button onclick="setTextAlignment('left')" style="flex:1;">Left</button>
                         <button onclick="setTextAlignment('center')" style="flex:1;">Center</button>
                         <button onclick="setTextAlignment('right')" style="flex:1;">Right</button>
+                    </div>
+                </div>
+                <div id="textBackgroundControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+                        <input type="checkbox" id="textBgEnable" onchange="toggleTextBackground()" style="width:20px; height:20px; margin:0;">
+                        <label for="textBgEnable" style="margin:0; cursor:pointer; font-size:11px;">Background Box</label>
+                    </div>
+                    <div id="textBgSettings" style="display:none;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+                            <input type="checkbox" id="textBgAuto" onchange="updateTextBackgroundSettings()" style="width:20px; height:20px; margin:0;">
+                            <label for="textBgAuto" style="margin:0; cursor:pointer; font-size:11px;">Auto-Color (Match BG)</label>
+                        </div>
+                        <label for="textBgColor">Box Color</label>
+                        <input type="color" id="textBgColor" oninput="updateTextBackgroundSettings()" style="height:35px;">
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            <label style="font-size:10px; margin:0;">Opacity</label>
+                            <span id="textBgOpacityVal" style="font-size:10px;">50%</span>
+                        </div>
+                        <input type="range" id="textBgOpacity" min="0" max="100" value="50" oninput="updateTextBackgroundSettings()" style="margin-top:2px;">
                     </div>
                 </div>
             </div>
@@ -329,6 +351,21 @@
                 },
                 configurable: true
             });
+
+            // Patch Textbox to render background covering padding
+            fabric.Textbox.prototype._renderBackground = function(ctx) {
+                if (!this.backgroundColor) return;
+                var dim = this._getNonTransformedDimensions();
+                ctx.fillStyle = this.backgroundColor;
+                const pad = this.padding || 0;
+                ctx.fillRect(
+                    -dim.x / 2 - pad,
+                    -dim.y / 2 - pad,
+                    dim.x + pad * 2,
+                    dim.y + pad * 2
+                );
+                this._removeShadow(ctx);
+            };
         })();
 
         let canvas, mainBg = null;
@@ -342,6 +379,7 @@
             const textPanel = document.getElementById('text-properties');
             const iconPanel = document.getElementById('icon-properties');
             const alignControl = document.getElementById('textAlignControl');
+            const bgControl = document.getElementById('textBackgroundControl');
             
             // Hide all initially
             textPanel.style.display = 'none';
@@ -370,8 +408,34 @@
                     document.getElementById('fontColorInput').value = "#" + color.toHex();
                 }
                 
-                if (activeObj.type === 'textbox') alignControl.style.display = 'block';
-                else alignControl.style.display = 'none';
+                if (activeObj.type === 'textbox') {
+                    alignControl.style.display = 'block';
+                    if (bgControl) {
+                        bgControl.style.display = 'block';
+                        const hasBg = !!activeObj.backgroundColor;
+                        document.getElementById('textBgEnable').checked = hasBg;
+                        document.getElementById('textBgSettings').style.display = hasBg ? 'block' : 'none';
+                        
+                        if (hasBg) {
+                            const c = new fabric.Color(activeObj.backgroundColor);
+                            const source = c.getSource();
+                            const isAuto = activeObj.autoBackgroundColor || false;
+                            document.getElementById('textBgAuto').checked = isAuto;
+                            document.getElementById('textBgColor').disabled = isAuto;
+                            
+                            if (source) {
+                                const hex = "#" + ((1 << 24) + (source[0] << 16) + (source[1] << 8) + source[2]).toString(16).slice(1);
+                                document.getElementById('textBgColor').value = hex;
+                                const opacity = Math.round(source[3] * 100);
+                                document.getElementById('textBgOpacity').value = opacity;
+                                document.getElementById('textBgOpacityVal').innerText = opacity + "%";
+                            }
+                        }
+                    }
+                } else {
+                    alignControl.style.display = 'none';
+                    if (bgControl) bgControl.style.display = 'none';
+                }
             }
         }
 
@@ -421,6 +485,7 @@
                     const fontName = document.getElementById('fontFamilySelect').value;
                     document.fonts.load(`10px "${fontName}"`).then(() => {
                         textObj.set("fontFamily", fontName); 
+                        if (textObj.type === 'i-text') textObj.set("text", textObj.text);
                         if(activeObj.type==='group') {
                             if (activeObj.dataTag === 'rating_star' || activeObj.dataTag === 'rating') {
                                 const imgObj = activeObj.getObjects().find(o => o.type === 'image');
@@ -449,6 +514,7 @@
                     if (obj.type === 'i-text' || obj.type === 'textbox') {
                         obj.set("fontFamily", fontName);
                         obj.set("fill", fontColor);
+                        if (obj.type === 'i-text') obj.set("text", obj.text);
                         obj.setCoords();
                     } else if (obj.type === 'group') {
                         const textObj = obj.getObjects().find(o => o.type === 'i-text');
@@ -483,6 +549,54 @@
                 canvas.requestRenderAll();
                 saveToLocalStorage();
             }
+        }
+
+        function toggleTextBackground() {
+            const activeObj = canvas.getActiveObject();
+            if (activeObj && activeObj.type === 'textbox') {
+                const enabled = document.getElementById('textBgEnable').checked;
+                document.getElementById('textBgSettings').style.display = enabled ? 'block' : 'none';
+                if (enabled) {
+                    activeObj.set('padding', 10);
+                    activeObj.setCoords();
+                    if (!activeObj.backgroundColor) {
+                        document.getElementById('textBgAuto').checked = true;
+                        document.getElementById('textBgOpacity').value = 50;
+                    }
+                    updateTextBackgroundSettings();
+                } else {
+                    activeObj.set('backgroundColor', '');
+                    activeObj.set('padding', 0);
+                    activeObj.setCoords();
+                    activeObj.autoBackgroundColor = false;
+                    canvas.requestRenderAll();
+                    saveToLocalStorage();
+                }
+            }
+        }
+
+        function updateTextBackgroundSettings() {
+            const activeObj = canvas.getActiveObject();
+            if (!activeObj || activeObj.type !== 'textbox') return;
+            
+            const isAuto = document.getElementById('textBgAuto').checked;
+            const opacity = parseInt(document.getElementById('textBgOpacity').value) / 100;
+            document.getElementById('textBgOpacityVal').innerText = Math.round(opacity * 100) + "%";
+            document.getElementById('textBgColor').disabled = isAuto;
+            activeObj.autoBackgroundColor = isAuto;
+            
+            let r, g, b;
+            if (isAuto) {
+                const rgb = new fabric.Color(document.getElementById('bgColor').value).getSource();
+                r = rgb[0]; g = rgb[1]; b = rgb[2];
+                document.getElementById('textBgColor').value = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+            } else {
+                const hex = document.getElementById('textBgColor').value;
+                r = parseInt(hex.slice(1, 3), 16); g = parseInt(hex.slice(3, 5), 16); b = parseInt(hex.slice(5, 7), 16);
+            }
+            activeObj.set('backgroundColor', `rgba(${r}, ${g}, ${b}, ${opacity})`);
+            canvas.requestRenderAll();
+            saveToLocalStorage();
         }
 
         function updateSelectedColor() {
@@ -668,6 +782,15 @@
                                     obj.set('visible', true);
                                 }
                                 break;
+                            case 'provider_source':
+                                const src = (mediaData.source || "").toLowerCase();
+                                if (src === 'radarr' || src === 'sonarr') {
+                                    val = "Available soon...";
+                                } else if (src) {
+                                    const pName = src === 'tmdb' ? 'TMDB' : src.charAt(0).toUpperCase() + src.slice(1);
+                                    val = `Now available on ${pName}`;
+                                }
+                                break;
                         }
                         if (val !== undefined && obj.dataTag !== 'overview') obj.set({ text: String(val) });
                     }
@@ -840,7 +963,15 @@
             const hPadding = 20; // Horizontal spacing between tags
             const rowThreshold = 30; // How close elements must be to be considered in the same row
             const screenMargin = 50; // Minimum distance from screen edges
-            const centerTags = document.getElementById('centerTagsToggle').checked;
+            const alignment = document.getElementById('tagAlignSelect').value;
+
+            // Sync text alignment for overview based on layout alignment
+            canvas.getObjects().forEach(o => {
+                if (o.dataTag === 'overview' && o.type === 'textbox') {
+                    o.set('textAlign', alignment);
+                }
+            });
+
             const anchor = canvas.getObjects().find(o => o.dataTag === 'title');
             if (!anchor) { canvas.requestRenderAll(); return; }
 
@@ -872,7 +1003,7 @@
             });
             const rows = groupElementsByRow(elements, rowThreshold);
 
-            if (centerTags && rows.length > 0) {
+            if (rows.length > 0) {
                 let maxRowWidth = 0;
                 rows.forEach(row => {
                     let w = 0;
@@ -884,10 +1015,19 @@
                 });
 
                 const anchorW = anchor.getScaledWidth();
-                const idealStart = anchor.left + (anchorW - maxRowWidth) / 2;
                 let shift = 0;
-                if (idealStart < screenMargin) shift = screenMargin - idealStart;
-                else if (idealStart + maxRowWidth > canvas.width - screenMargin) shift = (canvas.width - screenMargin - maxRowWidth) - idealStart;
+
+                if (alignment === 'center') {
+                    const idealStart = anchor.left + (anchorW - maxRowWidth) / 2;
+                    if (idealStart < screenMargin) shift = screenMargin - idealStart;
+                    else if (idealStart + maxRowWidth > canvas.width - screenMargin) shift = (canvas.width - screenMargin - maxRowWidth) - idealStart;
+                } else if (alignment === 'right') {
+                    const idealStart = (anchor.left + anchorW) - maxRowWidth;
+                    if (idealStart < screenMargin) shift = screenMargin - idealStart;
+                } else { // left
+                    const idealStart = anchor.left;
+                    if (idealStart + maxRowWidth > canvas.width - screenMargin) shift = (canvas.width - screenMargin - maxRowWidth) - idealStart;
+                }
 
                 if (shift !== 0) { anchor.set('left', anchor.left + shift); anchor.setCoords(); }
             }
@@ -922,7 +1062,14 @@
                 });
 
                 // Determine starting X: Center relative to logo (even if wider), else align left
-                let current_x = centerTags ? anchorLeft + (anchorWidth - totalRowWidth) / 2 : anchorLeft;
+                let current_x;
+                if (alignment === 'center') {
+                    current_x = anchorLeft + (anchorWidth - totalRowWidth) / 2;
+                } else if (alignment === 'right') {
+                    current_x = (anchorLeft + anchorWidth) - totalRowWidth;
+                } else {
+                    current_x = anchorLeft;
+                }
 
                 // Ensure tags don't go off-screen (apply margins)
                 if (current_x < screenMargin) current_x = screenMargin;
@@ -1271,8 +1418,19 @@
 
         function updateBgColor(skipRender = false) { 
             if(!canvas) return Promise.resolve(); 
+            
+            const bgColorHex = document.getElementById('bgColor').value;
+            canvas.getObjects().forEach(obj => {
+                if (obj.type === 'textbox' && obj.autoBackgroundColor && obj.backgroundColor) {
+                    const c = new fabric.Color(obj.backgroundColor);
+                    const currentOpacity = c.getSource()[3];
+                    const rgb = new fabric.Color(bgColorHex).getSource();
+                    obj.set('backgroundColor', `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${currentOpacity})`);
+                }
+            });
+
             return new Promise(resolve => {
-                canvas.setBackgroundColor(document.getElementById('bgColor').value, () => { 
+                canvas.setBackgroundColor(bgColorHex, () => { 
                     updateFades(true); 
                     if (!skipRender) canvas.requestRenderAll(); 
                     resolve();
@@ -1435,7 +1593,7 @@
 
         async function saveToGalleryInternal(layoutName, overwriteFilename = null) {
             const dataURL = canvas.toDataURL({ format: 'jpeg', quality: 0.95 });
-            const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight']);
+            const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
             
             const payload = { image: dataURL, layout_name: layoutName, canvas_json: json, overwrite_filename: overwriteFilename };
             
@@ -1489,7 +1647,7 @@
         async function saveLayout() {
             const name = document.getElementById('layoutName').value;
             if (!name) return alert("Please enter a layout name");
-            const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight']);
+            const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
             
             // Filter out fade effects and grid lines BEFORE saving
             layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line');
@@ -1503,7 +1661,7 @@
                 fadeRight: document.getElementById('fadeRight').value,
                 fadeTop: document.getElementById('fadeTop').value,
                 fadeBottom: document.getElementById('fadeBottom').value,
-                centerTags: document.getElementById('centerTagsToggle').checked,
+                tagAlignment: document.getElementById('tagAlignSelect').value,
                 genreLimit: document.getElementById('genreLimitSlider').value
             };
 
@@ -1581,7 +1739,8 @@
                     if(eff.fadeRight) document.getElementById('fadeRight').value = eff.fadeRight;
                     if(eff.fadeTop) document.getElementById('fadeTop').value = eff.fadeTop;
                     if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
-                    if(eff.centerTags !== undefined) document.getElementById('centerTagsToggle').checked = eff.centerTags;
+                    if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
+                    else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
                     if(eff.limitGenres !== undefined) {
                         const val = eff.limitGenres ? 2 : 6;
                         document.getElementById('genreLimitSlider').value = val;
@@ -1622,8 +1781,7 @@
 
         function saveToLocalStorage() {
             if (!canvas) return;
-            const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight']);
-            
+            const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
             // Filter out fade effects so they aren't saved as static objects
             json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line');
             
@@ -1636,7 +1794,7 @@
                 fadeRight: document.getElementById('fadeRight').value,
                 fadeTop: document.getElementById('fadeTop').value,
                 fadeBottom: document.getElementById('fadeBottom').value,
-                centerTags: document.getElementById('centerTagsToggle').checked,
+                tagAlignment: document.getElementById('tagAlignSelect').value,
                 genreLimit: document.getElementById('genreLimitSlider').value
             };
             json.lastFetchedData = lastFetchedData;
@@ -1682,7 +1840,8 @@
                             if(eff.fadeRight) document.getElementById('fadeRight').value = eff.fadeRight;
                             if(eff.fadeTop) document.getElementById('fadeTop').value = eff.fadeTop;
                             if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
-                            if(eff.centerTags !== undefined) document.getElementById('centerTagsToggle').checked = eff.centerTags;
+                            if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
+                            else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
                             if(eff.limitGenres !== undefined) {
                                 const val = eff.limitGenres ? 2 : 6;
                                 document.getElementById('genreLimitSlider').value = val;
