@@ -7,6 +7,7 @@ import time
 import base64
 import shutil
 import re
+import uuid
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
 
 # --- IMPORT IMAGE ENGINE ---
@@ -29,10 +30,15 @@ KNOWN_DIRS = [
 
 LAYOUTS_DIR = 'layouts'
 LAYOUT_PREVIEWS_DIR = os.path.join(LAYOUTS_DIR, 'previews')
+OVERLAYS_DIR = 'overlays'
+OVERLAYS_JSON = 'overlays.json'
+
 if not os.path.exists(LAYOUTS_DIR):
     os.makedirs(LAYOUTS_DIR)
 if not os.path.exists(LAYOUT_PREVIEWS_DIR):
     os.makedirs(LAYOUT_PREVIEWS_DIR)
+if not os.path.exists(OVERLAYS_DIR):
+    os.makedirs(OVERLAYS_DIR)
 
 # --- CONFIGURATION LOGIC ---
 def load_config():
@@ -355,6 +361,80 @@ def list_layouts():
     if os.path.exists(LAYOUTS_DIR):
         layouts = [f.replace('.json', '') for f in os.listdir(LAYOUTS_DIR) if f.endswith('.json')]
     return jsonify(sorted(layouts))
+
+@gui_editor_bp.route('/api/overlays/list')
+def list_overlays():
+    if os.path.exists(OVERLAYS_JSON):
+        with open(OVERLAYS_JSON, 'r') as f:
+            return jsonify(json.load(f))
+    return jsonify([])
+
+@gui_editor_bp.route('/api/overlays/add', methods=['POST'])
+def add_overlay():
+    name = request.form.get('name')
+    file_1080 = request.files.get('file_1080')
+    file_4k = request.files.get('file_4k')
+    
+    if not name:
+        return jsonify({"status": "error", "message": "Name required"}), 400
+
+    overlay_id = str(uuid.uuid4())
+    entry = {"id": overlay_id, "name": name, "file_1080": None, "file_4k": None}
+
+    if file_1080:
+        ext = os.path.splitext(file_1080.filename)[1]
+        fname = f"{overlay_id}_1080{ext}"
+        file_1080.save(os.path.join(OVERLAYS_DIR, fname))
+        entry["file_1080"] = fname
+        
+    if file_4k:
+        ext = os.path.splitext(file_4k.filename)[1]
+        fname = f"{overlay_id}_4k{ext}"
+        file_4k.save(os.path.join(OVERLAYS_DIR, fname))
+        entry["file_4k"] = fname
+        
+    overlays = []
+    if os.path.exists(OVERLAYS_JSON):
+        with open(OVERLAYS_JSON, 'r') as f:
+            try: overlays = json.load(f)
+            except: pass
+            
+    overlays.append(entry)
+    
+    with open(OVERLAYS_JSON, 'w') as f:
+        json.dump(overlays, f, indent=4)
+        
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/overlays/delete/<overlay_id>', methods=['POST'])
+def delete_overlay(overlay_id):
+    overlays = []
+    if os.path.exists(OVERLAYS_JSON):
+        with open(OVERLAYS_JSON, 'r') as f:
+            try: overlays = json.load(f)
+            except: pass
+            
+    new_overlays = []
+    for o in overlays:
+        if o['id'] == overlay_id:
+            # Delete files
+            if o.get('file_1080'):
+                p = os.path.join(OVERLAYS_DIR, o['file_1080'])
+                if os.path.exists(p): os.remove(p)
+            if o.get('file_4k'):
+                p = os.path.join(OVERLAYS_DIR, o['file_4k'])
+                if os.path.exists(p): os.remove(p)
+        else:
+            new_overlays.append(o)
+            
+    with open(OVERLAYS_JSON, 'w') as f:
+        json.dump(new_overlays, f, indent=4)
+        
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/overlays/image/<path:filename>')
+def get_overlay_image(filename):
+    return send_from_directory(OVERLAYS_DIR, filename)
 
 @gui_editor_bp.route('/api/layouts/save', methods=['POST'])
 def save_layout():

@@ -125,7 +125,15 @@ async function loadGallery() {
 
 function saveImage() { 
     const l = document.createElement('a'); 
+    
+    const overlay = canvas.getObjects().find(o => o.dataTag === 'guide_overlay');
+    const wasVisible = overlay ? overlay.visible : false;
+    if (overlay) overlay.visible = false;
+
     l.href = canvas.toDataURL({ format: 'jpeg', quality: 0.95 }); 
+    
+    if (overlay) overlay.visible = wasVisible;
+
     let fname = 'tv-background.jpg';
     if (lastFetchedData && lastFetchedData.title) {
         const safeTitle = lastFetchedData.title.replace(/[^a-z0-9\s\.\-_]/gi, '').trim();
@@ -149,7 +157,14 @@ async function saveToGallery() {
 }
 
 async function saveToGalleryInternal(layoutName, overwriteFilename = null, targetType = 'gallery', organizeByGenre = false) {
+    const overlay = canvas.getObjects().find(o => o.dataTag === 'guide_overlay');
+    const wasVisible = overlay ? overlay.visible : false;
+    if (overlay) overlay.visible = false;
+
     const dataURL = canvas.toDataURL({ format: 'jpeg', quality: 0.95 });
+    
+    if (overlay) overlay.visible = wasVisible;
+
     const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
     
     const payload = { 

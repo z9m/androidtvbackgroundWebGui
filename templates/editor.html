@@ -14,6 +14,7 @@
         <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()">💾 Saved Layouts</div>
         <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()">🖼️ Gallery</div>
         <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()">⚡ Batch Processing</div>
+        <div class="tab-link" onclick="openTab(event, 'overlay-tab')">📏 Overlay Manager</div>
         <div class="tab-link" onclick="openTab(event, 'settings-tab')">⚙️ Provider Settings</div>
     </div>
 
@@ -84,6 +85,10 @@
                 <select id="resSelect" onchange="changeResolution()">
                     <option value="1080">1080p (Full HD)</option>
                     <option value="2160">2160p (4K)</option>
+                </select>
+                <label for="overlaySelect">Guide Overlay</label>
+                <select id="overlaySelect" onchange="updateOverlay()">
+                    <option value="">None</option>
                 </select>
                 <label>Background Color</label>
                 <div style="display:flex; gap:5px; align-items:center;">
@@ -331,6 +336,26 @@
     <div id="gallery-tab" class="tab-content">
         <div class="gallery-container" id="gallery-content">
             <p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>
+        </div>
+    </div>
+
+    <div id="overlay-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px; align-items: flex-start;">
+            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
+                <h3>Overlay Manager</h3>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h4>Add New Overlay Profile</h4>
+                    <label>Profile Name</label>
+                    <input type="text" id="newOverlayName" placeholder="e.g. Google TV">
+                    <label>1080p Image (Optional)</label>
+                    <input type="file" id="newOverlay1080" accept="image/*">
+                    <label>4K Image (Optional)</label>
+                    <input type="file" id="newOverlay4K" accept="image/*">
+                    <button onclick="addOverlay()" style="margin-top: 15px; background-color: #4CAF50;">Save Profile</button>
+                </div>
+                <h4>Existing Profiles</h4>
+                <div id="overlayList"></div>
+            </div>
         </div>
     </div>
 

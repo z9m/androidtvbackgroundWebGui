@@ -43,6 +43,8 @@
 let canvas, mainBg = null;
 let fades = { left: null, right: null, top: null, bottom: null, corner: null };
 let scalingTimeout = null, lastFetchedData = null;
+let preferredLogoWidth = null;
+let overlayProfiles = [];
 let gridEnabled = false, movingObjects = [], snapLines = { v: [], h: [] }, guideLines = [], isBatchRunning = false;
 const gridSize = 50;
 const screenMargin = 50;
@@ -427,7 +429,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
 
             // If centered, the "visual block" includes the tags
             if (align === 'center') {
-                const tags = canvas.getObjects().filter(o => ['year', 'genres', 'runtime', 'rating_val', 'rating_star', 'certification'].includes(o.dataTag) && o.visible);
+                const tags = canvas.getObjects().filter(o => ['year', 'genres', 'runtime', 'rating_val', 'rating_star', 'certification', 'overview', 'provider_source'].includes(o.dataTag) && o.visible);
                 tags.forEach(t => {
                     if (t.left < boundsL) boundsL = t.left;
                     const r = t.left + t.getScaledWidth();
@@ -461,9 +463,41 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                     case 'title':
                         if (mediaData.logo_url && preloadedLogo) {
                             // Benutze das vorgeladene Logo sofort (synchron)
-                            const maxW = canvas.width * 0.55; 
-                            const maxH = canvas.height * 0.35; 
-                            const scale = Math.min(maxW / preloadedLogo.width, maxH / preloadedLogo.height) * 0.8;
+                            
+                            // --- START: New aggressive Smart-Resize Logic ---
+                            const baseMaxW = canvas.width * 0.55;
+                            const baseMaxH = canvas.height * 0.35;
+                            const ratio = preloadedLogo.width / preloadedLogo.height;
+                            let allowedHeight = baseMaxH;
+
+                            if (ratio < 0.65) {
+                                allowedHeight = baseMaxH * 0.50;
+                                console.log(`Logo-Type: EXTREMELY TALL (Ratio: ${ratio.toFixed(2)}). Height halved.`);
+                            } else if (ratio < 1.2) {
+                                allowedHeight = baseMaxH * 0.75;
+                                console.log(`Logo-Type: SQUARE/COMPACT (Ratio: ${ratio.toFixed(2)}). Height reduced.`);
+                            } else {
+                                console.log(`Logo-Type: WIDESCREEN (Ratio: ${ratio.toFixed(2)}). Full size.`);
+                            }
+
+                            let scale;
+                            
+                            if (preferredLogoWidth) {
+                                // Try to match the preferred width (restore state)
+                                scale = preferredLogoWidth / preloadedLogo.width;
+                                // Check if this width violates the height constraint (e.g. November case)
+                                if (preloadedLogo.height * scale > allowedHeight) {
+                                    scale = allowedHeight / preloadedLogo.height;
+                                    // Do NOT update preferredLogoWidth here, so we remember the wide preference
+                                } 
+                            } else {
+                                // No preference yet? Calculate default fit.
+                                scale = Math.min(baseMaxW / preloadedLogo.width, allowedHeight / preloadedLogo.height) * 0.9;
+                                // If this is a normal logo, save this as the preference
+                                if (ratio >= 0.65) preferredLogoWidth = preloadedLogo.width * scale;
+                            }
+
+                            // --- END ---
                             
                             const newLeft = getNewLogoLeft(obj, preloadedLogo.width, scale);
 
@@ -475,9 +509,40 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                                 const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(mediaData.logo_url)}`;
                                 fabric.Image.fromURL(proxiedLogo, function(img, isError) {
                                     if (isError || !img) { canvas.remove(obj); r(); return; }
-                                    const maxW = canvas.width * 0.55; 
-                                    const maxH = canvas.height * 0.35; 
-                                    const scale = Math.min(maxW / img.width, maxH / img.height) * 0.8;
+                                    
+                                    // --- START: New aggressive Smart-Resize Logic ---
+                                    const baseMaxW = canvas.width * 0.55;
+                                    const baseMaxH = canvas.height * 0.35;
+                                    const ratio = img.width / img.height;
+                                    let allowedHeight = baseMaxH;
+
+                                    if (ratio < 0.65) {
+                                        allowedHeight = baseMaxH * 0.50;
+                                        console.log(`Logo-Type: EXTREMELY TALL (Ratio: ${ratio.toFixed(2)}). Height halved.`);
+                                    } else if (ratio < 1.2) {
+                                        allowedHeight = baseMaxH * 0.75;
+                                        console.log(`Logo-Type: SQUARE/COMPACT (Ratio: ${ratio.toFixed(2)}). Height reduced.`);
+                                    } else {
+                                        console.log(`Logo-Type: WIDESCREEN (Ratio: ${ratio.toFixed(2)}). Full size.`);
+                                    }
+
+                                    let scale;
+                                    
+                                    if (preferredLogoWidth) {
+                                        // Try to match the preferred width (restore state)
+                                        scale = preferredLogoWidth / img.width;
+                                        // Check if this width violates the height constraint
+                                        if (img.height * scale > allowedHeight) {
+                                            scale = allowedHeight / img.height;
+                                            // Do NOT update preferredLogoWidth here
+                                        }
+                                    } else {
+                                        // No preference yet? Calculate default fit.
+                                        scale = Math.min(baseMaxW / img.width, allowedHeight / img.height) * 0.9;
+                                        // If this is a normal logo, save this as the preference
+                                        if (ratio >= 0.65) preferredLogoWidth = img.width * scale;
+                                    }
+                                    // --- END ---
                                     
                                     const newLeft = getNewLogoLeft(obj, img.width, scale);
 
@@ -740,7 +805,46 @@ function addLogo(url) {
     const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
     fabric.Image.fromURL(proxiedUrl, function(img) {
         if(!img) return;
-        img.scaleToWidth(100);
+        
+        // --- START: New aggressive Smart-Resize Logic ---
+
+        // 1. Define base limits (Standard for wide logos)
+        // Width: max 55% of canvas, Height: max 35% of canvas
+        const baseMaxW = canvas.width * 0.55;
+        const baseMaxH = canvas.height * 0.35;
+
+        // 2. Check aspect ratio
+        const ratio = img.width / img.height;
+        let allowedHeight = baseMaxH;
+
+        // 3. Case distinction (Adjust hardness here)
+        if (ratio < 0.65) {
+            // CASE: Extremely Tall (like "November")
+            // Allow only 50% of normal height, otherwise it looks huge.
+            allowedHeight = baseMaxH * 0.50;
+            console.log(`Logo-Type: EXTREMELY TALL (Ratio: ${ratio.toFixed(2)}). Height halved.`);
+        } 
+        else if (ratio < 1.2) {
+            // CASE: Square or compact
+            // Allow 75% of normal height.
+            allowedHeight = baseMaxH * 0.75;
+            console.log(`Logo-Type: SQUARE/COMPACT (Ratio: ${ratio.toFixed(2)}). Height reduced.`);
+        } 
+        else {
+            // CASE: Normal Wide Logo
+            // Can use full height.
+            console.log(`Logo-Type: WIDESCREEN (Ratio: ${ratio.toFixed(2)}). Full size.`);
+        }
+
+        // 4. Calculate final scale factor
+        // Image must fit in width (baseMaxW) AND new height (allowedHeight)
+        let scaleFactor = Math.min(baseMaxW / img.width, allowedHeight / img.height);
+
+        // Safety padding (optional 90%)
+        scaleFactor *= 0.9; 
+
+        img.scale(scaleFactor);
+
         const count = canvas.getObjects().length;
         const offset = count * 20;
         img.set({ left: 100 + offset, top: 100 + offset });
@@ -862,6 +966,7 @@ function updateVerticalLayout(skipRender = false) {
         if (o.dataTag === 'guide') return false;
         if (o.dataTag === 'fade_effect') return false;
         if (o.dataTag === 'grid_line') return false;
+        if (o.dataTag === 'guide_overlay') return false;
         if (!o.dataTag) return false;
         // if (!o.visible) return false; // Keep invisible objects to preserve order
         return true;
@@ -1012,6 +1117,7 @@ function drawGrid() {
     gridLines.forEach(o => canvas.sendToBack(o));
     fadeObjs.forEach(o => canvas.sendToBack(o));
     if (mainBg) canvas.sendToBack(mainBg);
+    enforceLayering();
 }
 
 function drawGuide(x1, y1, x2, y2) {
@@ -1035,6 +1141,9 @@ function init() {
         if (t instanceof fabric.Textbox) {
             t.set({ width: t.width * t.scaleX, fixedHeight: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
             if (t.dataTag === 'overview') { clearTimeout(scalingTimeout); scalingTimeout = setTimeout(() => applyTruncation(t, t.fullMediaText), 50); }
+        }
+        if (t.dataTag === 'title' && t.type === 'image') {
+            preferredLogoWidth = t.getScaledWidth();
         }
         if (t === mainBg) updateFades();
         canvas.requestRenderAll();
@@ -1128,6 +1237,7 @@ function init() {
     if (!loadFromLocalStorage()) {
         if (window.initialBackdropUrl) loadBackground(window.initialBackdropUrl);
     }
+    loadOverlayProfiles();
     updateFadeControls();
 }
 
@@ -1227,6 +1337,7 @@ function updateFades(skipRender = false) {
         addLinear('top');
         addLinear('bottom');
     }
+    enforceLayering();
     if (!skipRender) canvas.requestRenderAll();
 }
 
@@ -1298,6 +1409,140 @@ function createFadeRect(type, size) {
 function hexToRgba(hex, a) {
     let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${a === 0 ? 0.005 : a})`;
+}
+
+async function loadOverlayProfiles() {
+    try {
+        const resp = await fetch('/api/overlays/list');
+        overlayProfiles = await resp.json();
+        
+        // Populate Dropdown
+        const sel = document.getElementById('overlaySelect');
+        if (sel) {
+            const current = sel.value;
+            sel.innerHTML = '<option value="">None</option>';
+            overlayProfiles.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.innerText = p.name;
+                sel.appendChild(opt);
+            });
+            
+            if (window.restoredOverlayId) {
+                sel.value = window.restoredOverlayId;
+                updateOverlay();
+                window.restoredOverlayId = null;
+            } else {
+                sel.value = current;
+            }
+        }
+        
+        // Populate Manager List
+        const list = document.getElementById('overlayList');
+        if (list) {
+            let html = '<table style="width:100%; text-align:left; border-collapse: collapse;"><tr><th style="border-bottom:1px solid #555; padding:5px;">Name</th><th style="border-bottom:1px solid #555; padding:5px;">1080p</th><th style="border-bottom:1px solid #555; padding:5px;">4K</th><th style="border-bottom:1px solid #555; padding:5px;">Action</th></tr>';
+            overlayProfiles.forEach(p => {
+                html += `<tr>
+                    <td style="padding:5px;">${p.name}</td>
+                    <td style="padding:5px;">${p.file_1080 ? '✅' : '❌'}</td>
+                    <td style="padding:5px;">${p.file_4k ? '✅' : '❌'}</td>
+                    <td style="padding:5px;"><button onclick="deleteOverlay('${p.id}')" style="background:#c62828; padding:4px 8px; font-size:12px; border:none; color:white; cursor:pointer;">Delete</button></td>
+                </tr>`;
+            });
+            html += '</table>';
+            list.innerHTML = html;
+        }
+    } catch (e) { console.error("Error loading overlays", e); }
+}
+
+async function addOverlay() {
+    const name = document.getElementById('newOverlayName').value;
+    const f1080 = document.getElementById('newOverlay1080').files[0];
+    const f4k = document.getElementById('newOverlay4K').files[0];
+    
+    if (!name) return alert("Name is required");
+    
+    const formData = new FormData();
+    formData.append('name', name);
+    if (f1080) formData.append('file_1080', f1080);
+    if (f4k) formData.append('file_4k', f4k);
+    
+    const btn = document.querySelector('button[onclick="addOverlay()"]');
+    const originalText = btn.innerText;
+    btn.innerText = "Uploading...";
+    btn.disabled = true;
+
+    const resp = await fetch('/api/overlays/add', { method: 'POST', body: formData });
+    if (resp.ok) {
+        alert("Overlay profile saved!");
+        document.getElementById('newOverlayName').value = '';
+        document.getElementById('newOverlay1080').value = '';
+        document.getElementById('newOverlay4K').value = '';
+        loadOverlayProfiles();
+    } else {
+        alert("Error saving overlay");
+    }
+    btn.innerText = originalText;
+    btn.disabled = false;
+}
+
+async function deleteOverlay(id) {
+    if(!confirm("Delete this overlay profile?")) return;
+    await fetch(`/api/overlays/delete/${id}`, { method: 'POST' });
+    loadOverlayProfiles();
+    const sel = document.getElementById('overlaySelect');
+    if (sel && sel.value === id) {
+        sel.value = "";
+        updateOverlay();
+    }
+}
+
+function enforceLayering() {
+    if (!canvas) return;
+    const grids = canvas.getObjects().filter(o => o.dataTag === 'grid_line');
+    const overlays = canvas.getObjects().filter(o => o.dataTag === 'guide_overlay');
+    const fades = canvas.getObjects().filter(o => o.dataTag === 'fade_effect');
+    
+    grids.forEach(o => canvas.sendToBack(o));
+    fades.forEach(o => canvas.sendToBack(o));
+    if (mainBg) canvas.sendToBack(mainBg);
+    overlays.forEach(o => canvas.bringToFront(o));
+}
+
+function updateOverlay() {
+    const sel = document.getElementById('overlaySelect');
+    const overlayId = sel ? sel.value : "";
+    
+    const existing = canvas.getObjects().find(o => o.dataTag === 'guide_overlay');
+    if (existing) canvas.remove(existing);
+    
+    if (!overlayId) { canvas.requestRenderAll(); return; }
+    
+    const profile = overlayProfiles.find(p => p.id === overlayId);
+    if (!profile) return;
+    
+    const is4K = canvas.width > 2000;
+    let file = is4K ? profile.file_4k : profile.file_1080;
+    if (!file) file = is4K ? profile.file_1080 : profile.file_4k; // Fallback
+    
+    if (file) {
+        const url = `/api/overlays/image/${file}`;
+        fabric.Image.fromURL(url, img => {
+            if (!img) return;
+            img.set({
+                left: 0, top: 0,
+                selectable: false, evented: false,
+                opacity: 0.5,
+                dataTag: 'guide_overlay',
+                scaleX: canvas.width / img.width,
+                scaleY: canvas.height / img.height
+            });
+            canvas.add(img);
+            canvas.bringToFront(img); 
+            enforceLayering();
+            canvas.requestRenderAll();
+        });
+    }
 }
 
 function updateBgColor(skipRender = false) { 
@@ -1396,6 +1641,7 @@ function changeResolution() {
     canvas.getObjects().forEach(obj => { obj.scaleX *= scale; obj.scaleY *= scale; obj.left *= scale; obj.top *= scale; obj.setCoords(); });
     if (gridEnabled) drawGrid();
     updateFades();
+    updateOverlay();
 }
 
 async function saveLayout() {
@@ -1411,7 +1657,7 @@ async function saveLayout() {
     const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
     
     // Filter out fade effects and grid lines BEFORE saving
-    layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line');
+    layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
 
     layout.custom_effects = {
         bgColor: document.getElementById('bgColor').value,
@@ -1423,7 +1669,8 @@ async function saveLayout() {
         fadeTop: document.getElementById('fadeTop').value,
         fadeBottom: document.getElementById('fadeBottom').value,
         tagAlignment: document.getElementById('tagAlignSelect').value,
-        genreLimit: document.getElementById('genreLimitSlider').value
+        genreLimit: document.getElementById('genreLimitSlider').value,
+        overlayId: document.getElementById('overlaySelect').value
     };
 
     // Generate Preview Thumbnail (smaller size)
@@ -1496,6 +1743,10 @@ async function loadLayout(name, silent = false) {
         
         // Restore mainBg reference
         mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
+        
+        const title = canvas.getObjects().find(o => o.dataTag === 'title' && o.type === 'image');
+        if (title) preferredLogoWidth = title.getScaledWidth();
+
         // Fallback if not tagged
         if (!mainBg && canvas.getObjects().length > 0) {
             const firstObj = canvas.item(0);
@@ -1531,6 +1782,10 @@ async function loadLayout(name, silent = false) {
                 document.getElementById('genreLimitSlider').value = eff.genreLimit;
                 document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
             }
+            if(eff.overlayId) {
+                document.getElementById('overlaySelect').value = eff.overlayId;
+                updateOverlay();
+            }
             
             updateFadeControls();
             updateBgColor();
@@ -1563,7 +1818,7 @@ function saveToLocalStorage() {
     if (!canvas) return;
     const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
     // Filter out fade effects so they aren't saved as static objects
-    json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line');
+    json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
     
     json.custom_effects = {
         bgColor: document.getElementById('bgColor').value,
@@ -1575,7 +1830,8 @@ function saveToLocalStorage() {
         fadeTop: document.getElementById('fadeTop').value,
         fadeBottom: document.getElementById('fadeBottom').value,
         tagAlignment: document.getElementById('tagAlignSelect').value,
-        genreLimit: document.getElementById('genreLimitSlider').value
+        genreLimit: document.getElementById('genreLimitSlider').value,
+        overlayId: document.getElementById('overlaySelect').value
     };
     json.lastFetchedData = lastFetchedData;
     localStorage.setItem('autosave_layout', JSON.stringify(json));
@@ -1591,10 +1847,14 @@ function loadFromLocalStorage() {
                 canvas.renderAll();
                 mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
                 
+                const title = canvas.getObjects().find(o => o.dataTag === 'title' && o.type === 'image');
+                if (title) preferredLogoWidth = title.getScaledWidth();
+                
                 // Cleanup: Remove any existing fade effects (tagged or untagged ghosts)
                 const ghosts = canvas.getObjects().filter(o => 
                     o.dataTag === 'fade_effect' || 
                     o.dataTag === 'grid_line' || 
+                    o.dataTag === 'guide_overlay' ||
                     (o.type === 'rect' && !o.selectable && !o.evented) ||
                     (o.type === 'line' && o.stroke === '#555' && !o.selectable) // Legacy grid cleanup
                 );
@@ -1630,6 +1890,16 @@ function loadFromLocalStorage() {
                     if(eff.genreLimit !== undefined) {
                         document.getElementById('genreLimitSlider').value = eff.genreLimit;
                         document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
+                    }
+                    if (eff.overlayId) {
+                        const sel = document.getElementById('overlaySelect');
+                        // If profiles are already loaded, set immediately. Otherwise store for later.
+                        if (sel && sel.options.length > 1) {
+                            sel.value = eff.overlayId;
+                            updateOverlay();
+                        } else {
+                            window.restoredOverlayId = eff.overlayId;
+                        }
                     }
                     updateFadeControls();
                 }

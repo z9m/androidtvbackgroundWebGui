@@ -117,19 +117,46 @@ class ImageGenerator:
             
         return logo_image
 
+    def _smart_resize_logo(self, logo_image, max_w=1200, max_h=450):
+        """
+        Smart resizes the logo:
+        1. Auto-crops transparent borders.
+        2. Scales to fit within max_w x max_h while maintaining aspect ratio.
+        3. Reduces max_h for vertical/square logos to prevent them from overpowering the layout.
+        """
+        if not logo_image: return None
+        
+        # Step A: Auto-Crop
+        bbox = logo_image.getbbox()
+        if bbox:
+            logo_image = logo_image.crop(bbox)
+        
+        # Step B: Aspect Ratio Logic
+        src_w, src_h = logo_image.size
+        ratio = src_w / src_h
+        
+        effective_max_h = max_h
+        if ratio < 0.8:      # Tall / Vertical
+            effective_max_h = max_h * 0.6
+        elif ratio < 1.2:    # Square / Compact
+            effective_max_h = max_h * 0.75
+        
+        # Step C: Scaling
+        scale = min(max_w / src_w, effective_max_h / src_h)
+        
+        new_w = int(src_w * scale)
+        new_h = int(src_h * scale)
+        
+        return logo_image.resize((new_w, new_h), Image.LANCZOS)
+
     def draw_logo_or_title(self, logo_image=None, title_text=None):
         """Draws the logo if available, otherwise draws the title text."""
         if logo_image:
             logo_image = self._adjust_logo_color(logo_image)
-            # Resize logo logic
-            aspect_ratio = logo_image.width / logo_image.height
-            new_width = 1300
-            new_height = int(new_width / aspect_ratio)
-            if new_height > 400:
-                new_height = 400
-                new_width = int(new_height * aspect_ratio)
             
-            logo_resized = logo_image.resize((new_width, new_height)).convert('RGBA')
+            # Use Smart Resize
+            logo_resized = self._smart_resize_logo(logo_image, max_w=1200, max_h=450)
+            
             self.canvas.paste(logo_resized, (self.current_x, self.current_y), logo_resized)
             self.current_y += logo_resized.height + self.padding
             self.last_element_width = logo_resized.width
@@ -215,14 +242,10 @@ class ImageGenerator:
         w_logo = 0
         
         if logo_image:
-            # Replicate resize logic from draw_logo_or_title
-            aspect_ratio = logo_image.width / logo_image.height
-            new_width = 1300
-            new_height = int(new_width / aspect_ratio)
-            if new_height > 400:
-                new_height = 400
-                new_width = int(new_height * aspect_ratio)
-            w_logo = new_width
+            # Use Smart Resize logic for measurement
+            logo_image = self._adjust_logo_color(logo_image)
+            logo_image = self._smart_resize_logo(logo_image, max_w=1200, max_h=450)
+            w_logo = logo_image.width
         elif title_text:
             bbox = self.draw.textbbox((0,0), title_text, font=self.fonts['title'])
             w_logo = bbox[2] - bbox[0]
