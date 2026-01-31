@@ -16,9 +16,24 @@
         ctx.fillStyle = this.backgroundColor;
         const pad = this.padding || 0;
         ctx.fillRect(
-            -dim.x / 2 - pad,
+            -dim.x / 2 - pad - 10,
             -dim.y / 2 - pad,
-            dim.x + pad * 2,
+            dim.x + pad * 2 + 20,
+            dim.y + pad * 2
+        );
+        this._removeShadow(ctx);
+    };
+
+    // Patch IText to render background with same buffer
+    fabric.IText.prototype._renderBackground = function(ctx) {
+        if (!this.backgroundColor) return;
+        var dim = this._getNonTransformedDimensions();
+        ctx.fillStyle = this.backgroundColor;
+        const pad = this.padding || 0;
+        ctx.fillRect(
+            -dim.x / 2 - pad - 10,
+            -dim.y / 2 - pad,
+            dim.x + pad * 2 + 20,
             dim.y + pad * 2
         );
         this._removeShadow(ctx);
@@ -146,6 +161,7 @@ function updateSelectedFontFamily() {
                 if (textObj.type === 'i-text') textObj.set("text", textObj.text);
                 if(activeObj.type==='group') {
                     if (activeObj.dataTag === 'rating_star' || activeObj.dataTag === 'rating') {
+                        canvas.renderAll(); // Force dimension update for text
                         const imgObj = activeObj.getObjects().find(o => o.type === 'image');
                         if (imgObj && textObj) {
                             textObj.set('top', imgObj.top + (imgObj.getScaledHeight() - textObj.getScaledHeight()) / 2);
@@ -154,6 +170,7 @@ function updateSelectedFontFamily() {
                     activeObj.addWithUpdate(); 
                 }
                 else activeObj.setCoords();
+                canvas.renderAll(); // Force dimension update before layout
                 updateVerticalLayout();
                 canvas.requestRenderAll();
                 saveToLocalStorage();
@@ -183,6 +200,7 @@ function applyFontToAll() {
                 }
             }
         });
+        canvas.renderAll(); // Force dimension update before layout
         updateVerticalLayout();
         canvas.requestRenderAll();
         saveToLocalStorage();
@@ -215,7 +233,7 @@ function toggleTextBackground() {
         const enabled = document.getElementById('textBgEnable').checked;
         document.getElementById('textBgSettings').style.display = enabled ? 'block' : 'none';
         if (enabled) {
-            activeObj.set('padding', 10);
+            activeObj.set('padding', 20);
             activeObj.setCoords();
             if (!activeObj.backgroundColor) {
                 document.getElementById('textBgAuto').checked = true;
@@ -406,10 +424,20 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                     case 'title':
                         if (mediaData.logo_url && preloadedLogo) {
                             // Benutze das vorgeladene Logo sofort (synchron)
-                            preloadedLogo.set({ left: screenMargin, top: obj.top, dataTag: 'title' });
                             const maxW = canvas.width * 0.55; 
                             const maxH = canvas.height * 0.35; 
                             const scale = Math.min(maxW / preloadedLogo.width, maxH / preloadedLogo.height) * 0.8;
+                            
+                            // Calculate new position based on alignment of old object
+                            const oldCenter = obj.left + (obj.getScaledWidth() / 2);
+                            const isRight = oldCenter > canvas.width / 2;
+                            let newLeft = obj.left;
+                            if (isRight) {
+                                const oldRight = obj.left + obj.getScaledWidth();
+                                newLeft = oldRight - (preloadedLogo.width * scale);
+                            }
+
+                            preloadedLogo.set({ left: newLeft, top: obj.top, dataTag: 'title' });
                             preloadedLogo.scale(scale);
                             canvas.remove(obj); canvas.add(preloadedLogo);
                         } else if (mediaData.logo_url) {
@@ -417,10 +445,20 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                                 const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(mediaData.logo_url)}`;
                                 fabric.Image.fromURL(proxiedLogo, function(img, isError) {
                                     if (isError || !img) { canvas.remove(obj); r(); return; }
-                                    img.set({ left: screenMargin, top: obj.top, dataTag: 'title' });
                                     const maxW = canvas.width * 0.55; 
                                     const maxH = canvas.height * 0.35; 
                                     const scale = Math.min(maxW / img.width, maxH / img.height) * 0.8;
+                                    
+                                    // Calculate new position based on alignment of old object
+                                    const oldCenter = obj.left + (obj.getScaledWidth() / 2);
+                                    const isRight = oldCenter > canvas.width / 2;
+                                    let newLeft = obj.left;
+                                    if (isRight) {
+                                        const oldRight = obj.left + obj.getScaledWidth();
+                                        newLeft = oldRight - (img.width * scale);
+                                    }
+
+                                    img.set({ left: newLeft, top: obj.top, dataTag: 'title' });
                                     img.scale(scale);
                                     canvas.remove(obj); canvas.add(img); 
                                     r();
@@ -435,7 +473,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                                 const is4K = document.getElementById('resSelect').value === '2160';
                                 const titleSize = is4K ? 120 : 80;
                                 const newText = new fabric.IText(val, { 
-                                    left: screenMargin, top: obj.top, 
+                                    left: obj.left, top: obj.top, 
                                     fontFamily: 'Oswald', fontSize: titleSize, 
                                     fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', 
                                     dataTag: 'title', editable: false 
@@ -540,6 +578,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
         });
         
         Promise.all(promises).then(() => {
+            canvas.renderAll(); // Force dimension update before layout
             updateVerticalLayout(skipRender);
             resolve();
         });
@@ -756,17 +795,27 @@ function updateVerticalLayout(skipRender = false) {
     const padding = 20; // This is the minimum vertical distance
     const hPadding = 20; // Horizontal spacing between tags
     const rowThreshold = 30; // How close elements must be to be considered in the same row
-    const alignment = document.getElementById('tagAlignSelect').value;
-
-    // Sync text alignment for overview based on layout alignment
-    canvas.getObjects().forEach(o => {
-        if (o.dataTag === 'overview' && o.type === 'textbox') {
-            o.set('textAlign', alignment);
-        }
-    });
-
+    
+    canvas.renderAll(); // Ensure all dimensions (especially i-text) are calculated correctly
+    
     const anchor = canvas.getObjects().find(o => o.dataTag === 'title');
     if (!anchor) { canvas.requestRenderAll(); return; }
+
+    // Auto-switch alignment based on position (Left vs Right)
+    const alignSelect = document.getElementById('tagAlignSelect');
+    if (alignSelect.value !== 'center') {
+        const centerX = anchor.left + (anchor.getScaledWidth() / 2);
+        alignSelect.value = (centerX > canvas.width / 2) ? 'right' : 'left';
+    }
+    const alignment = alignSelect.value;
+
+    // Sync text alignment for overview and provider_source based on layout alignment
+    canvas.getObjects().forEach(o => {
+        if ((o.dataTag === 'overview' || o.dataTag === 'provider_source') && (o.type === 'textbox' || o.type === 'i-text')) {
+            o.set('textAlign', alignment);
+            o.set('dirty', true);
+        }
+    });
 
     // Ensure anchor (Logo/Title) respects screen margin
     if (anchor.left < screenMargin) anchor.set('left', screenMargin);
@@ -802,7 +851,8 @@ function updateVerticalLayout(skipRender = false) {
             let w = 0;
             const visibleEls = row.filter(e => e.visible);
             visibleEls.forEach((el, i) => {
-                w += el.getScaledWidth();
+                const pad = el.padding || 0;
+                w += el.getScaledWidth() + (pad * 2);
                 if (i < visibleEls.length - 1) w += hPadding;
             });
             if (w > maxRowWidth) maxRowWidth = w;
@@ -852,7 +902,9 @@ function updateVerticalLayout(skipRender = false) {
         let totalRowWidth = 0;
         const visibleEls = row.filter(e => e.visible);
         visibleEls.forEach((el, index) => {
-            totalRowWidth += el.getScaledWidth();
+            el.setCoords(); // Ensure coords are fresh for width calc
+            const pad = el.padding || 0;
+            totalRowWidth += el.getScaledWidth() + (pad * 2);
             if (index < visibleEls.length - 1) totalRowWidth += hPadding;
         });
 
@@ -862,8 +914,14 @@ function updateVerticalLayout(skipRender = false) {
             current_x = anchorLeft + (anchorWidth - totalRowWidth) / 2;
         } else if (alignment === 'right') {
             current_x = (anchorLeft + anchorWidth) - totalRowWidth;
+            // FIX: Shift right to align CONTENT edge to anchor (ignore padding of last element)
+            const lastEl = visibleEls[visibleEls.length - 1];
+            if (lastEl) current_x += (lastEl.padding || 0);
         } else {
             current_x = anchorLeft;
+            // FIX: Shift left to align CONTENT edge to anchor (ignore padding of first element)
+            const firstEl = visibleEls[0];
+            if (firstEl) current_x -= (firstEl.padding || 0);
         }
 
         // Ensure tags don't go off-screen (apply margins)
@@ -872,14 +930,15 @@ function updateVerticalLayout(skipRender = false) {
             current_x = Math.max(screenMargin, canvas.width - screenMargin - totalRowWidth);
         }
 
-        const maxRowHeight = Math.max(...row.map(el => el.visible ? el.getScaledHeight() : 0));
+        const maxRowHeight = Math.max(...row.map(el => el.visible ? el.getScaledHeight() + ((el.padding||0)*2) : 0));
         
         // Stack elements horizontally starting from the calculated current_x
         row.forEach(el => {
-            el.set({ top: current_y, left: current_x });
+            const pad = el.padding || 0;
+            el.set({ top: current_y + pad, left: current_x + pad });
             el.setCoords(); // Update coordinates for accurate width calculation
             if (el.visible) {
-                current_x += el.getScaledWidth() + hPadding;
+                current_x += el.getScaledWidth() + (pad * 2) + hPadding;
             } else {
                 // Increment tiny amount to preserve order for next sort without visual gap
                 current_x += 0.1;

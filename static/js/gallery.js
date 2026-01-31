@@ -1,4 +1,5 @@
 let lightboxImages = [], currentLightboxIndex = 0, loadedGalleryData = {}, currentGalleryTab = null, currentEditingFile = null;
+let galleryCacheBuster = Date.now();
 
 function openLightbox(layoutKey, index) {
     if (!loadedGalleryData || !loadedGalleryData[layoutKey]) return;
@@ -23,7 +24,7 @@ function showLightboxImage(index) {
     currentLightboxIndex = index;
     
     const layoutKey = Object.keys(loadedGalleryData).find(k => loadedGalleryData[k] === lightboxImages);
-    const imgSrc = `/api/gallery/image/${encodeURIComponent(layoutKey)}/${encodeURIComponent(lightboxImages[index])}`;
+    const imgSrc = `/api/gallery/image/${encodeURIComponent(layoutKey)}/${encodeURIComponent(lightboxImages[index])}?t=${galleryCacheBuster}`;
     document.getElementById('lightbox-img').src = imgSrc;
     
     const editBtn = document.getElementById('lightbox-edit-btn');
@@ -74,7 +75,7 @@ function renderGalleryUI() {
             imagesHtml += '<p style="grid-column: 1/-1; text-align:center; color:#666; margin-top: 20px;">No images in this folder.</p>';
     } else {
         images.forEach((img, index) => {
-            const src = `/api/gallery/image/${encodeURIComponent(currentGalleryTab)}/${encodeURIComponent(img)}`;
+            const src = `/api/gallery/image/${encodeURIComponent(currentGalleryTab)}/${encodeURIComponent(img)}?t=${galleryCacheBuster}`;
             imagesHtml += `
                 <div class="gallery-item">
                     <img src="${src}" loading="lazy" onclick="openLightbox('${currentGalleryTab}', ${index})">
@@ -142,6 +143,7 @@ async function saveToGallery() {
     currentEditingFile = null;
     document.getElementById('btn-save-changes').style.display = 'none';
     await saveToGalleryInternal(document.getElementById('layoutName').value || "Default");
+    galleryCacheBuster = Date.now();
     alert("Image saved to Gallery!");
     loadGallery();
 }
@@ -233,31 +235,55 @@ async function editGalleryImage(folder, filename) {
         
         currentEditingFile = { folder: folder, filename: filename };
         document.getElementById('btn-save-changes').style.display = 'block';
+
+        // Lock UI
+        document.querySelectorAll('.tab-link').forEach(el => { el.style.pointerEvents = 'none'; el.style.opacity = '0.5'; });
+        ['btn-shuffle', 'btn-save-gallery', 'btn-save-layout', 'btn-load-layout', 'btn-start-batch'].forEach(id => {
+            const btn = document.getElementById(id);
+            if(btn) btn.disabled = true;
+        });
         
         if (folder.startsWith("Layout: ")) {
             document.getElementById('layoutName').value = folder.replace("Layout: ", "");
         }
-
-        const btnShuffle = document.getElementById('btn-shuffle');
-        if(btnShuffle) btnShuffle.disabled = true;
-
-        const btnSaveGallery = document.getElementById('btn-save-gallery');
-        if(btnSaveGallery) btnSaveGallery.disabled = false;
     });
 }
 
 async function saveEditedImage() {
     if (!currentEditingFile) return;
     
+    const saveBtn = document.getElementById('btn-save-changes');
+    const originalText = saveBtn.innerText;
+    saveBtn.disabled = true;
+    saveBtn.innerText = "Saving...";
+
     const layoutName = document.getElementById('layoutName').value || "Default";
-    let overwrite = null;
-    if (currentEditingFile.folder === `Layout: `) {
-        overwrite = currentEditingFile.filename;
-    }
+    let overwrite = currentEditingFile.filename;
     
     await saveToGalleryInternal(layoutName, overwrite);
-    alert("Changes saved!");
-    loadGallery();
+    galleryCacheBuster = Date.now();
+    
+    if (currentEditingFile.folder) {
+        currentGalleryTab = currentEditingFile.folder;
+    }
+    await loadGallery();
+
+    // Unlock UI
+    document.querySelectorAll('.tab-link').forEach(el => { el.style.pointerEvents = 'auto'; el.style.opacity = '1'; });
+    ['btn-shuffle', 'btn-save-gallery', 'btn-save-layout', 'btn-load-layout', 'btn-start-batch'].forEach(id => {
+        const btn = document.getElementById(id);
+        if(btn) btn.disabled = false;
+    });
+    
+    const galleryTabBtn = document.querySelector(".tab-link[onclick*='gallery-tab']");
+    if (galleryTabBtn && typeof openTab === 'function') {
+        openTab({currentTarget: galleryTabBtn}, 'gallery-tab');
+    }
+    
+    currentEditingFile = null;
+    saveBtn.style.display = 'none';
+    saveBtn.disabled = false;
+    saveBtn.innerText = originalText;
 }
 
 async function deleteAllGalleryImages(folder) {
@@ -297,7 +323,7 @@ async function loadLayoutsList() {
 
         if (loadedGalleryData[key]) {
             loadedGalleryData[key].slice(0, 10).forEach((img, index) => {
-                const src = `/api/gallery/image/${encodeURIComponent(key)}/${encodeURIComponent(img)}`;
+                const src = `/api/gallery/image/${encodeURIComponent(key)}/${encodeURIComponent(img)}?t=${galleryCacheBuster}`;
                 previews += `<img src="${src}" onclick="openLightbox('${key}', ${index})">`;
             });
         } else { previews = '<span style="font-size:11px; color:#666;">No generated images yet.</span>'; }
