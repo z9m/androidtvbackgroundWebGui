@@ -192,6 +192,69 @@ class ImageGenerator:
         if max_height > 0:
             self.current_y += max_height + self.padding
 
+    def measure_tags_width(self, tags, font_key='info', separator="  •  "):
+        """Calculates the total width of the tags line."""
+        if not tags: return 0
+        font = self.fonts.get(font_key, self.fonts['info'])
+        valid_tags = [str(t) for t in tags if t]
+        if not valid_tags: return 0
+        
+        sep_width = self.draw.textlength(separator, font=font) if separator else 0
+        total_width = 0
+        for i, tag in enumerate(valid_tags):
+            total_width += self.draw.textlength(tag, font=font)
+            if i > 0:
+                total_width += sep_width
+        return total_width
+
+    def draw_media_block(self, logo_image, title_text, tags, align='left', margin_x=50):
+        """
+        Draws Logo and Tags as a unified block to ensure consistent alignment.
+        """
+        # Step A: Measure
+        w_logo = 0
+        
+        if logo_image:
+            # Replicate resize logic from draw_logo_or_title
+            aspect_ratio = logo_image.width / logo_image.height
+            new_width = 1300
+            new_height = int(new_width / aspect_ratio)
+            if new_height > 400:
+                new_height = 400
+                new_width = int(new_height * aspect_ratio)
+            w_logo = new_width
+        elif title_text:
+            bbox = self.draw.textbbox((0,0), title_text, font=self.fonts['title'])
+            w_logo = bbox[2] - bbox[0]
+
+        w_tags = self.measure_tags_width(tags)
+
+        # Step B: Container
+        block_width = max(w_logo, w_tags)
+
+        # Step C: Position Block
+        canvas_width = self.canvas.width
+        if align == 'center':
+            start_x = (canvas_width - block_width) // 2
+        elif align == 'right':
+            start_x = canvas_width - margin_x - block_width
+        else: # left
+            start_x = margin_x
+
+        # Step D: Draw
+        # 1. Draw Logo/Title (Centered in Block)
+        logo_x = start_x + (block_width - w_logo) // 2
+        self.current_x = logo_x
+        self.draw_logo_or_title(logo_image, title_text)
+        
+        # 2. Draw Tags (Centered in Block)
+        tags_x = start_x + (block_width - w_tags) // 2
+        self.current_x = tags_x
+        
+        # Disable internal centering logic of draw_horizontal_tags since we handled it explicitly
+        self.last_element_width = 0 
+        self.draw_horizontal_tags(tags)
+
     def draw_summary(self, text):
         """Draws the summary text, truncated and wrapped."""
         shortened = textwrap.shorten(text or "", width=175, placeholder="...")

@@ -415,6 +415,43 @@ async function fetchMediaData(itemId = null) {
 function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
     return new Promise((resolve) => {
         if (!canvas || !mediaData) { resolve(); return; }
+        
+        // Helper to calculate smart positioning for the new logo
+        const getNewLogoLeft = (oldObj, newWidth, newScale) => {
+            const align = document.getElementById('tagAlignSelect').value;
+            const cW = canvas.width;
+            const oldW = oldObj.getScaledWidth();
+            
+            let boundsL = oldObj.left;
+            let boundsR = oldObj.left + oldW;
+
+            // If centered, the "visual block" includes the tags
+            if (align === 'center') {
+                const tags = canvas.getObjects().filter(o => ['year', 'genres', 'runtime', 'rating_val', 'rating_star', 'certification'].includes(o.dataTag) && o.visible);
+                tags.forEach(t => {
+                    if (t.left < boundsL) boundsL = t.left;
+                    const r = t.left + t.getScaledWidth();
+                    if (r > boundsR) boundsR = r;
+                });
+            }
+
+            const isStickyLeft = Math.abs(boundsL - screenMargin) < 20;
+            const isStickyRight = Math.abs(boundsR - (cW - screenMargin)) < 20;
+
+            if (isStickyLeft) return screenMargin;
+            if (isStickyRight) return (cW - screenMargin) - (newWidth * newScale);
+
+            // Not sticky: preserve alignment anchor based on mode
+            if (align === 'center') {
+                const center = (boundsL + boundsR) / 2;
+                return center - (newWidth * newScale) / 2;
+            } else if (align === 'right') {
+                return (oldObj.left + oldW) - (newWidth * newScale);
+            } else {
+                return oldObj.left;
+            }
+        };
+
         let promises = [];
         
         [...canvas.getObjects()].forEach(obj => {
@@ -428,14 +465,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                             const maxH = canvas.height * 0.35; 
                             const scale = Math.min(maxW / preloadedLogo.width, maxH / preloadedLogo.height) * 0.8;
                             
-                            // Calculate new position based on alignment of old object
-                            const oldCenter = obj.left + (obj.getScaledWidth() / 2);
-                            const isRight = oldCenter > canvas.width / 2;
-                            let newLeft = obj.left;
-                            if (isRight) {
-                                const oldRight = obj.left + obj.getScaledWidth();
-                                newLeft = oldRight - (preloadedLogo.width * scale);
-                            }
+                            const newLeft = getNewLogoLeft(obj, preloadedLogo.width, scale);
 
                             preloadedLogo.set({ left: newLeft, top: obj.top, dataTag: 'title' });
                             preloadedLogo.scale(scale);
@@ -449,14 +479,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                                     const maxH = canvas.height * 0.35; 
                                     const scale = Math.min(maxW / img.width, maxH / img.height) * 0.8;
                                     
-                                    // Calculate new position based on alignment of old object
-                                    const oldCenter = obj.left + (obj.getScaledWidth() / 2);
-                                    const isRight = oldCenter > canvas.width / 2;
-                                    let newLeft = obj.left;
-                                    if (isRight) {
-                                        const oldRight = obj.left + obj.getScaledWidth();
-                                        newLeft = oldRight - (img.width * scale);
-                                    }
+                                    const newLeft = getNewLogoLeft(obj, img.width, scale);
 
                                     img.set({ left: newLeft, top: obj.top, dataTag: 'title' });
                                     img.scale(scale);
