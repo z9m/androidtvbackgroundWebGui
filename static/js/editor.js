@@ -383,14 +383,37 @@ async function fetchMediaData(itemId = null) {
         await Promise.all(assetPromises);
 
         // 2. Jetzt alles auf einmal anwenden (synchron)
-        if (mainBg) canvas.remove(mainBg);
+        let prevBgState = null;
+        if (mainBg) {
+            prevBgState = {
+                left: mainBg.left,
+                top: mainBg.top,
+                visualWidth: mainBg.getScaledWidth(),
+                flipX: mainBg.flipX,
+                flipY: mainBg.flipY
+            };
+            canvas.remove(mainBg);
+        }
         mainBg = newBgImg;
         
         if (mainBg) {
-            mainBg.set({ left: 0, top: 0, selectable: true, dataTag: 'background' });
-            const targetWidth = canvas.width * 0.70;
-            mainBg.scaleToWidth(targetWidth);
-            mainBg.set({ left: canvas.width - targetWidth, top: 0 });
+            mainBg.set({ selectable: true, dataTag: 'background' });
+            
+            let appliedState = false;
+            if (prevBgState && prevBgState.visualWidth > 0 && mainBg.width > 0) {
+                const scale = prevBgState.visualWidth / mainBg.width;
+                if (isFinite(scale) && scale > 0.001) {
+                    mainBg.set({ left: prevBgState.left, top: prevBgState.top, scaleX: scale, scaleY: scale, flipX: !!prevBgState.flipX, flipY: !!prevBgState.flipY });
+                    appliedState = true;
+                }
+            }
+            
+            if (!appliedState) {
+                const targetWidth = canvas.width * 0.70;
+                mainBg.scaleToWidth(targetWidth);
+                mainBg.set({ left: canvas.width - targetWidth, top: 0 });
+            }
+            
             canvas.add(mainBg); canvas.sendToBack(mainBg); 
             updateFades(true);
         } else {
