@@ -1,120 +1,139 @@
-# Android TV Background
+# TV Background Suite & Web Editor
 
-This is a simple script to retrieve Plex (your local server or friend's servers), Jellyfin, TMDB, Radarr/Sonarr or Trakt media background and use it as Android TV Wallpaper
-I developed this to use it with alternative Android TV launchers
+**TV Background Suite** is a powerful, web-based tool designed to generate high-quality, customized background images and posters for media servers like **Jellyfin**, **Emby**, and **Plex**, or for use with Android TV launchers.
 
-![y](https://github.com/adelatour11/androidtvbackground/assets/1473994/8039b728-469f-4fd9-8ca5-920e57bd16d9)
+It features a full WYSIWYG (What You See Is What You Get) editor allowing you to add metadata, ratings, custom overlays (4K, HDR, Studio Logos), and apply advanced texture effects to text.
 
+![Editor Preview](https://github.com/adelatour11/androidtvbackground/assets/1473994/8039b728-469f-4fd9-8ca5-920e57bd16d9)
+*(Placeholder for new Web GUI Screenshot)*
 
+## ✨ Features
 
-To use the script, you have to specify : 
-- Create a `.env` file by copying `.env.example` and update it with your various tokens and keys or by directly modifying the .py files below
-- For Plex.py script & plexfriend.py : your plex token and plex server url
-- For TMDB.py or TMDBlogo.py : your TMDB API Read Access Token
-- For radarrsonarr.py your TMDB API Read Access Token, your Radarr API key, you Sonarr API key
-- For Trakt.py, your Trakt client key, Trakt username, Trakt list name and TMDB API Read Access Token
-- For Jellyfin.py, your server url, an API token and a user_id 
+- **Web-Based Editor:** Create layouts visually in your browser. Drag, drop, and customize text and images.
+- **Media Server Integration:** Connects directly to **Jellyfin**, **Plex**, **Radarr**, **Sonarr**, **Trakt**, and **TMDB** to fetch metadata and artwork automatically.
+- **Texture Manager:** Apply "Magic Textures" (e.g., Gold, Silver, Grunge) to your text for a premium look.
+- **Overlay Manager:** Easily upload and place guide overlays, studio logos, or format tags (4K, HDR, Dolby).
+- **Font Manager:** Upload and use your own `.ttf` or `.otf` fonts.
+- **Batch Processing:** Automate the generation of backgrounds for entire libraries or collections.
+- **Responsive Design:** Works on Desktop and Mobile devices.
+- **Docker Ready:** Easy deployment on NAS systems like Unraid, TrueNAS, or Synology.
 
-The scripts retrieves the background of the latests shows (movies or tv shows), resizes the image, add an overlay and add text or image on top
+## 🗺️ Roadmap
 
-![image](https://github.com/user-attachments/assets/71923ddf-6b5b-4b1c-af46-d12d9a525b6c)
+- **Android TV App:** A dedicated Android TV application is planned to automatically fetch and rotate these backgrounds directly on your device.
 
-![image](https://github.com/user-attachments/assets/e560ccf7-cc11-49ce-b6c1-8395d2e309f1)
+---
 
-![image](https://github.com/user-attachments/assets/815c3685-2b6d-4ef5-86c3-b2d67038736a)
+## 🚀 Installation (Docker)
 
-![image](https://github.com/user-attachments/assets/c01d5d0e-d762-481d-ab66-7110a7101e22)
+The easiest way to run the application is via Docker.
 
-![image](https://github.com/adelatour11/androidtvbackground/assets/1473994/b28900a4-4776-4aae-b631-e30334d932dd)
+### Docker Compose (Recommended)
 
-![image](https://github.com/adelatour11/androidtvbackground/assets/1473994/e0410589-81a4-40ac-a55d-8fd6eb061721)
+Create a `docker-compose.yml` file:
 
-![image](https://github.com/adelatour11/androidtvbackground/assets/1473994/2e92f213-21f9-4147-b678-0ee4dd0546ad)
+```yaml
+version: '3.8'
 
-![image](https://github.com/adelatour11/androidtvbackground/assets/1473994/03aecbcd-e2fd-4969-b0a2-0346d1842705)
+services:
+  tv-background:
+    image: your-dockerhub-username/tv-background-suite:latest
+    container_name: tv-background-editor
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config.json:/app/config.json
+      - ./layouts:/app/layouts
+      - ./overlays:/app/overlays
+      - ./textures:/app/textures
+      - ./fonts:/app/fonts
+      - ./output:/app/editor_backgrounds
+    restart: unless-stopped
+```
 
-<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/9c6fd3d9-99ec-4a7e-8845-49ce3daa7739" />
+Run the container:
+```bash
+docker-compose up -d
+```
 
-![Eddington_20250722](https://github.com/user-attachments/assets/02797fe1-5487-436b-b8c9-74c34978c3a0)
+Access the editor at: `http://YOUR_SERVER_IP:5000/editor`
 
-![Foundation_20250722](https://github.com/user-attachments/assets/9adcc755-879a-4b29-99dd-ce373ce141f4)
+### Docker Run
 
+```bash
+docker run -d \
+  --name=tv-background-editor \
+  -p 5000:5000 \
+  -v /path/to/config.json:/app/config.json \
+  -v /path/to/output:/app/editor_backgrounds \
+  your-dockerhub-username/tv-background-suite:latest
+```
 
-**New Feature** :
+---
 
-You can now set the language for TMDB.py, TMDB_color.py, radarrsonarr.py and radarrsonarr_color.py
+## 📂 Configuration & Volumes
 
-In your .env file you can specify a language code : ```TMDB_LANGUAGE = "pt-BR"```
+To persist your data and access generated images, map the following volumes:
 
-FYI, if there is no logo in the specified language it retrieves the english version logo/
+| Container Path | Description |
+| :--- | :--- |
+| `/app/config.json` | Stores API keys, URLs, and general settings. |
+| `/app/layouts` | Stores your saved design layouts (`.json`). |
+| `/app/overlays` | Folder for custom overlay images (PNG). |
+| `/app/textures` | Folder for text texture patterns (JPG/PNG). |
+| `/app/fonts` | Folder for custom fonts (`.ttf`, `.otf`). |
+| `/app/editor_backgrounds` | **Output:** Images generated by the Web Editor. |
+| `/app/plex_backgrounds` | **Output:** Images generated by Plex batch scripts. |
+| `/app/jellyfin_backgrounds`| **Output:** Images generated by Jellyfin batch scripts. |
 
-**New Scripts**
+### Networking (DNS)
+If you are running this in Docker and trying to connect to a local media server (e.g., on the same NAS) using a hostname like `http://truenas:8096`, the container might not resolve the name.
 
-I have a included a series of scripts to have a colorized version of each background
-plex_color.py / TMDB_color.py / radarrsonarr_color.py / plexfriends_color.py
-It looks linke this
+**Solution:** Use the IP address of your server in the settings, or add `extra_hosts` to your `docker-compose.yml`:
 
-![One_Battle_After_Another_20251010](https://github.com/user-attachments/assets/1257d570-8c9b-4e11-8fb5-69369e9f3ba6)
+```yaml
+    extra_hosts:
+      - "truenas:192.168.1.100"
+```
 
-![TRON_Ares_20251010](https://github.com/user-attachments/assets/cc898508-de38-4654-8a78-76cc8713b5b4)
+---
 
-![Monster_The_Ed_Gein_Story_20251010](https://github.com/user-attachments/assets/61f19068-68bc-433d-8177-75e366c696c7)
+## 🛠️ Usage
 
+1.  **Provider Settings:**
+    Go to the **Settings** tab. Enter your URL and API Keys for Jellyfin, Plex, or TMDB. Use the "Test Connection" buttons to verify connectivity.
+    
+2.  **Layout Editor:**
+    - Use **Shuffle Preview** to load random media from your connected services.
+    - Adjust text alignment, colors, and fonts.
+    - Apply **Textures** to text for artistic effects.
+    - Add **Metadata Tags** (Rating, Year, Runtime) dynamically.
 
+3.  **Batch Processing:**
+    Go to the **Batch Processing** tab to generate backgrounds for your entire library automatically based on your selected layout.
 
-**Note :**
-If you are looking for the docker version check out this branch https://github.com/adelatour11/androidtvbackground/tree/docker
+---
 
-**How to :**
-- install latest version of python (https://www.python.org/downloads/)
-- Install pip (follow the process here https://pip.pypa.io/en/stable/installation/)
-- Download the content of this repository
-- Go into the repository using a terminal and install dependencies :
-  ```
-  pip install -r requirements.txt
-  ```
-- Edit each python scripts with your info
-    - Specify you credentials
-        - for Plex check this article on how to find your plex token https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/
-        - for TMDB create an account and get you api key here there https://www.themoviedb.org/settings/api
-        - for Trakt create your account and go there https://trakt.tv/oauth/applications to create an app and retrieve your client id 
-- As you run one of the script it will create a new folder and add the images automatically.
-- Each time the scripts will run it will delete the content of the folder and create new images
-- if you want to edit the overlay and background image I have included the source file as a vector format 
+## 🖼️ Gallery
 
+!Gallery Preview
 
-**If you want to edit the scripts :**
+---
 
-***Plex Script***
-- For the plex script you can specify the number of poster to generate, specify if you want to include movies and tv, specify if you want latest added or latest aired items. You can also edit the code to change the text position or content
-- the plexfriend.py script retrieves the tvshows and movies from your friends shared libraries
+## 🤝 Contributing
 
-***TMDB Scripts***
-- Shows that do not have the logo on TMDB will just have the title displayed
-- You can edit the script to change the color, the text position or font, you can specify exclusion based on origin country code or genre
-- By default the script will retrieve the posters for the movies or TV shows whose last air date is older than 30 days from the current date. For the TV Shows, the episode last air date is considered.      
-- You can edit the code to change the endpoints for trending shows that is here
-  ```
-  trending_movies_url = f'{url}trending/movie/week?language=en-US'
-  trending_tvshows_url = f'{url}trending/tv/week?language=en-US'
-  ```
-  and replace it by using TMDB API Discover Endpoint
-  You can find details on Discovery endpoints here  :
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-  https://developer.themoviedb.org/reference/discover-movie
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
 
-  https://developer.themoviedb.org/reference/discover-tv
+## Credits
 
-  For example you can change the endpoints like this
+- **Original Project:** This project is a fork of androidtvbackground created by adelatour11.
+- **Development:** Major refactoring, Web GUI implementation, and Docker integration were developed with the assistance of **Gemini Code Assist**.
 
-  ```
-  # Endpoint for shows with genre action from 2022
-  trending_movies_url = f'{url}discover/movie?include_adult=false&include_video=false&language=en-US&page=1&sort_by=popularity.desc&with_genres=80&year=2022'
-  trending_tvshows_url = f'{url}discover/tv?first_air_date_year=2022&include_adult=false&include_null_first_air_dates=false&language=en-US&page=1&sort_by=popularity.desc&with_genres=80'
-  ```
-  
-  The genre is set by an id, you can get the list from these url
-  
-  https://developer.themoviedb.org/reference/genre-movie-list
-  
-  https://developer.themoviedb.org/reference/genre-tv-list
+## 📄 License
+Distributed under the MIT License.
