@@ -4,8 +4,10 @@
 
 It features a full WYSIWYG (What You See Is What You Get) editor allowing you to add metadata, ratings, and apply advanced texture effects to text.
 
-![Editor Preview](https://github.com/adelatour11/androidtvbackground/assets/1473994/8039b728-469f-4fd9-8ca5-920e57bd16d9)
-*(Placeholder for new Web GUI Screenshot)*
+![Editor Preview](https://github.com/user-attachments/assets/9b536c40-632c-4d3d-901b-485116c68781)
+![Saved Layouts Preview](https://github.com/user-attachments/assets/391a7fbf-f3ae-4ff8-b536-a01ee4f4ebba)
+![Guide Overlay Google TV Preview](https://github.com/user-attachments/assets/b1525643-8a44-43dc-beaf-5f95b1d9de2a)
+![Guide Overlay ProjectIvy Preview](https://github.com/user-attachments/assets/72942128-19cf-4b17-9273-291ab7efe823)
 
 ## ✨ Features
 
@@ -124,9 +126,14 @@ If you prefer to use your NAS hostname (e.g., `truenas`), map it manually:
 
 ## 🖼️ Gallery
 
-!Gallery Preview
+Here are some examples of what you can create with the TV Background Suite.
 
----
+| ![Predator Killer of Killers Example](https://github.com/user-attachments/assets/a9d0beaf-222b-4a06-937c-5dace988dd3a) |
+| ![Freies Land Example](https://github.com/user-attachments/assets/1a55062f-063d-4b4f-bb85-8aef3cd1d005) |
+| ![Indiana Jones Example](https://github.com/user-attachments/assets/db6581c9-26b5-41f2-a787-05637e474632) |
+| ![Amsterdam Example](https://github.com/user-attachments/assets/6751beb0-566b-45f3-9940-73e289394105) |
+| *Intuitive Drag & Drop Interface* |
+
 
 ## 🤝 Contributing
 
