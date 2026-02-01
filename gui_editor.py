@@ -32,6 +32,9 @@ LAYOUTS_DIR = 'layouts'
 LAYOUT_PREVIEWS_DIR = os.path.join(LAYOUTS_DIR, 'previews')
 OVERLAYS_DIR = 'overlays'
 OVERLAYS_JSON = 'overlays.json'
+TEXTURES_DIR = 'textures'
+TEXTURES_JSON = 'textures.json'
+FONTS_DIR = 'fonts'
 
 if not os.path.exists(LAYOUTS_DIR):
     os.makedirs(LAYOUTS_DIR)
@@ -39,6 +42,10 @@ if not os.path.exists(LAYOUT_PREVIEWS_DIR):
     os.makedirs(LAYOUT_PREVIEWS_DIR)
 if not os.path.exists(OVERLAYS_DIR):
     os.makedirs(OVERLAYS_DIR)
+if not os.path.exists(TEXTURES_DIR):
+    os.makedirs(TEXTURES_DIR)
+if not os.path.exists(FONTS_DIR):
+    os.makedirs(FONTS_DIR)
 
 # --- CONFIGURATION LOGIC ---
 def load_config():
@@ -435,6 +442,103 @@ def delete_overlay(overlay_id):
 @gui_editor_bp.route('/api/overlays/image/<path:filename>')
 def get_overlay_image(filename):
     return send_from_directory(OVERLAYS_DIR, filename)
+
+@gui_editor_bp.route('/api/textures/list')
+def list_textures():
+    if os.path.exists(TEXTURES_JSON):
+        with open(TEXTURES_JSON, 'r') as f:
+            return jsonify(json.load(f))
+    return jsonify([])
+
+@gui_editor_bp.route('/api/textures/add', methods=['POST'])
+def add_texture():
+    name = request.form.get('name')
+    file = request.files.get('file')
+    
+    if not name or not file:
+        return jsonify({"status": "error", "message": "Name and file required"}), 400
+
+    texture_id = str(uuid.uuid4())
+    ext = os.path.splitext(file.filename)[1]
+    fname = f"{texture_id}{ext}"
+    file.save(os.path.join(TEXTURES_DIR, fname))
+    
+    entry = {"id": texture_id, "name": name, "filename": fname}
+    
+    textures = []
+    if os.path.exists(TEXTURES_JSON):
+        with open(TEXTURES_JSON, 'r') as f:
+            try: textures = json.load(f)
+            except: pass
+            
+    textures.append(entry)
+    
+    with open(TEXTURES_JSON, 'w') as f:
+        json.dump(textures, f, indent=4)
+        
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/textures/delete/<texture_id>', methods=['POST'])
+def delete_texture(texture_id):
+    textures = []
+    if os.path.exists(TEXTURES_JSON):
+        with open(TEXTURES_JSON, 'r') as f:
+            try: textures = json.load(f)
+            except: pass
+            
+    new_textures = []
+    for t in textures:
+        if t['id'] == texture_id:
+            p = os.path.join(TEXTURES_DIR, t['filename'])
+            if os.path.exists(p): os.remove(p)
+        else:
+            new_textures.append(t)
+            
+    with open(TEXTURES_JSON, 'w') as f:
+        json.dump(new_textures, f, indent=4)
+        
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/textures/image/<path:filename>')
+def get_texture_image(filename):
+    return send_from_directory(TEXTURES_DIR, filename)
+
+@gui_editor_bp.route('/api/fonts/list')
+def list_fonts():
+    fonts = []
+    if os.path.exists(FONTS_DIR):
+        # Filter for common font files
+        fonts = [f for f in os.listdir(FONTS_DIR) if f.lower().endswith(('.ttf', '.otf', '.woff', '.woff2'))]
+    return jsonify(sorted(fonts))
+
+@gui_editor_bp.route('/api/fonts/add', methods=['POST'])
+def add_font():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"status": "error", "message": "File required"}), 400
+    
+    filename = file.filename
+    # Basic sanitization
+    filename = "".join(c for c in filename if c.isalnum() or c in "._-").strip()
+    
+    if not filename.lower().endswith(('.ttf', '.otf', '.woff', '.woff2')):
+         return jsonify({"status": "error", "message": "Invalid font file type"}), 400
+
+    file.save(os.path.join(FONTS_DIR, filename))
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/fonts/delete/<filename>', methods=['POST'])
+def delete_font(filename):
+    # sanitize filename to prevent directory traversal
+    filename = os.path.basename(filename)
+    path = os.path.join(FONTS_DIR, filename)
+    if os.path.exists(path):
+        os.remove(path)
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/fonts/file/<path:filename>')
+def get_font_file(filename):
+    return send_from_directory(FONTS_DIR, filename)
 
 @gui_editor_bp.route('/api/layouts/save', methods=['POST'])
 def save_layout():

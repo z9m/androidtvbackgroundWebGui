@@ -45,6 +45,7 @@ let fades = { left: null, right: null, top: null, bottom: null, corner: null };
 let scalingTimeout = null, lastFetchedData = null;
 let preferredLogoWidth = null;
 let overlayProfiles = [];
+let textureProfiles = [];
 let gridEnabled = false, movingObjects = [], snapLines = { v: [], h: [] }, guideLines = [], isBatchRunning = false;
 const gridSize = 50;
 const screenMargin = 50;
@@ -79,8 +80,42 @@ function updateSelectionUI(e) {
         if (textObj) {
             document.getElementById('fontSizeInput').value = textObj.fontSize;
             document.getElementById('fontFamilySelect').value = textObj.fontFamily;
-            const color = new fabric.Color(textObj.fill);
-            document.getElementById('fontColorInput').value = "#" + color.toHex();
+            
+            // Check fill type (Pattern vs Color)
+            const isPattern = (textObj.fill && typeof textObj.fill === 'object' && textObj.fill.source);
+            document.getElementById('fillTypeTexture').checked = isPattern;
+            document.getElementById('fillTypeColor').checked = !isPattern;
+            
+            document.getElementById('fillColorContainer').style.display = isPattern ? 'none' : 'block';
+            document.getElementById('fillTextureContainer').style.display = isPattern ? 'block' : 'none';
+
+            if (!isPattern && typeof textObj.fill === 'string') {
+                const color = new fabric.Color(textObj.fill);
+                document.getElementById('fontColorInput').value = "#" + color.toHex();
+            } else if (isPattern) {
+                if (textObj.textureId) document.getElementById('textureSelect').value = textObj.textureId;
+                if (textObj.textureScale) {
+                    document.getElementById('textureScale').value = textObj.textureScale;
+                    document.getElementById('textureScaleVal').innerText = textObj.textureScale + "x";
+                } else {
+                    document.getElementById('textureScale').value = 1;
+                    document.getElementById('textureScaleVal').innerText = "1x";
+                }
+                if (textObj.textureRotation) {
+                    document.getElementById('textureRotation').value = textObj.textureRotation;
+                    document.getElementById('textureRotationVal').innerText = textObj.textureRotation + "°";
+                } else {
+                    document.getElementById('textureRotation').value = 0;
+                    document.getElementById('textureRotationVal').innerText = "0°";
+                }
+                if (textObj.textureOpacity !== undefined) {
+                    document.getElementById('textureOpacity').value = textObj.textureOpacity * 100;
+                    document.getElementById('textureOpacityVal').innerText = Math.round(textObj.textureOpacity * 100) + "%";
+                } else {
+                    document.getElementById('textureOpacity').value = 100;
+                    document.getElementById('textureOpacityVal').innerText = "100%";
+                }
+            }
         }
         
         if (activeObj.type === 'textbox') {
@@ -585,7 +620,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                                 const titleSize = is4K ? 120 : 80;
                                 const newText = new fabric.IText(val, { 
                                     left: obj.left, top: obj.top, 
-                                    fontFamily: 'Oswald', fontSize: titleSize, 
+                                    fontFamily: 'Roboto', fontSize: titleSize, 
                                     fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', 
                                     dataTag: 'title', editable: false 
                                 });
@@ -762,7 +797,7 @@ function addMetadataTag(type, placeholder) {
     const baseSize = is4K ? 54 : 35;
     const titleSize = is4K ? 120 : 80;
     const step = is4K ? 150 : 100;
-    const props = { left: 100 + (count * 30), top: 100 + (count * step), fontFamily: 'Oswald', fontSize: type === 'title' ? titleSize : baseSize, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
+    const props = { left: 100 + (count * 30), top: 100 + (count * step), fontFamily: 'Roboto', fontSize: type === 'title' ? titleSize : baseSize, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
     
     if (type === 'rating_star') {
         const starUrl = 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Gold_Star.svg/1024px-Gold_Star.svg.png';
@@ -953,16 +988,17 @@ function updateVerticalLayout(skipRender = false) {
 
     // Auto-switch alignment based on position (Left vs Right)
     const alignSelect = document.getElementById('tagAlignSelect');
-    if (alignSelect.value !== 'center') {
-        const centerX = anchor.left + (anchor.getScaledWidth() / 2);
-        alignSelect.value = (centerX > canvas.width / 2) ? 'right' : 'left';
-    }
+    //if (alignSelect.value !== 'center') {
+    //    const centerX = anchor.left + (anchor.getScaledWidth() / 2);
+    //    alignSelect.value = (centerX > canvas.width / 2) ? 'right' : 'left';
+    //}
     const alignment = alignSelect.value;
 
-    // Sync text alignment for overview and provider_source based on layout alignment
+    // Sync text alignment for overview and provider_source based on explicit text alignment setting
+    const textAlignment = document.getElementById('textContentAlignSelect').value;
     canvas.getObjects().forEach(o => {
         if ((o.dataTag === 'overview' || o.dataTag === 'provider_source') && (o.type === 'textbox' || o.type === 'i-text')) {
-            o.set('textAlign', alignment);
+            o.set('textAlign', textAlignment);
             o.set('dirty', true);
         }
     });
@@ -991,7 +1027,6 @@ function updateVerticalLayout(skipRender = false) {
         if (o.dataTag === 'grid_line') return false;
         if (o.dataTag === 'guide_overlay') return false;
         if (!o.dataTag) return false;
-        // if (!o.visible) return false; // Keep invisible objects to preserve order
         return true;
     });
     const rows = groupElementsByRow(elements, rowThreshold);
@@ -1260,7 +1295,21 @@ function init() {
     if (!loadFromLocalStorage()) {
         if (window.initialBackdropUrl) loadBackground(window.initialBackdropUrl);
     }
+    
+    // Enable font previews in dropdown
+    const fontSelect = document.getElementById('fontFamilySelect');
+    if (fontSelect) {
+        const setFont = (opt) => { if (opt.value) opt.style.fontFamily = opt.value; };
+        Array.from(fontSelect.options).forEach(setFont);
+        new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => {
+            if (n.tagName === 'OPTION') setFont(n);
+            if (n.tagName === 'OPTGROUP') Array.from(n.children).forEach(setFont);
+        }))).observe(fontSelect, { childList: true, subtree: true });
+    }
+
     loadOverlayProfiles();
+    loadTextureProfiles();
+    loadFonts();
     updateFadeControls();
 }
 
@@ -1568,6 +1617,264 @@ function updateOverlay() {
     }
 }
 
+async function loadTextureProfiles() {
+    try {
+        const resp = await fetch('/api/textures/list');
+        textureProfiles = await resp.json();
+        
+        const sel = document.getElementById('textureSelect');
+        if (sel) {
+            const current = sel.value;
+            sel.innerHTML = '<option value="">Select Texture...</option>';
+            textureProfiles.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.innerText = p.name;
+                sel.appendChild(opt);
+            });
+            sel.value = current;
+        }
+        
+        const list = document.getElementById('textureList');
+        if (list) {
+            let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:10px;">';
+            textureProfiles.forEach(p => {
+                const src = `/api/textures/image/${p.filename}`;
+                html += `<div style="background:rgba(255,255,255,0.1); padding:5px; border-radius:4px; text-align:center;">
+                    <img src="${src}" style="width:100%; height:60px; object-fit:cover; border-radius:4px;">
+                    <div style="font-size:11px; margin:5px 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.name}</div>
+                    <button onclick="deleteTexture('${p.id}')" style="background:#c62828; padding:2px 6px; font-size:10px; width:100%; border:none; color:white; cursor:pointer;">Delete</button>
+                </div>`;
+            });
+            html += '</div>';
+            list.innerHTML = html;
+        }
+    } catch (e) { console.error("Error loading textures", e); }
+}
+
+async function loadFonts() {
+    try {
+        const resp = await fetch('/api/fonts/list');
+        const fonts = await resp.json();
+        
+        const sel = document.getElementById('fontFamilySelect');
+        const list = document.getElementById('fontList');
+        
+        // Add custom group to dropdown if not exists
+        let customGroup = document.getElementById('customFontsGroup');
+        if (!customGroup && sel) {
+            customGroup = document.createElement('optgroup');
+            customGroup.id = 'customFontsGroup';
+            customGroup.label = 'Custom Fonts';
+            sel.prepend(customGroup);
+        }
+        if (customGroup) customGroup.innerHTML = '';
+
+        // Inject CSS styles
+        let style = document.getElementById('custom-font-styles');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'custom-font-styles';
+            document.head.appendChild(style);
+        }
+        let css = '';
+        let listHtml = '<ul style="list-style:none; padding:0;">';
+
+        fonts.forEach(fontFile => {
+            const fontName = fontFile.replace(/\.[^/.]+$/, ""); // Remove extension
+            
+            if (customGroup) {
+                const opt = document.createElement('option');
+                opt.value = fontName;
+                opt.innerText = fontName;
+                customGroup.appendChild(opt);
+            }
+
+            css += `@font-face { font-family: '${fontName}'; src: url('/api/fonts/file/${encodeURIComponent(fontFile)}'); }\n`;
+
+            listHtml += `<li style="background:rgba(255,255,255,0.1); margin-bottom:5px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-family:'${fontName}', sans-serif; font-size:16px;">${fontName}</span>
+                <button onclick="deleteFont('${fontFile}')" style="background:#c62828; border:none; color:white; padding:5px 10px; cursor:pointer; border-radius:4px; font-size:11px;">Delete</button>
+            </li>`;
+        });
+        
+        style.textContent = css;
+        if (list) list.innerHTML = listHtml + '</ul>';
+
+    } catch (e) { console.error("Error loading fonts", e); }
+}
+
+async function addFont() {
+    const fileInput = document.getElementById('newFontFile');
+    const file = fileInput.files[0];
+    if (!file) return alert("Please select a font file");
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const btn = document.querySelector('button[onclick="addFont()"]');
+    const originalText = btn.innerText;
+    btn.innerText = "Uploading...";
+    btn.disabled = true;
+    
+    const resp = await fetch('/api/fonts/add', { method: 'POST', body: formData });
+    if (resp.ok) {
+        alert("Font uploaded!");
+        fileInput.value = '';
+        loadFonts();
+    } else {
+        const err = await resp.json();
+        alert("Error: " + (err.message || "Upload failed"));
+    }
+    btn.innerText = originalText;
+    btn.disabled = false;
+}
+
+async function deleteFont(filename) {
+    if(!confirm(`Delete font "${filename}"?`)) return;
+    await fetch(`/api/fonts/delete/${encodeURIComponent(filename)}`, { method: 'POST' });
+    loadFonts();
+}
+
+async function addTexture() {
+    const name = document.getElementById('newTextureName').value;
+    const file = document.getElementById('newTextureFile').files[0];
+    if (!name || !file) return alert("Name and file required");
+    
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('file', file);
+    
+    const btn = document.querySelector('button[onclick="addTexture()"]');
+    const originalText = btn.innerText;
+    btn.innerText = "Uploading...";
+    btn.disabled = true;
+    
+    const resp = await fetch('/api/textures/add', { method: 'POST', body: formData });
+    if (resp.ok) {
+        alert("Texture saved!");
+        document.getElementById('newTextureName').value = '';
+        document.getElementById('newTextureFile').value = '';
+        loadTextureProfiles();
+    } else {
+        alert("Error saving texture");
+    }
+    btn.innerText = originalText;
+    btn.disabled = false;
+}
+
+async function deleteTexture(id) {
+    if(!confirm("Delete this texture?")) return;
+    await fetch(`/api/textures/delete/${id}`, { method: 'POST' });
+    loadTextureProfiles();
+}
+
+function updateTextureScale() {
+    const val = document.getElementById('textureScale').value;
+    document.getElementById('textureScaleVal').innerText = val + "x";
+    applyTextureToSelection();
+}
+
+function updateTextureRotation() {
+    const val = document.getElementById('textureRotation').value;
+    document.getElementById('textureRotationVal').innerText = val + "°";
+    applyTextureToSelection();
+}
+
+function updateTextureOpacity() {
+    const val = document.getElementById('textureOpacity').value;
+    document.getElementById('textureOpacityVal').innerText = val + "%";
+    applyTextureToSelection();
+}
+
+function resetTextureSettings() {
+    document.getElementById('textureScale').value = 1;
+    document.getElementById('textureScaleVal').innerText = "1x";
+    document.getElementById('textureRotation').value = 0;
+    document.getElementById('textureRotationVal').innerText = "0°";
+    document.getElementById('textureOpacity').value = 100;
+    document.getElementById('textureOpacityVal').innerText = "100%";
+    applyTextureToSelection();
+}
+
+function toggleTextFillType() {
+    const type = document.querySelector('input[name="fillType"]:checked').value;
+    document.getElementById('fillColorContainer').style.display = (type === 'color') ? 'block' : 'none';
+    document.getElementById('fillTextureContainer').style.display = (type === 'texture') ? 'block' : 'none';
+    
+    if (type === 'color') {
+        updateSelectedColor();
+    } else {
+        applyTextureToSelection();
+    }
+}
+
+function applyTextureToSelection() {
+    const activeObj = canvas.getActiveObject();
+    if (!activeObj) return;
+    
+    const textureId = document.getElementById('textureSelect').value;
+    if (!textureId) return;
+    
+    const scale = parseFloat(document.getElementById('textureScale').value) || 1;
+    const rotation = parseInt(document.getElementById('textureRotation').value) || 0;
+    const opacity = parseInt(document.getElementById('textureOpacity').value) / 100;
+
+    const profile = textureProfiles.find(p => p.id === textureId);
+    if (!profile) return;
+    
+    const url = `/api/textures/image/${profile.filename}`;
+    
+    const rad = rotation * Math.PI / 180;
+    const c = Math.cos(rad);
+    const s = Math.sin(rad);
+    const matrix = [scale * c, scale * s, -scale * s, scale * c, 0, 0];
+
+    fabric.util.loadImage(url, function(img) {
+        if (!img) return;
+        
+        let source = img;
+        if (opacity < 1) {
+            const c = document.createElement('canvas');
+            c.width = img.width;
+            c.height = img.height;
+            const ctx = c.getContext('2d');
+            ctx.globalAlpha = opacity;
+            ctx.drawImage(img, 0, 0);
+            source = c;
+        }
+
+        const pattern = new fabric.Pattern({ 
+            source: source, 
+            repeat: 'repeat',
+            patternTransform: matrix
+        });
+        
+        const applyToObj = (obj) => {
+            if (obj.type === 'i-text' || obj.type === 'textbox') {
+                obj.set('fill', pattern);
+                obj.set('textureId', textureId);
+                obj.set('textureScale', scale);
+                obj.set('textureRotation', rotation);
+                obj.set('textureOpacity', opacity);
+            } else if (obj.type === 'group') {
+                const t = obj.getObjects().find(o => o.type === 'i-text');
+                if (t) {
+                    t.set('fill', pattern);
+                    t.set('textureId', textureId);
+                    t.set('textureScale', scale);
+                    t.set('textureRotation', rotation);
+                    t.set('textureOpacity', opacity);
+                }
+            }
+        };
+        
+        applyToObj(activeObj);
+        canvas.requestRenderAll();
+        saveToLocalStorage();
+    });
+}
+
 function updateBgColor(skipRender = false) { 
     if(!canvas) return Promise.resolve(); 
     
@@ -1677,7 +1984,7 @@ async function saveLayout() {
     btn.innerText = "Saving Layout...";
     setUIInteraction(false);
 
-    const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
+    const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
     
     // Filter out fade effects and grid lines BEFORE saving
     layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
@@ -1692,6 +1999,7 @@ async function saveLayout() {
         fadeTop: document.getElementById('fadeTop').value,
         fadeBottom: document.getElementById('fadeBottom').value,
         tagAlignment: document.getElementById('tagAlignSelect').value,
+        textContentAlignment: document.getElementById('textContentAlignSelect').value,
         genreLimit: document.getElementById('genreLimitSlider').value,
         overlayId: document.getElementById('overlaySelect').value
     };
@@ -1796,6 +2104,7 @@ async function loadLayout(name, silent = false) {
             if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
             if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
             else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
+            if(eff.textContentAlignment) document.getElementById('textContentAlignSelect').value = eff.textContentAlignment;
             if(eff.limitGenres !== undefined) {
                 const val = eff.limitGenres ? 2 : 6;
                 document.getElementById('genreLimitSlider').value = val;
@@ -1839,7 +2148,7 @@ function mirrorBackground() {
 
 function saveToLocalStorage() {
     if (!canvas) return;
-    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
+    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
     // Filter out fade effects so they aren't saved as static objects
     json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
     
@@ -1853,6 +2162,7 @@ function saveToLocalStorage() {
         fadeTop: document.getElementById('fadeTop').value,
         fadeBottom: document.getElementById('fadeBottom').value,
         tagAlignment: document.getElementById('tagAlignSelect').value,
+        textContentAlignment: document.getElementById('textContentAlignSelect').value,
         genreLimit: document.getElementById('genreLimitSlider').value,
         overlayId: document.getElementById('overlaySelect').value
     };
@@ -1905,6 +2215,7 @@ function loadFromLocalStorage() {
                     if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
                     if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
                     else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
+                    if(eff.textContentAlignment) document.getElementById('textContentAlignSelect').value = eff.textContentAlignment;
                     if(eff.limitGenres !== undefined) {
                         const val = eff.limitGenres ? 2 : 6;
                         document.getElementById('genreLimitSlider').value = val;

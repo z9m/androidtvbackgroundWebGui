@@ -220,19 +220,65 @@ class ImageGenerator:
             self.current_y += max_height + self.padding
 
     def measure_tags_width(self, tags, font_key='info', separator="  •  "):
-        """Calculates the total width of the tags line."""
+        """Calculates the exact visual width of the tags line using a temporary canvas (Auto-Crop logic)."""
         if not tags: return 0
-        font = self.fonts.get(font_key, self.fonts['info'])
         valid_tags = [str(t) for t in tags if t]
         if not valid_tags: return 0
+
+        font = self.fonts.get(font_key, self.fonts['info'])
         
+        # 1. Estimate size for temp image (make it large enough)
         sep_width = self.draw.textlength(separator, font=font) if separator else 0
-        total_width = 0
+        est_width = 0
         for i, tag in enumerate(valid_tags):
-            total_width += self.draw.textlength(tag, font=font)
-            if i > 0:
-                total_width += sep_width
-        return total_width
+            est_width += self.draw.textlength(tag, font=font)
+            if i > 0: est_width += sep_width
+            
+        temp_w = int(est_width * 1.2) + 200
+        temp_h = int(getattr(font, 'size', 50) * 3) + 100
+        
+        # 2. Create temp image
+        temp_img = Image.new('RGBA', (temp_w, temp_h), (0, 0, 0, 0))
+        temp_draw = ImageDraw.Draw(temp_img)
+        
+        # 3. Draw tags exactly as they would be drawn on canvas (including shadow)
+        cursor_x = 100 # Start with padding to capture left bearing
+        cursor_y = temp_h // 3
+        
+        for i, tag in enumerate(valid_tags):
+            if i > 0 and separator:
+                self._draw_text_with_shadow((cursor_x, cursor_y), separator, font, fill="white", shadow="black", draw_obj=temp_draw)
+                cursor_x += temp_draw.textlength(separator, font=font)
+            
+            self._draw_text_with_shadow((cursor_x, cursor_y), tag, font, fill="white", shadow="black", draw_obj=temp_draw)
+            cursor_x += temp_draw.textlength(tag, font=font)
+            
+        # 4. Get bounding box of visible pixels
+        bbox = temp_img.getbbox()
+        if bbox:
+            return bbox[2] - bbox[0]
+            
+        return 0
+
+    def _measure_visual_bbox(self, text, font):
+        """Measures the exact visual bounding box of text using a temporary canvas."""
+        if not text: return 0, 0
+        
+        # Estimate size (generous padding)
+        dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
+        est_bbox = dummy_draw.textbbox((0, 0), text, font=font)
+        temp_w = (est_bbox[2] - est_bbox[0]) + 100
+        temp_h = (est_bbox[3] - est_bbox[1]) + 100
+        
+        temp_img = Image.new('RGBA', (temp_w, temp_h), (0, 0, 0, 0))
+        temp_draw = ImageDraw.Draw(temp_img)
+        
+        self._draw_text_with_shadow((50, 50), text, font, draw_obj=temp_draw)
+        
+        bbox = temp_img.getbbox()
+        if bbox:
+            return bbox[2] - bbox[0], bbox[3] - bbox[1]
+        return 0, 0
 
     def draw_media_block(self, logo_image, title_text, tags, align='left', margin_x=50):
         """
@@ -284,16 +330,15 @@ class ImageGenerator:
         wrapped = "\n".join(textwrap.wrap(shortened, width=95))
         
         self._draw_text_with_shadow((self.current_x, self.current_y), wrapped, self.fonts['summary'])
-        bbox = self.draw.textbbox((0,0), wrapped, font=self.fonts['summary'])
-        self.current_y += (bbox[3] - bbox[1]) + self.padding * 2
+        _, visual_height = self._measure_visual_bbox(wrapped, self.fonts['summary'])
+        self.current_y += visual_height + self.padding * 2
 
     def draw_custom_text_and_provider_logo(self, text, provider_logo_path):
         """Draws the custom footer text and the provider logo (e.g. Jellyfin/Plex logo)."""
         self._draw_text_with_shadow((self.current_x, self.current_y), text, self.fonts['custom'])
         
         # Calculate logo position relative to text
-        bbox = self.draw.textbbox((0,0), text, font=self.fonts['custom'])
-        text_width = bbox[2] - bbox[0]
+        text_width, _ = self._measure_visual_bbox(text, self.fonts['custom'])
         
         full_logo_path = os.path.join(self.base_path, provider_logo_path)
         if os.path.exists(full_logo_path):
@@ -307,10 +352,11 @@ class ImageGenerator:
             
             self.canvas.paste(p_logo, (logo_x, logo_y), p_logo)
 
-    def _draw_text_with_shadow(self, pos, text, font, fill="white", shadow="black"):
+    def _draw_text_with_shadow(self, pos, text, font, fill="white", shadow="black", draw_obj=None):
+        d = draw_obj if draw_obj else self.draw
         x, y = pos
-        self.draw.text((x + self.shadow_offset, y + self.shadow_offset), text, font=font, fill=shadow)
-        self.draw.text((x, y), text, font=font, fill=fill)
+        d.text((x + self.shadow_offset, y + self.shadow_offset), text, font=font, fill=shadow)
+        d.text((x, y), text, font=font, fill=fill)
 
     def save(self, path):
         """Saves the current canvas to a file."""

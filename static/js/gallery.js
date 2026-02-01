@@ -96,7 +96,6 @@ function switchGalleryTab(folder) {
 
 async function loadGallery() {
     const container = document.getElementById('gallery-content');
-    // container.innerHTML = '<p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>';
     
     try {
         const resp = await fetch('/api/gallery/list');
@@ -165,7 +164,7 @@ async function saveToGalleryInternal(layoutName, overwriteFilename = null, targe
     
     if (overlay) overlay.visible = wasVisible;
 
-    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor']);
+    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
     
     const payload = { 
         image: dataURL, 
@@ -231,6 +230,7 @@ async function editGalleryImage(folder, filename) {
             if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
             if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
             else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
+            if(eff.textContentAlignment) document.getElementById('textContentAlignSelect').value = eff.textContentAlignment;
             if(eff.limitGenres !== undefined) {
                 const val = eff.limitGenres ? 2 : 6;
                 document.getElementById('genreLimitSlider').value = val;

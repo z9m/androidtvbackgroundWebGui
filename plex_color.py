@@ -252,23 +252,6 @@ def generate_background_fast(input_img, target_width=3000):
     return canvas.convert("RGB")
 
 
-
-
-def create_blurry_background(image, size=(3840, 2160), blur_radius=800, dither_strength=16):
-    """
-    Create a blurry canvas background from the input image, with strong noise to prevent banding.
-    """
-    bg = image.resize(size, Image.LANCZOS)
-    bg = bg.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-    bg_array = np.array(bg).astype(np.float32)
-
-    # Ajoute du bruit aléatoire (dithering doux)
-    noise = np.random.uniform(-dither_strength, dither_strength, bg_array.shape)
-    bg_array = np.clip(bg_array + noise, 0, 255).astype(np.uint8)
-
-    return Image.fromarray(bg_array)
-
-
 def validate_shadow_offset(offset, default):
     """
     Validate shadow offset.

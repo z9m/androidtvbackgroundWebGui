@@ -4,7 +4,7 @@
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <title>TV Background Suite</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alice&family=Andika&family=Arvo:wght@400;700&family=Barrio&family=Bungee+Spice&family=Codystar&family=Creepster&family=Diplomata+SC&family=Ewert&family=Fascinate+Inline&family=Faster+One&family=Fira+Sans:wght@300;400;700&family=Flavors&family=Fredericka+the+Great&family=Honk&family=IBM+Plex+Sans:wght@300;400;700&family=Inter:wght@300;400;700&family=Jost:wght@300;400;700&family=Lacquer&family=Lato:wght@300;400;700&family=Manrope:wght@300;400;700&family=Merriweather:wght@300;400;700&family=Metal+Mania&family=Modak&family=Monoton&family=Montserrat:wght@300;400;700&family=Mulish:wght@300;400;700&family=Nabla&family=Nosifer&family=Nunito:wght@300;400;700&family=Open+Sans:wght@300;400;700&family=Oswald:wght@300;400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@300;400;700&family=Rubik+Beastly&family=Rubik+Vinyl&family=Shojumaru&family=Silkscreen&family=Space+Grotesk:wght@300;400;700&family=Special+Elite&family=Titillium+Web:wght@300;400;700&family=Urbanist:wght@300;400;700&family=Zilla+Slab+Highlight&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alice&family=Andika&family=Arvo:wght@400;700&family=Barrio&family=Bungee+Spice&family=Codystar&family=Creepster&family=Diplomata+SC&family=Ewert&family=Fascinate+Inline&family=Faster+One&family=Fira+Sans:wght@300;400;700&family=Flavors&family=Fredericka+the+Great&family=Honk&family=IBM+Plex+Sans:wght@300;400;700&family=Inter:wght@300;400;700&family=Jost:wght@300;400;700&family=Lacquer&family=Lato:wght@300;400;700&family=Manrope:wght@300;400;700&family=Merriweather:wght@300;400;700&family=Metal+Mania&family=Modak&family=Monoton&family=Montserrat:wght@300;400;700&family=Mulish:wght@300;400;700&family=Nabla&family=Nosifer&family=Nunito:wght@300;400;700&family=Open+Sans:wght@300;400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@300;400;700&family=Rubik+Beastly&family=Rubik+Vinyl&family=Shojumaru&family=Silkscreen&family=Space+Grotesk:wght@300;400;700&family=Special+Elite&family=Titillium+Web:wght@300;400;700&family=Urbanist:wght@300;400;700&family=Zilla+Slab+Highlight&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
 </head>
 <body>
@@ -15,6 +15,8 @@
         <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()">🖼️ Gallery</div>
         <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()">⚡ Batch Processing</div>
         <div class="tab-link" onclick="openTab(event, 'overlay-tab')">📏 Overlay Manager</div>
+        <div class="tab-link" onclick="openTab(event, 'texture-tab')">🎨 Texture Manager</div>
+        <div class="tab-link" onclick="openTab(event, 'font-tab')">🔤 Font Manager</div>
         <div class="tab-link" onclick="openTab(event, 'settings-tab')">⚙️ Provider Settings</div>
     </div>
 
@@ -30,6 +32,13 @@
                     <option value="left">Left</option>
                     <option value="center" selected>Center</option>
                     <option value="right">Right</option>
+                </select>
+                <label>Text Content Alignment</label>
+                <select id="textContentAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
+                    <option value="left" selected>Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                    <option value="justify">Justify</option>
                 </select>
                 <div style="margin-top:5px;">
                     <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
@@ -130,9 +139,8 @@
                 <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
                 <label for="fontFamilySelect">Font Family</label>
                 <select id="fontFamilySelect" onchange="updateSelectedFontFamily()">
-                    <option value="Oswald" selected>Oswald</option>
+                    <option value="Roboto" selected>Roboto</option>
                     <option value="Segoe UI">Segoe UI (System)</option>
-                    <option value="Roboto">Roboto</option>
                     <option value="Open Sans">Open Sans</option>
                     <option value="Lato">Lato</option>
                     <option value="Montserrat">Montserrat</option>
@@ -178,8 +186,39 @@
                     <option value="Diplomata SC">Diplomata SC</option>
                 </select>
                 <button onclick="applyFontToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;">Apply Font & Color to All Tags</button>
-                <label for="fontColorInput">Text Color</label>
-                <input type="color" id="fontColorInput" oninput="updateSelectedColor()" style="height:35px;">
+                
+                <label>Fill Type</label>
+                <div style="display:flex; gap:10px; margin-bottom:5px;">
+                    <input type="radio" id="fillTypeColor" name="fillType" value="color" checked onchange="toggleTextFillType()">
+                    <label for="fillTypeColor" style="margin:0; font-size:12px;">Color</label>
+                    <input type="radio" id="fillTypeTexture" name="fillType" value="texture" onchange="toggleTextFillType()">
+                    <label for="fillTypeTexture" style="margin:0; font-size:12px;">Texture</label>
+                </div>
+                <div id="fillColorContainer">
+                    <label for="fontColorInput">Text Color</label>
+                    <input type="color" id="fontColorInput" oninput="updateSelectedColor()" style="height:35px;">
+                </div>
+                <div id="fillTextureContainer" style="display:none;">
+                    <label for="textureSelect">Select Texture</label>
+                    <select id="textureSelect" onchange="applyTextureToSelection()" style="width:100%; padding:5px;"><option value="">None</option></select>
+                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                        <label style="font-size:10px; margin:0;">Pattern Scale</label>
+                        <span id="textureScaleVal" style="font-size:10px;">1x</span>
+                    </div>
+                    <input type="range" id="textureScale" min="0.1" max="3" step="0.1" value="1" oninput="updateTextureScale()" style="margin-top:2px;">
+                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                        <label style="font-size:10px; margin:0;">Pattern Rotation</label>
+                        <span id="textureRotationVal" style="font-size:10px;">0°</span>
+                    </div>
+                    <input type="range" id="textureRotation" min="0" max="360" step="1" value="0" oninput="updateTextureRotation()" style="margin-top:2px;">
+                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                        <label style="font-size:10px; margin:0;">Opacity</label>
+                        <span id="textureOpacityVal" style="font-size:10px;">100%</span>
+                    </div>
+                    <input type="range" id="textureOpacity" min="0" max="100" value="100" oninput="updateTextureOpacity()" style="margin-top:2px;">
+                    <button onclick="resetTextureSettings()" style="margin-top: 10px; font-size: 11px; background-color: #4a4a4a; width: 100%;">Reset Texture Settings</button>
+                </div>
+
                 <div id="textAlignControl" style="display:none; margin-top:10px;">
                     <label style="margin-bottom:5px;">Text Alignment</label>
                     <div style="display:flex; gap:5px;">
@@ -355,6 +394,40 @@
                 </div>
                 <h4>Existing Profiles</h4>
                 <div id="overlayList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="texture-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px; align-items: flex-start;">
+            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
+                <h3>Texture Manager</h3>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h4>Add New Texture</h4>
+                    <label>Texture Name</label>
+                    <input type="text" id="newTextureName" placeholder="e.g. Gold Foil">
+                    <label>Image File</label>
+                    <input type="file" id="newTextureFile" accept="image/*">
+                    <button onclick="addTexture()" style="margin-top: 15px; background-color: #4CAF50;">Save Texture</button>
+                </div>
+                <h4>Existing Textures</h4>
+                <div id="textureList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="font-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px; align-items: flex-start;">
+            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
+                <h3>Font Manager</h3>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h4>Add New Font (.ttf, .otf, .woff)</h4>
+                    <label>Font File</label>
+                    <input type="file" id="newFontFile" accept=".ttf,.otf,.woff,.woff2">
+                    <button onclick="addFont()" style="margin-top: 15px; background-color: #4CAF50;">Upload Font</button>
+                </div>
+                <h4>Installed Custom Fonts</h4>
+                <div id="fontList"></div>
             </div>
         </div>
     </div>

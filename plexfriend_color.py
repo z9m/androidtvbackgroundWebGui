@@ -298,26 +298,6 @@ def generate_background_for_item(item, media_type, order_type, plex_logo, target
     canvas.convert("RGB").save(out_path,quality=95)
     print(f"Saved: {out_path}")
 
-
-# === Sorting Helpers ===
-def sort_movies(movies,k): return sorted([m for m in movies if getattr(m,k,None)], key=lambda x:getattr(x,k), reverse=True)
-def sort_shows(shows,k):
-    arr=[]
-    for s in shows:
-        eps=[e for e in s.episodes() if getattr(e,k,None)]
-        if eps: arr.append((s,max(eps,key=lambda e:getattr(e,k))))
-    return [s for s,_ in sorted(arr,key=lambda t:getattr(t[1],k),reverse=True)]
-
-# === Download Latest Media ===
-def download_latest_media(plex,order,lim,typ,base_bg,over,logo,friend):
-    items = plex.library.search(libtype='movie' if typ=='movie' else 'show')
-    key   = 'originallyAvailableAt' if order=='aired' else 'addedAt'
-    sorted_items = (sort_movies if typ=='movie' else sort_shows)(items,key)[:lim]
-    odir = os.path.join(background_dir)
-    for itm in sorted_items:
-        generate_background_for_item(itm,typ,order,base_bg,over,logo,odir)
-        time.sleep(plex_api_delay_seconds)
-
 # === Media Fetching ===
 def sort_movies(movies,k): return sorted([m for m in movies if getattr(m,k,None)], key=lambda x:getattr(x,k), reverse=True)
 def sort_shows(shows,k):
