@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import random
 import io
@@ -9,6 +10,9 @@ import shutil
 import re
 import uuid
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
+
+# Prevent Python from generating .pyc files and __pycache__ folders
+sys.dont_write_bytecode = True
 
 # --- IMPORT IMAGE ENGINE ---
 from image_engine import ImageGenerator

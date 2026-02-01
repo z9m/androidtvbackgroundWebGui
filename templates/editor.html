@@ -10,30 +10,42 @@
 <body>
 
     <div class="nav-tabs">
-        <div class="tab-link active" onclick="openTab(event, 'editor-tab')">🎨 Layout Editor</div>
-        <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()">💾 Saved Layouts</div>
-        <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()">🖼️ Gallery</div>
-        <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()">⚡ Batch Processing</div>
-        <div class="tab-link" onclick="openTab(event, 'overlay-tab')">📏 Overlay Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'texture-tab')">🎨 Texture Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'font-tab')">🔤 Font Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'settings-tab')">⚙️ Provider Settings</div>
+        <div class="tab-link active" onclick="openTab(event, 'editor-tab')" data-i18n="nav_editor">🎨 Layout Editor</div>
+        <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()" data-i18n="nav_layouts">💾 Saved Layouts</div>
+        <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()" data-i18n="nav_gallery">🖼️ Gallery</div>
+        <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()" data-i18n="nav_batch">⚡ Batch Processing</div>
+        <div class="tab-link" onclick="openTab(event, 'overlay-tab')" data-i18n="nav_overlay">📏 Overlay Manager</div>
+        <div class="tab-link" onclick="openTab(event, 'texture-tab')" data-i18n="nav_texture">🎨 Texture Manager</div>
+        <div class="tab-link" onclick="openTab(event, 'font-tab')" data-i18n="nav_font">🔤 Font Manager</div>
+        <div class="tab-link" onclick="openTab(event, 'settings-tab')" data-i18n="nav_settings">⚙️ Provider Settings</div>
+        <div style="margin-left: auto; padding-right: 10px; display: flex; align-items: center;">
+            <select id="languageSelect" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px;">
+                <option value="de">🇩🇪 Deutsch</option>
+                <option value="en">🇺🇸 English</option>
+                <option value="it">🇮🇹 Italiano</option>
+                <option value="fr">🇫🇷 Français</option>
+                <option value="pl">🇵🇱 Polski</option>
+                <option value="cs">🇨🇿 Čeština</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="ro">🇷🇴 Română</option>
+            </select>
+        </div>
     </div>
 
     <div id="editor-tab" class="tab-content active">
         <div class="sidebar">
             <div class="control-group">
-                <h3>Layout Management</h3>
-                <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;">💾 Save Changes</button>
-                <label>Layout Name</label>
+                <h3 data-i18n="layout_mgmt">Layout Management</h3>
+                <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;" data-i18n="save_changes">💾 Save Changes</button>
+                <label data-i18n="layout_name">Layout Name</label>
                 <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default">
-                <label>Tag Alignment</label>
+                <label data-i18n="tag_align">Tag Alignment</label>
                 <select id="tagAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
                     <option value="left">Left</option>
                     <option value="center" selected>Center</option>
                     <option value="right">Right</option>
                 </select>
-                <label>Text Content Alignment</label>
+                <label data-i18n="text_align_content">Text Content Alignment</label>
                 <select id="textContentAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
                     <option value="left" selected>Left</option>
                     <option value="center">Center</option>
@@ -41,29 +53,29 @@
                     <option value="justify">Justify</option>
                 </select>
                 <div style="margin-top:5px;">
-                    <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
+                    <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;" data-i18n="genre_limit">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
                     <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
                 </div>
-                <button onclick="saveLayout()" style="background: #00796b; margin-top: 10px;">💾 Save Layout</button>
+                <button onclick="saveLayout()" style="background: #00796b; margin-top: 10px;" data-i18n="save_layout">💾 Save Layout</button>
             </div>
 
             <div class="control-group">
-                <h3>Logos & Icons</h3>
+                <h3 data-i18n="logos_icons">Logos & Icons</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                     <button onclick="addLogo('https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/IMDB_Logo_2016.svg/1200px-IMDB_Logo_2016.svg.png')" style="grid-column: 1 / -1;">IMDb Logo</button>
                 </div>
                 <div id="icon-properties" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
-                    <label for="iconSizeInput">Icon Size</label>
+                    <label for="iconSizeInput" data-i18n="icon_size">Icon Size</label>
                     <input type="number" id="iconSizeInput" min="10" max="500" oninput="updateIconSize()">
                     <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
                         <input type="checkbox" id="matchHeightToggle" onchange="toggleMatchHeight()" style="width:20px; height:20px; margin:0;">
-                        <label for="matchHeightToggle" style="margin:0; cursor:pointer; font-size:11px;">Match Height to Neighbor</label>
+                        <label for="matchHeightToggle" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="match_height">Match Height to Neighbor</label>
                     </div>
                 </div>
             </div>
 
             <div class="control-group">
-                <h3>Metadata Tags</h3>
+                <h3 data-i18n="metadata_tags">Metadata Tags</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                     <button onclick="addMetadataTag('title', 'TITLE / LOGO')">Title/Logo</button>
                     <button onclick="addMetadataTag('year', '2024')">Year</button>
@@ -79,42 +91,42 @@
             </div>
 
             <div class="control-group">
-                <h3>Preview Controls</h3>
+                <h3 data-i18n="preview_controls">Preview Controls</h3>
                 <div style="display:flex; gap:5px; margin-bottom:5px;">
-                    <input type="text" id="mediaSearchInput" placeholder="Search title..." style="margin-top:0;" onkeydown="if(event.key==='Enter') searchMedia()">
+                    <input type="text" id="mediaSearchInput" placeholder="Search title..." style="margin-top:0;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
                     <button onclick="searchMedia()" style="width:auto; margin-top:0;">🔍</button>
                 </div>
-                <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0;">🎲 Shuffle Preview</button>
+                <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0;" data-i18n="shuffle_preview">🎲 Shuffle Preview</button>
                 <p id="source-indicator" style="font-size: 9px; color: #555; text-align: center; margin-top: 5px;">Source: None</p>
             </div>
 
             <div class="control-group">
-                <h3>Canvas</h3>
-                <label for="resSelect">Resolution</label>
+                <h3 data-i18n="canvas_settings">Canvas</h3>
+                <label for="resSelect" data-i18n="resolution">Resolution</label>
                 <select id="resSelect" onchange="changeResolution()">
                     <option value="1080">1080p (Full HD)</option>
                     <option value="2160">2160p (4K)</option>
                 </select>
-                <label for="overlaySelect">Guide Overlay</label>
+                <label for="overlaySelect" data-i18n="guide_overlay">Guide Overlay</label>
                 <select id="overlaySelect" onchange="updateOverlay()">
                     <option value="">None</option>
                 </select>
-                <label>Background Color</label>
+                <label data-i18n="bg_color">Background Color</label>
                 <div style="display:flex; gap:5px; align-items:center;">
                     <input type="color" id="bgColor" oninput="updateBgColor()" value="#000000" style="height:35px; width:60px;">
-                    <button onclick="autoDetectBgColor(true)" style="margin-top:0; font-size: 11px;">✨ Auto-Detect</button>
+                    <button onclick="autoDetectBgColor(true)" style="margin-top:0; font-size: 11px;" data-i18n="auto_detect">✨ Auto-Detect</button>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                    <label style="font-size:10px; margin:0;">Brightness</label>
+                    <label style="font-size:10px; margin:0;" data-i18n="brightness">Brightness</label>
                     <span id="brightVal" style="font-size:10px;">20%</span>
                 </div>
                 <input type="range" id="bgBrightness" min="0" max="100" value="20" oninput="adjustAutoBrightness()" style="margin-top:2px;">
-                <button onclick="mirrorBackground()" style="margin-top: 10px; background-color: #4a4a4a;">↔️ Mirror Background</button>
+                <button onclick="mirrorBackground()" style="margin-top: 10px; background-color: #4a4a4a;" data-i18n="mirror_bg">↔️ Mirror Background</button>
             </div>
 
             <div class="control-group">
-                <h3>Background Effects</h3>
-                <label>Effect Type</label>
+                <h3 data-i18n="bg_effects">Background Effects</h3>
+                <label data-i18n="effect_type">Effect Type</label>
                 <select id="fadeEffect" onchange="updateFadeControls()">
                     <option value="custom">Custom Linear Fade</option>
                     <option value="bottom-left">Corner Fade: Bottom-Left</option>
@@ -124,7 +136,7 @@
                     <option value="vignette">Vignette Fade (Centered)</option>
                 </select>
                 <div id="ctrl-fade-radius" style="display:none;">
-                    <label for="fadeRadius">Corner Radius</label>
+                    <label for="fadeRadius" data-i18n="corner_radius">Corner Radius</label>
                     <input type="range" id="fadeRadius" min="0" max="3000" value="1000" oninput="updateFades()">
                 </div>
                 <div id="ctrl-fade-left"><label for="fadeLeft">Left</label><input type="range" id="fadeLeft" min="0" max="3000" value="580" oninput="updateFades()"></div>
@@ -134,10 +146,10 @@
             </div>
 
             <div class="control-group" id="text-properties" style="display:none;">
-                <h3>Text Properties</h3>
-                <label for="fontSizeInput">Font Size</label>
+                <h3 data-i18n="text_props">Text Properties</h3>
+                <label for="fontSizeInput" data-i18n="font_size">Font Size</label>
                 <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
-                <label for="fontFamilySelect">Font Family</label>
+                <label for="fontFamilySelect" data-i18n="font_family">Font Family</label>
                 <select id="fontFamilySelect" onchange="updateSelectedFontFamily()">
                     <option value="Roboto" selected>Roboto</option>
                     <option value="Segoe UI">Segoe UI (System)</option>
@@ -185,42 +197,42 @@
                     <option value="Metal Mania">Metal Mania</option>
                     <option value="Diplomata SC">Diplomata SC</option>
                 </select>
-                <button onclick="applyFontToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;">Apply Font & Color to All Tags</button>
+                <button onclick="applyFontToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_font_all">Apply Font & Color to All Tags</button>
                 
-                <label>Fill Type</label>
+                <label data-i18n="fill_type">Fill Type</label>
                 <div style="display:flex; gap:10px; margin-bottom:5px;">
                     <input type="radio" id="fillTypeColor" name="fillType" value="color" checked onchange="toggleTextFillType()">
-                    <label for="fillTypeColor" style="margin:0; font-size:12px;">Color</label>
+                    <label for="fillTypeColor" style="margin:0; font-size:12px;" data-i18n="color">Color</label>
                     <input type="radio" id="fillTypeTexture" name="fillType" value="texture" onchange="toggleTextFillType()">
-                    <label for="fillTypeTexture" style="margin:0; font-size:12px;">Texture</label>
+                    <label for="fillTypeTexture" style="margin:0; font-size:12px;" data-i18n="texture">Texture</label>
                 </div>
                 <div id="fillColorContainer">
-                    <label for="fontColorInput">Text Color</label>
+                    <label for="fontColorInput" data-i18n="text_color">Text Color</label>
                     <input type="color" id="fontColorInput" oninput="updateSelectedColor()" style="height:35px;">
                 </div>
                 <div id="fillTextureContainer" style="display:none;">
-                    <label for="textureSelect">Select Texture</label>
+                    <label for="textureSelect" data-i18n="select_texture">Select Texture</label>
                     <select id="textureSelect" onchange="applyTextureToSelection()" style="width:100%; padding:5px;"><option value="">None</option></select>
                     <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                        <label style="font-size:10px; margin:0;">Pattern Scale</label>
+                        <label style="font-size:10px; margin:0;" data-i18n="pattern_scale">Pattern Scale</label>
                         <span id="textureScaleVal" style="font-size:10px;">1x</span>
                     </div>
                     <input type="range" id="textureScale" min="0.1" max="3" step="0.1" value="1" oninput="updateTextureScale()" style="margin-top:2px;">
                     <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                        <label style="font-size:10px; margin:0;">Pattern Rotation</label>
+                        <label style="font-size:10px; margin:0;" data-i18n="pattern_rotation">Pattern Rotation</label>
                         <span id="textureRotationVal" style="font-size:10px;">0°</span>
                     </div>
                     <input type="range" id="textureRotation" min="0" max="360" step="1" value="0" oninput="updateTextureRotation()" style="margin-top:2px;">
                     <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                        <label style="font-size:10px; margin:0;">Opacity</label>
+                        <label style="font-size:10px; margin:0;" data-i18n="opacity">Opacity</label>
                         <span id="textureOpacityVal" style="font-size:10px;">100%</span>
                     </div>
                     <input type="range" id="textureOpacity" min="0" max="100" value="100" oninput="updateTextureOpacity()" style="margin-top:2px;">
-                    <button onclick="resetTextureSettings()" style="margin-top: 10px; font-size: 11px; background-color: #4a4a4a; width: 100%;">Reset Texture Settings</button>
+                    <button onclick="resetTextureSettings()" style="margin-top: 10px; font-size: 11px; background-color: #4a4a4a; width: 100%;" data-i18n="reset_texture">Reset Texture Settings</button>
                 </div>
 
                 <div id="textAlignControl" style="display:none; margin-top:10px;">
-                    <label style="margin-bottom:5px;">Text Alignment</label>
+                    <label style="margin-bottom:5px;" data-i18n="text_align">Text Alignment</label>
                     <div style="display:flex; gap:5px;">
                         <button onclick="setTextAlignment('left')" style="flex:1;">Left</button>
                         <button onclick="setTextAlignment('center')" style="flex:1;">Center</button>
@@ -230,17 +242,17 @@
                 <div id="textBackgroundControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
                         <input type="checkbox" id="textBgEnable" onchange="toggleTextBackground()" style="width:20px; height:20px; margin:0;">
-                        <label for="textBgEnable" style="margin:0; cursor:pointer; font-size:11px;">Background Box</label>
+                        <label for="textBgEnable" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="bg_box">Background Box</label>
                     </div>
                     <div id="textBgSettings" style="display:none;">
                         <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
                             <input type="checkbox" id="textBgAuto" onchange="updateTextBackgroundSettings()" style="width:20px; height:20px; margin:0;">
-                            <label for="textBgAuto" style="margin:0; cursor:pointer; font-size:11px;">Auto-Color (Match BG)</label>
+                            <label for="textBgAuto" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="auto_color">Auto-Color (Match BG)</label>
                         </div>
-                        <label for="textBgColor">Box Color</label>
+                        <label for="textBgColor" data-i18n="box_color">Box Color</label>
                         <input type="color" id="textBgColor" oninput="updateTextBackgroundSettings()" style="height:35px;">
                         <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                            <label style="font-size:10px; margin:0;">Opacity</label>
+                            <label style="font-size:10px; margin:0;" data-i18n="opacity">Opacity</label>
                             <span id="textBgOpacityVal" style="font-size:10px;">50%</span>
                         </div>
                         <input type="range" id="textBgOpacity" min="0" max="100" value="50" oninput="updateTextBackgroundSettings()" style="margin-top:2px;">
@@ -249,8 +261,8 @@
             </div>
 
             <div style="margin-top:auto">
-                <button class="btn-export" onclick="saveImage()">💾 Export JPG (Download)</button>
-                <button id="btn-save-gallery" onclick="saveToGallery()" style="background: #e65100; margin-top: 10px;">📂 Save to Gallery</button>
+                <button class="btn-export" onclick="saveImage()" data-i18n="export_jpg">💾 Export JPG (Download)</button>
+                <button id="btn-save-gallery" onclick="saveToGallery()" style="background: #e65100; margin-top: 10px;" data-i18n="save_gallery">📂 Save to Gallery</button>
             </div>
         </div>
 
@@ -266,19 +278,19 @@
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
             <div class="batch-grid" style="width: 100%; max-width: 1200px;">
                 <div class="sidebar" style="width: 100%; height: auto; border: 1px solid #333; border-radius: 8px;">
-                    <h3>Batch Configuration</h3>
+                    <h3 data-i18n="batch_config">Batch Configuration</h3>
                     
-                    <label for="batchLayoutSelect">Select Layout</label>
+                    <label for="batchLayoutSelect" data-i18n="select_layout">Select Layout</label>
                     <select id="batchLayoutSelect"></select>
                     
-                    <label for="batchMode">Source Mode</label>
+                    <label for="batchMode" data-i18n="source_mode">Source Mode</label>
                     <select id="batchMode" onchange="toggleBatchInputs()">
                         <option value="random">Random Selection</option>
                         <option value="library">Full Library (Jellyfin)</option>
                     </select>
 
                     <div id="batchFilterSettings" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
-                        <label for="batchFilterMode">Filter Strategy</label>
+                        <label for="batchFilterMode" data-i18n="filter_strategy">Filter Strategy</label>
                         <select id="batchFilterMode" onchange="toggleBatchInputs()">
                             <option value="all">None (All Items A-Z)</option>
                             <option value="recent">Recently Added</option>
@@ -330,26 +342,26 @@
                     </div>
                     
                     <div id="batchRandomSettings">
-                        <label for="batchCount">Number of Images</label>
+                        <label for="batchCount" data-i18n="num_images">Number of Images</label>
                         <input type="number" id="batchCount" value="10" min="1" max="10000">
                     </div>
 
                     <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
                         <input type="checkbox" id="batchOverwrite" style="width:20px; height:20px; margin:0;" {% if config.general.overwrite_existing %}checked{% endif %}>
-                        <label for="batchOverwrite" style="margin:0; cursor:pointer;">Overwrite Existing</label>
+                        <label for="batchOverwrite" style="margin:0; cursor:pointer;" data-i18n="overwrite_existing">Overwrite Existing</label>
                     </div>
                     
                     <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
                         <input type="checkbox" id="batchSortGenre" style="width:20px; height:20px; margin:0;">
-                        <label for="batchSortGenre" style="margin:0; cursor:pointer;">Sort by Genre (Subfolders)</label>
+                        <label for="batchSortGenre" style="margin:0; cursor:pointer;" data-i18n="sort_genre">Sort by Genre (Subfolders)</label>
                     </div>
                     <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
                         <input type="checkbox" id="batchDryRun" style="width:20px; height:20px; margin:0;">
-                        <label for="batchDryRun" style="margin:0; cursor:pointer;">Dry Run (Simulate only)</label>
+                        <label for="batchDryRun" style="margin:0; cursor:pointer;" data-i18n="dry_run">Dry Run (Simulate only)</label>
                     </div>
 
-                    <button id="btn-start-batch" onclick="startBatchProcess()" style="margin-top: 20px; background: #2e7d32;">▶ Start Batch</button>
-                    <button id="btn-stop-batch" onclick="stopBatchProcess()" style="margin-top: 10px; background: #c62828; display: none;">⏹ Stop</button>
+                    <button id="btn-start-batch" onclick="startBatchProcess()" style="margin-top: 20px; background: #2e7d32;" data-i18n="start_batch">▶ Start Batch</button>
+                    <button id="btn-stop-batch" onclick="stopBatchProcess()" style="margin-top: 10px; background: #c62828; display: none;" data-i18n="stop_batch">⏹ Stop</button>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -381,18 +393,18 @@
     <div id="overlay-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
             <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
-                <h3>Overlay Manager</h3>
+                <h3 data-i18n="overlay_manager">Overlay Manager</h3>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                    <h4>Add New Overlay Profile</h4>
-                    <label>Profile Name</label>
+                    <h4 data-i18n="add_overlay">Add New Overlay Profile</h4>
+                    <label data-i18n="profile_name">Profile Name</label>
                     <input type="text" id="newOverlayName" placeholder="e.g. Google TV">
-                    <label>1080p Image (Optional)</label>
+                    <label data-i18n="img_1080">1080p Image (Optional)</label>
                     <input type="file" id="newOverlay1080" accept="image/*">
-                    <label>4K Image (Optional)</label>
+                    <label data-i18n="img_4k">4K Image (Optional)</label>
                     <input type="file" id="newOverlay4K" accept="image/*">
-                    <button onclick="addOverlay()" style="margin-top: 15px; background-color: #4CAF50;">Save Profile</button>
+                    <button onclick="addOverlay()" style="margin-top: 15px; background-color: #4CAF50;" data-i18n="save_profile">Save Profile</button>
                 </div>
-                <h4>Existing Profiles</h4>
+                <h4 data-i18n="existing_profiles">Existing Profiles</h4>
                 <div id="overlayList"></div>
             </div>
         </div>
@@ -401,16 +413,16 @@
     <div id="texture-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
             <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
-                <h3>Texture Manager</h3>
+                <h3 data-i18n="texture_manager">Texture Manager</h3>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                    <h4>Add New Texture</h4>
-                    <label>Texture Name</label>
+                    <h4 data-i18n="add_texture">Add New Texture</h4>
+                    <label data-i18n="texture_name">Texture Name</label>
                     <input type="text" id="newTextureName" placeholder="e.g. Gold Foil">
-                    <label>Image File</label>
+                    <label data-i18n="img_file">Image File</label>
                     <input type="file" id="newTextureFile" accept="image/*">
-                    <button onclick="addTexture()" style="margin-top: 15px; background-color: #4CAF50;">Save Texture</button>
+                    <button onclick="addTexture()" style="margin-top: 15px; background-color: #4CAF50;" data-i18n="save_texture">Save Texture</button>
                 </div>
-                <h4>Existing Textures</h4>
+                <h4 data-i18n="existing_textures">Existing Textures</h4>
                 <div id="textureList"></div>
             </div>
         </div>
@@ -419,14 +431,14 @@
     <div id="font-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
             <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
-                <h3>Font Manager</h3>
+                <h3 data-i18n="font_manager">Font Manager</h3>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                    <h4>Add New Font (.ttf, .otf, .woff)</h4>
-                    <label>Font File</label>
+                    <h4 data-i18n="add_font">Add New Font (.ttf, .otf, .woff)</h4>
+                    <label data-i18n="font_file">Font File</label>
                     <input type="file" id="newFontFile" accept=".ttf,.otf,.woff,.woff2">
-                    <button onclick="addFont()" style="margin-top: 15px; background-color: #4CAF50;">Upload Font</button>
+                    <button onclick="addFont()" style="margin-top: 15px; background-color: #4CAF50;" data-i18n="upload_font">Upload Font</button>
                 </div>
-                <h4>Installed Custom Fonts</h4>
+                <h4 data-i18n="installed_fonts">Installed Custom Fonts</h4>
                 <div id="fontList"></div>
             </div>
         </div>
@@ -436,29 +448,29 @@
         <div class="settings-grid">
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Jellyfin</h3>
-                <label for="set-jf-url">Server URL</label>
+                <label for="set-jf-url" data-i18n="server_url">Server URL</label>
                 <input type="text" id="set-jf-url" value="{{ config.jellyfin.url }}">
-                <label for="set-jf-key">API Key</label>
+                <label for="set-jf-key" data-i18n="api_key">API Key</label>
                 <input type="password" id="set-jf-key" value="{{ config.jellyfin.api_key }}">
-                <label for="set-jf-user">User ID</label>
+                <label for="set-jf-user" data-i18n="user_id">User ID</label>
                 <input type="text" id="set-jf-user" value="{{ config.jellyfin.user_id }}">
-                <label for="set-jf-exclude">Excluded Libraries (comma separated)</label>
+                <label for="set-jf-exclude" data-i18n="excluded_libs">Excluded Libraries (comma separated)</label>
                 <input type="text" id="set-jf-exclude" value="{{ config.jellyfin.excluded_libraries }}">
             </div>
 
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Plex</h3>
-                <label for="set-plex-url">Server URL</label>
+                <label for="set-plex-url" data-i18n="server_url">Server URL</label>
                 <input type="text" id="set-plex-url" value="{{ config.plex.url }}">
-                <label for="set-plex-token">Token</label>
+                <label for="set-plex-token" data-i18n="token">Token</label>
                 <input type="password" id="set-plex-token" value="{{ config.plex.token }}">
             </div>
 
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>TMDB</h3>
-                <label for="set-tmdb-key">API Key (Bearer Token)</label>
+                <label for="set-tmdb-key" data-i18n="api_key">API Key (Bearer Token)</label>
                 <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
-                <label for="set-tmdb-lang">Language</label>
+                <label for="set-tmdb-lang" data-i18n="language">Language</label>
                 <input type="text" id="set-tmdb-lang" value="{{ config.tmdb.language }}">
             </div>
 
@@ -466,12 +478,12 @@
                 <h3>Radarr & Sonarr</h3>
                 <label for="set-radarr-url">Radarr URL</label>
                 <input type="text" id="set-radarr-url" value="{{ config.radarr.url }}">
-                <label for="set-radarr-key">Radarr API Key</label>
+                <label for="set-radarr-key" data-i18n="api_key">Radarr API Key</label>
                 <input type="password" id="set-radarr-key" value="{{ config.radarr.api_key }}">
                 <hr style="border-color:#333; margin:15px 0;">
                 <label for="set-sonarr-url">Sonarr URL</label>
                 <input type="text" id="set-sonarr-url" value="{{ config.sonarr.url }}">
-                <label for="set-sonarr-key">Sonarr API Key</label>
+                <label for="set-sonarr-key" data-i18n="api_key">Sonarr API Key</label>
                 <input type="password" id="set-sonarr-key" value="{{ config.sonarr.api_key }}">
             </div>
 
@@ -479,7 +491,7 @@
                 <h3>Other Services</h3>
                 <label for="set-jellyseerr-url">Jellyseerr URL</label>
                 <input type="text" id="set-jellyseerr-url" value="{{ config.jellyseerr.url }}">
-                <label for="set-jellyseerr-key">Jellyseerr API Key</label>
+                <label for="set-jellyseerr-key" data-i18n="api_key">Jellyseerr API Key</label>
                 <input type="password" id="set-jellyseerr-key" value="{{ config.jellyseerr.api_key }}">
                 <hr style="border-color:#333; margin:15px 0;">
                 <label for="set-trakt-key">Trakt Client ID</label>
@@ -490,7 +502,7 @@
                 <input type="text" id="set-trakt-list" value="{{ config.trakt.listname }}">
             </div>
 
-            <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;">Save Settings</button>
+            <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;" data-i18n="save_settings">Save Settings</button>
         </div>
     </div>
 
@@ -504,7 +516,7 @@
 
     <div id="preview-popup">
         <div style="display:flex; justify-content:space-between; width:100%; max-width:1600px; margin:0 auto 20px auto; color:white; align-items:center;">
-            <h2 style="margin:0; font-size:24px;">Generated Previews</h2>
+            <h2 style="margin:0; font-size:24px;" data-i18n="generated_previews">Generated Previews</h2>
             <span onclick="closePreviewPopup()" style="font-size:40px; cursor:pointer; line-height:1;">&times;</span>
         </div>
         <div id="preview-grid" style="width:100%; max-width:1600px; margin:0 auto;"></div>
@@ -516,5 +528,6 @@
     <script src="{{ url_for('static', filename='js/gallery.js') }}"></script>
     <script src="{{ url_for('static', filename='js/batch.js') }}"></script>
     <script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
 </body>
 </html>

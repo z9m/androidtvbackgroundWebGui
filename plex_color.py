@@ -193,6 +193,18 @@ def validate_color(color, default):
             return color
     return default
 
+def create_blurry_background(image, size=(3840, 2160), blur_radius=800, dither_strength=16):
+    """
+    Create a blurry canvas background from the input image, with strong noise to prevent banding.
+    """
+    bg = image.resize(size, Image.LANCZOS).convert('RGB')
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    bg_array = np.array(bg).astype(np.float32)
+
+    # Add dithering noise
+    noise = np.random.uniform(-dither_strength, dither_strength, bg_array.shape)
+    return Image.fromarray(np.clip(bg_array + noise, 0, 255).astype(np.uint8))
+
 def vignette_side(h, w, fade_ratio=5, fade_power=5.0, position="bottom-left"):
     y, x = np.ogrid[0:h, 0:w]
     rx, ry = w * fade_ratio, h * fade_ratio
@@ -378,7 +390,7 @@ def clean_filename(filename: str) -> str:
     """
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
 
-def download_logo_in_memory(media_item) -> Image.Image or None:
+def download_logo_in_memory(media_item) -> Image.Image | None:
     """
     Attempts to download the Plex clearLogo image for a media item directly into memory.
 
