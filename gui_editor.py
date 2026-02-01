@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import random
+import traceback
 import io
 import requests
 import time
@@ -82,6 +83,14 @@ def save_config(config_data):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config_data, f, indent=4)
 
+def clean_tmdb_url(path):
+    """ Safely constructs a TMDB image URL from a path. """
+    if not path:
+        return None
+    if path.startswith("http"):
+        return path
+    return f"https://image.tmdb.org/t/p/original/{path.lstrip('/')}"
+
 # --- API ROUTES ---
 @gui_editor_bp.route('/api/proxy/image')
 def proxy_image():
@@ -91,14 +100,21 @@ def proxy_image():
         return "Missing URL", 400
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-        resp = requests.get(url, headers=headers, stream=True, timeout=10)
-        resp.raise_for_status()
+        resp = requests.get(url, headers=headers, timeout=10)
+        
+        if resp.status_code != 200:
+            return f"Upstream Error: {resp.status_code}", resp.status_code
+            
         return send_file(
             io.BytesIO(resp.content),
-            mimetype=resp.headers.get('Content-Type', 'image/jpeg')
+            mimetype=resp.headers.get('Content-Type') or 'image/jpeg'
         )
+    except requests.exceptions.RequestException as e:
+        print(f"Proxy Connection Error for {url}: {e}", file=sys.stderr)
+        return str(e), 502
     except Exception as e:
-        print(f"Proxy Error for {url}: {e}")
+        print(f"Proxy Error for {url}: {e}", file=sys.stderr)
+        traceback.print_exc()
         return str(e), 500
 
 # --- NEW: Server-Side Generation Example ---
@@ -201,12 +217,16 @@ def get_random_media():
 
     # Fallback Data
     mock_samples = [
-        {"title": "Interstellar", "year": 2014, "rating": 8.7, "overview": "A team of explorers travel through a wormhole in space...", "backdrop_url": "https://image.tmdb.org/t/p/original/gEU2vRuvmER7pG97uCqb9hHbp22.jpg", "logo_url": None},
-        {"title": "The Dark Knight", "year": 2008, "rating": 9.0, "overview": "When the menace known as the Joker wreaks havoc...", "backdrop_url": "https://image.tmdb.org/t/p/original/nMKdUUepR0At5Iu98TjPLuOwwvM.jpg", "logo_url": None}
+        {"title": "Interstellar", "year": 2014, "rating": 8.7, "overview": "Ein Team von Entdeckern nutzt ein neu entdecktes Wurmloch, um die Grenzen der menschlichen Raumfahrt zu überwinden und die weiten Entfernungen einer interstellaren Reise zu bewältigen.", "backdrop_url": clean_tmdb_url("/5XNQBqnBwPA9yT0jZ0p3s8bbLh0.jpg"), "logo_url": clean_tmdb_url("/eJjFbfeOuZPuPJFnDP3YJ5daSsg.png")},
+        {"title": "The Dark Knight", "year": 2008, "rating": 9.0, "overview": "Batman zieht im Kampf gegen das Verbrechen die Daumenschrauben an. Mit der Hilfe von Lieutenant Jim Gordon und Staatsanwalt Harvey Dent setzt er sein Vorhaben fort, die organisierten Verbrecherorganisationen in Gotham endgültig zu zerschlagen.", "backdrop_url": clean_tmdb_url("/6fA9nie4ROlkyZAUlgKNjGNCbHG.jpg"), "logo_url": clean_tmdb_url("/hdtvO84iZVAk848CoJmLMMTsQ9i.png")}
     ]
     sample = random.choice(mock_samples)
     sample["source"] = "Demo Mode"
-    return jsonify(sample)
+    
+    # Prevent browser caching of the random endpoint to ensure new URLs are loaded
+    response = jsonify(sample)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 @gui_editor_bp.route('/api/media/list')
 def get_media_list():
@@ -365,6 +385,124 @@ def get_media_item(item_id):
 def update_settings():
     save_config(request.json)
     return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/test/jellyfin', methods=['POST'])
+def test_jellyfin():
+    data = request.json
+    url = data.get('url')
+    api_key = data.get('api_key')
+    
+    if not url or not api_key:
+        return jsonify({"status": "error", "message": "URL and API Key required"}), 400
+        
+    try:
+        headers = {"X-Emby-Token": api_key}
+        # Test connection by fetching system info
+        r = requests.get(f"{url.rstrip('/')}/System/Info", headers=headers, timeout=5)
+        r.raise_for_status()
+        return jsonify({"status": "success", "message": f"Connected: {r.json().get('ServerName')}"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@gui_editor_bp.route('/api/test/plex', methods=['POST'])
+def test_plex():
+    data = request.json
+    url = data.get('url')
+    token = data.get('token')
+    if not url or not token:
+        return jsonify({"status": "error", "message": "URL and Token required"}), 400
+    try:
+        headers = {'X-Plex-Token': token, 'Accept': 'application/json'}
+        # Check identity endpoint
+        r = requests.get(f"{url.rstrip('/')}/identity", headers=headers, timeout=5)
+        r.raise_for_status()
+        return jsonify({"status": "success", "message": "Connected to Plex"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@gui_editor_bp.route('/api/test/tmdb', methods=['POST'])
+def test_tmdb():
+    data = request.json
+    api_key = data.get('api_key')
+    if not api_key:
+        return jsonify({"status": "error", "message": "API Key required"}), 400
+    try:
+        # Try as Bearer Token first (v4)
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json;charset=utf-8"}
+        r = requests.get("https://api.themoviedb.org/3/authentication", headers=headers, timeout=5)
+        
+        if r.status_code == 401:
+            # Fallback: Try as v3 API Key query param
+            r = requests.get(f"https://api.themoviedb.org/3/authentication?api_key={api_key}", timeout=5)
+            
+        r.raise_for_status()
+        return jsonify({"status": "success", "message": "Connected to TMDB"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@gui_editor_bp.route('/api/test/radarr', methods=['POST'])
+def test_radarr():
+    data = request.json
+    url = data.get('url')
+    api_key = data.get('api_key')
+    if not url or not api_key:
+        return jsonify({"status": "error", "message": "URL and API Key required"}), 400
+    try:
+        headers = {'X-Api-Key': api_key}
+        r = requests.get(f"{url.rstrip('/')}/api/v3/system/status", headers=headers, timeout=5)
+        r.raise_for_status()
+        return jsonify({"status": "success", "message": f"Connected to Radarr ({r.json().get('version', 'Unknown')})"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@gui_editor_bp.route('/api/test/sonarr', methods=['POST'])
+def test_sonarr():
+    data = request.json
+    url = data.get('url')
+    api_key = data.get('api_key')
+    if not url or not api_key:
+        return jsonify({"status": "error", "message": "URL and API Key required"}), 400
+    try:
+        headers = {'X-Api-Key': api_key}
+        r = requests.get(f"{url.rstrip('/')}/api/v3/system/status", headers=headers, timeout=5)
+        r.raise_for_status()
+        return jsonify({"status": "success", "message": f"Connected to Sonarr ({r.json().get('version', 'Unknown')})"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@gui_editor_bp.route('/api/test/jellyseerr', methods=['POST'])
+def test_jellyseerr():
+    data = request.json
+    url = data.get('url')
+    api_key = data.get('api_key')
+    if not url or not api_key:
+        return jsonify({"status": "error", "message": "URL and API Key required"}), 400
+    try:
+        headers = {'X-Api-Key': api_key}
+        r = requests.get(f"{url.rstrip('/')}/api/v1/status", headers=headers, timeout=5)
+        r.raise_for_status()
+        return jsonify({"status": "success", "message": f"Connected to Jellyseerr ({r.json().get('version', 'Unknown')})"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@gui_editor_bp.route('/api/test/trakt', methods=['POST'])
+def test_trakt():
+    data = request.json
+    client_id = data.get('client_id')
+    username = data.get('username')
+    if not client_id or not username:
+        return jsonify({"status": "error", "message": "Client ID and Username required"}), 400
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'trakt-api-version': '2',
+            'trakt-api-key': client_id
+        }
+        r = requests.get(f"https://api.trakt.tv/users/{username}/profile", headers=headers, timeout=5)
+        r.raise_for_status()
+        return jsonify({"status": "success", "message": f"Connected to Trakt (User: {r.json().get('username')})"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @gui_editor_bp.route('/api/layouts/list')
 def list_layouts():
@@ -831,4 +969,4 @@ if __name__ == '__main__':
     from flask import Flask
     app = Flask(__name__)
     app.register_blueprint(gui_editor_bp)
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

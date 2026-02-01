@@ -456,6 +456,7 @@
                 <input type="text" id="set-jf-user" value="{{ config.jellyfin.user_id }}">
                 <label for="set-jf-exclude" data-i18n="excluded_libs">Excluded Libraries (comma separated)</label>
                 <input type="text" id="set-jf-exclude" value="{{ config.jellyfin.excluded_libraries }}">
+                <button onclick="testJellyfinConnection()" style="margin-top: 10px; background-color: #1976d2; width: 100%;">Test Connection</button>
             </div>
 
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
@@ -464,6 +465,7 @@
                 <input type="text" id="set-plex-url" value="{{ config.plex.url }}">
                 <label for="set-plex-token" data-i18n="token">Token</label>
                 <input type="password" id="set-plex-token" value="{{ config.plex.token }}">
+                <button onclick="testPlexConnection()" style="margin-top: 10px; background-color: #e5a00d; width: 100%;">Test Connection</button>
             </div>
 
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
@@ -472,6 +474,7 @@
                 <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
                 <label for="set-tmdb-lang" data-i18n="language">Language</label>
                 <input type="text" id="set-tmdb-lang" value="{{ config.tmdb.language }}">
+                <button onclick="testTmdbConnection()" style="margin-top: 10px; background-color: #01b4e4; width: 100%;">Test Connection</button>
             </div>
 
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
@@ -480,11 +483,13 @@
                 <input type="text" id="set-radarr-url" value="{{ config.radarr.url }}">
                 <label for="set-radarr-key" data-i18n="api_key">Radarr API Key</label>
                 <input type="password" id="set-radarr-key" value="{{ config.radarr.api_key }}">
+                <button onclick="testRadarrConnection()" style="margin-top: 5px; margin-bottom: 15px; background-color: #ffc107; color: black; width: 100%;">Test Radarr</button>
                 <hr style="border-color:#333; margin:15px 0;">
                 <label for="set-sonarr-url">Sonarr URL</label>
                 <input type="text" id="set-sonarr-url" value="{{ config.sonarr.url }}">
                 <label for="set-sonarr-key" data-i18n="api_key">Sonarr API Key</label>
                 <input type="password" id="set-sonarr-key" value="{{ config.sonarr.api_key }}">
+                <button onclick="testSonarrConnection()" style="margin-top: 5px; background-color: #2196f3; width: 100%;">Test Sonarr</button>
             </div>
 
             <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
@@ -493,6 +498,7 @@
                 <input type="text" id="set-jellyseerr-url" value="{{ config.jellyseerr.url }}">
                 <label for="set-jellyseerr-key" data-i18n="api_key">Jellyseerr API Key</label>
                 <input type="password" id="set-jellyseerr-key" value="{{ config.jellyseerr.api_key }}">
+                <button onclick="testJellyseerrConnection()" style="margin-top: 5px; margin-bottom: 15px; background-color: #9c27b0; width: 100%;">Test Jellyseerr</button>
                 <hr style="border-color:#333; margin:15px 0;">
                 <label for="set-trakt-key">Trakt Client ID</label>
                 <input type="password" id="set-trakt-key" value="{{ config.trakt.api_key }}">
@@ -500,6 +506,7 @@
                 <input type="text" id="set-trakt-user" value="{{ config.trakt.username }}">
                 <label for="set-trakt-list">Trakt List Name</label>
                 <input type="text" id="set-trakt-list" value="{{ config.trakt.listname }}">
+                <button onclick="testTraktConnection()" style="margin-top: 5px; background-color: #ed1c24; width: 100%;">Test Trakt</button>
             </div>
 
             <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;" data-i18n="save_settings">Save Settings</button>
@@ -529,5 +536,81 @@
     <script src="{{ url_for('static', filename='js/batch.js') }}"></script>
     <script src="{{ url_for('static', filename='js/editor.js') }}"></script>
     <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script>
+        function testJellyfinConnection() {
+            const url = document.getElementById('set-jf-url').value;
+            const key = document.getElementById('set-jf-key').value;
+            
+            fetch('/api/test/jellyfin', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            })
+            .then(r => r.json())
+            .then(data => {
+                alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message);
+            })
+            .catch(e => alert("❌ Network Error: Check Docker Logs"));
+        }
+
+        function testPlexConnection() {
+            const url = document.getElementById('set-plex-url').value;
+            const token = document.getElementById('set-plex-token').value;
+            fetch('/api/test/plex', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, token: token})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testTmdbConnection() {
+            const key = document.getElementById('set-tmdb-key').value;
+            fetch('/api/test/tmdb', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testRadarrConnection() {
+            const url = document.getElementById('set-radarr-url').value;
+            const key = document.getElementById('set-radarr-key').value;
+            fetch('/api/test/radarr', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testSonarrConnection() {
+            const url = document.getElementById('set-sonarr-url').value;
+            const key = document.getElementById('set-sonarr-key').value;
+            fetch('/api/test/sonarr', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testJellyseerrConnection() {
+            const url = document.getElementById('set-jellyseerr-url').value;
+            const key = document.getElementById('set-jellyseerr-key').value;
+            fetch('/api/test/jellyseerr', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testTraktConnection() {
+            const key = document.getElementById('set-trakt-key').value;
+            const user = document.getElementById('set-trakt-user').value;
+            fetch('/api/test/trakt', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({client_id: key, username: user})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+    </script>
 </body>
 </html>

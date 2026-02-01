@@ -1,6 +1,6 @@
 :root { --primary: #2e7d32; --bg: #0a0a0a; --panel: #181818; --text: #eee; --sidebar-w: 320px; }
 body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-.nav-tabs { display: flex; background: #000; padding: 0 20px; border-bottom: 1px solid #333; height: 50px; flex-shrink: 0; }
+.nav-tabs { display: flex; background: #000; padding: 0 20px; border-bottom: 1px solid #333; min-height: 50px; height: auto; flex-shrink: 0; flex-wrap: wrap; align-items: center; }
 .tab-link { padding: 15px 25px; cursor: pointer; border-bottom: 3px solid transparent; font-size: 14px; }
 .tab-link.active { border-bottom-color: var(--primary); background: var(--panel); }
 .tab-content { display: none; flex: 1; overflow: hidden; }
@@ -41,3 +41,15 @@ canvas { width: 100% !important; height: 100% !important; }
 #preview-popup { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; flex-direction:column; padding:40px; box-sizing:border-box; }
 #preview-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:20px; width:100%; height:100%; overflow-y:auto; padding-right:10px; }
 #preview-grid .gallery-item { height:auto; aspect-ratio:16/9; }
+
+@media (max-width: 768px) {
+    .nav-tabs { padding: 5px 10px; }
+    .tab-link { padding: 10px 15px; font-size: 13px; flex-grow: 1; text-align: center; }
+    /* Sprachauswahl auf Mobile zentriert in neue Zeile */
+    .nav-tabs > div[style*="margin-left: auto"] {
+        margin-left: 0 !important;
+        width: 100%;
+        justify-content: center;
+        padding: 10px 0;
+    }
+}

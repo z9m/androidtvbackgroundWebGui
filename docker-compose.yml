@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  tv-background:
+    build: .
+    container_name: tv-background-editor
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config.json:/app/config.json
+      - ./.env:/app/.env
+      - ./layouts:/app/layouts
+      - ./overlays:/app/overlays
+      - ./textures:/app/textures
+      - ./fonts:/app/fonts
+      - ./editor_backgrounds:/app/editor_backgrounds
+      - ./plex_backgrounds:/app/plex_backgrounds
+      - ./jellyfin_backgrounds:/app/jellyfin_backgrounds
+      - ./tmdb_backgrounds:/app/tmdb_backgrounds
+      - ./radarrsonarr_backgrounds:/app/radarrsonarr_backgrounds
+      - ./trakt_backgrounds:/app/trakt_backgrounds
+      - ./plexfriend_backgrounds:/app/plexfriend_backgrounds
+    extra_hosts:
+      - "truenas:192.168.178.92"
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
