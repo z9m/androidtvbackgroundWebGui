@@ -42,7 +42,7 @@ version: '3.8'
 
 services:
   tv-background:
-    image: your-dockerhub-username/tv-background-suite:latest
+    image: butch708/tv-background-suite:latest
     container_name: tv-background-editor
     ports:
       - "5000:5000"
@@ -71,7 +71,7 @@ docker run -d \
   -p 5000:5000 \
   -v /path/to/config.json:/app/config.json \
   -v /path/to/output:/app/editor_backgrounds \
-  your-dockerhub-username/tv-background-suite:latest
+  butch708/tv-background-suite:latest
 ```
 
 ---
