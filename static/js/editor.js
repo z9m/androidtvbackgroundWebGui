@@ -42,7 +42,7 @@
 
 let canvas, mainBg = null;
 let fades = { left: null, right: null, top: null, bottom: null, corner: null };
-let scalingTimeout = null, lastFetchedData = null;
+let resizeRaf = null, lastFetchedData = null;
 let preferredLogoWidth = null;
 let overlayProfiles = [];
 let textureProfiles = [];
@@ -341,17 +341,36 @@ function updateSelectedColor() {
     }
 }
 
-function applyTruncation(textbox, textToDisplay) {
-    if (!canvas) return;
-    const textSource = textToDisplay || textbox.fullMediaText || "";
+function fitTextToContainer(textbox) {
+    if (!canvas || !textbox) return;
+    const textSource = textbox.fullMediaText || textbox.text || "";
+    
+    // Performance: Disable auto-render during calculation
     const oldState = canvas.renderOnAddRemove;
     canvas.renderOnAddRemove = false;
+
+    // 1. Maximize Space: Tight line height
+    textbox.set('lineHeight', 1.1);
+    
+    // 2. Reset to full text to measure
     textbox.set('text', textSource);
     textbox.initDimensions();
-    const limit = textbox.fixedHeight || textbox.height;
+    
+    // 3. Calculate limit (Safety padding 5px)
+    const limit = (textbox.fixedHeight || textbox.height) - 5;
+    
+    // 4. Aggressive Fitting (Truncation)
     if (textbox.height > limit) {
         let words = textSource.split(' ');
-        while (textbox.height > limit && words.length > 10) { words.splice(-10); textbox.set('text', words.join(' ') + '...'); textbox.initDimensions(); }
+        
+        // Optimization: Jump start if way too big
+        if (textbox.height > limit * 1.5) {
+            const ratio = limit / textbox.height;
+            words = words.slice(0, Math.floor(words.length * ratio));
+            textbox.set('text', words.join(' ') + '...');
+            textbox.initDimensions();
+        }
+
         while (textbox.height > limit && words.length > 0) { words.pop(); textbox.set('text', words.join(' ') + '...'); textbox.initDimensions(); }
     }
     canvas.renderOnAddRemove = oldState;
@@ -674,7 +693,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                         break;
                     case 'overview': 
                         let ov = mediaData.overview || mediaData.Overview || "";
-                        if (obj.type === 'textbox') { obj.fullMediaText = ov; applyTruncation(obj, ov); } else { val = ov; }
+                        if (obj.type === 'textbox') { obj.fullMediaText = ov; } else { val = ov; }
                         break;
                     case 'genres': 
                         val = mediaData.genres || ""; 
@@ -741,9 +760,17 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
         });
         
         Promise.all(promises).then(() => {
-            canvas.renderAll(); // Force dimension update before layout
-            updateVerticalLayout(skipRender);
-            resolve();
+            document.fonts.ready.then(() => {
+                canvas.renderAll(); // Force dimension update before layout
+                // Re-run fitTextToContainer for overview to ensure correct sizing with loaded fonts
+                canvas.getObjects().forEach(obj => {
+                    if (obj.dataTag === 'overview' && obj.type === 'textbox') {
+                        fitTextToContainer(obj);
+                    }
+                });
+                updateVerticalLayout(skipRender);
+                resolve();
+            });
         });
     });
 }
@@ -867,6 +894,7 @@ function addMetadataTag(type, placeholder) {
 
     if (type === 'overview') {
         textObj = new fabric.Textbox(placeholder, { ...props, width: 600, height: 300, fixedHeight: 300, splitByGrapheme: false, lockScalingY: false, fullMediaText: placeholder, editable: false, objectCaching: false });
+        fitTextToContainer(textObj);
     } else {
         textObj = new fabric.IText(placeholder, { ...props, editable: false });
     }
@@ -1228,7 +1256,10 @@ function init() {
             const resScale = (res === '2160') ? 2 : 1;
             
             t.set({ width: (t.width * t.scaleX) / resScale, fixedHeight: (t.height * t.scaleY) / resScale, scaleX: resScale, scaleY: resScale });
-            if (t.dataTag === 'overview') { clearTimeout(scalingTimeout); scalingTimeout = setTimeout(() => applyTruncation(t, t.fullMediaText), 50); }
+            if (t.dataTag === 'overview') { 
+                if (resizeRaf) cancelAnimationFrame(resizeRaf);
+                resizeRaf = requestAnimationFrame(() => fitTextToContainer(t));
+            }
         }
         if (t.dataTag === 'title' && t.type === 'image') {
             preferredLogoWidth = t.getScaledWidth();
@@ -2361,6 +2392,17 @@ function loadFromLocalStorage() {
                     updateFadeControls();
                 }
                 updateFades();
+
+                // Ensure fonts are loaded before final layout adjustment
+                document.fonts.ready.then(() => {
+                    canvas.getObjects().forEach(obj => {
+                        if (obj.dataTag === 'overview' && obj.type === 'textbox') {
+                            fitTextToContainer(obj);
+                        }
+                    });
+                    updateVerticalLayout();
+                    canvas.requestRenderAll();
+                });
             });
             return true;
         } catch(e) { console.error("Autosave load error", e); }
