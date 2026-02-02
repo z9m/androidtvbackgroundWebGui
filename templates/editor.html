@@ -56,6 +56,14 @@
                     <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;" data-i18n="genre_limit">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
                     <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
                 </div>
+                <div id="snapToggleContainer" style="display:none; align-items:center; gap:10px; margin-top:10px;">
+                    <input type="checkbox" id="snapToggle" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping()">
+                    <label for="snapToggle" style="margin:0; cursor:pointer; font-size:12px;" data-i18n="snap_objects">Snap to Objects</label>
+                </div>
+                <div id="layerControlContainer" style="display:none; gap:5px; margin-top:10px;">
+                    <button onclick="moveLayer('up')" style="flex:1; font-size:11px; padding:4px;">⬆ Bring Forward</button>
+                    <button onclick="moveLayer('down')" style="flex:1; font-size:11px; padding:4px;">⬇ Send Backward</button>
+                </div>
                 <button onclick="saveLayout()" style="background: #00796b; margin-top: 10px;" data-i18n="save_layout">💾 Save Layout</button>
                 <button onclick="resetLayout()" style="background: #d32f2f; margin-top: 5px;" data-i18n="reset_layout">⚠️ Reset Layout</button>
             </div>

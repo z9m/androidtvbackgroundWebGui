@@ -63,6 +63,22 @@ function updateSelectionUI(e) {
     textPanel.style.display = 'none';
     if (iconPanel) iconPanel.style.display = 'none';
 
+    // Toggle Snap Checkbox visibility
+    const snapContainer = document.getElementById('snapToggleContainer');
+    if (snapContainer) {
+        snapContainer.style.display = (activeObj && activeObj !== mainBg) ? 'flex' : 'none';
+        const snapCheckbox = document.getElementById('snapToggle');
+        if (snapCheckbox && activeObj) {
+            snapCheckbox.checked = (activeObj.snapToObjects !== false);
+        }
+    }
+
+    // Toggle Layer Controls
+    const layerContainer = document.getElementById('layerControlContainer');
+    if (layerContainer) {
+        layerContainer.style.display = (activeObj && activeObj !== mainBg) ? 'flex' : 'none';
+    }
+
     if (!activeObj) return;
 
     // Enforce Aspect Ratio & Resize Handles
@@ -78,6 +94,12 @@ function updateSelectionUI(e) {
         activeObj.lockUniScaling = true;
         activeObj.borderColor = 'rgba(255, 165, 0, 0.75)'; // Orange to indicate locked aspect
         activeObj.cornerColor = 'rgba(255, 165, 0, 0.5)';
+    }
+
+    // Visual indicator for disabled snapping
+    if (activeObj.snapToObjects === false) {
+        activeObj.borderColor = 'rgba(255, 50, 50, 0.8)'; // Red
+        activeObj.cornerColor = 'rgba(255, 50, 50, 0.6)';
     }
 
     if (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification')) {
@@ -277,6 +299,42 @@ function toggleMatchHeight() {
         document.getElementById('iconSizeInput').disabled = activeObj.matchHeight;
         updateVerticalLayout();
         canvas.requestRenderAll();
+        saveToLocalStorage();
+    }
+}
+
+function toggleObjectSnapping() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj) {
+        const checkbox = document.getElementById('snapToggle');
+        activeObj.snapToObjects = checkbox.checked;
+        
+        // Force layout update if snapping is re-enabled to snap tag back to grid
+        if (activeObj.snapToObjects) {
+            updateVerticalLayout();
+        }
+
+        updateSelectionUI();
+        canvas.requestRenderAll();
+        saveToLocalStorage();
+    }
+}
+
+function moveLayer(direction) {
+    const activeObj = canvas.getActiveObject();
+    if (!activeObj) return;
+    
+    if (direction === 'up') canvas.bringForward(activeObj);
+    else canvas.sendBackwards(activeObj);
+    
+    enforceLayering();
+    canvas.requestRenderAll();
+    saveToLocalStorage();
+}
+
+function toggleTextBackground() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj && activeObj.type === 'textbox') {
         saveToLocalStorage();
     }
 }
@@ -1072,6 +1130,10 @@ function updateVerticalLayout(skipRender = false) {
         if (o.dataTag === 'grid_line') return false;
         if (o.dataTag === 'guide_overlay') return false;
         if (!o.dataTag) return false;
+
+        // FIX: Ignore objects that have snapping disabled (Manual Mode)
+        if (o.snapToObjects === false) return false;
+
         return true;
     });
     const rows = groupElementsByRow(elements, rowThreshold);
@@ -1273,7 +1335,10 @@ function init() {
         const active = e.target;
         if (!active || !active.selectable || active === mainBg) return;
         snapLines = { v: [], h: [] };
-        if (!gridEnabled) {
+        
+        const snapToObjects = active.snapToObjects !== false;
+
+        if (snapToObjects) {
             canvas.getObjects().forEach(obj => {
                 if (obj === active || !obj.selectable || !obj.visible || obj.dataTag === 'guide') return;
                 const b = obj.getBoundingRect();
@@ -1287,17 +1352,23 @@ function init() {
         const active = e.target;
         if (active === mainBg) { updateFades(); return; }
 
+        // 1. Grid Snapping (Always Active if enabled)
         if (gridEnabled) {
             active.set({
                 left: Math.round(active.left / gridSize) * gridSize,
                 top: Math.round(active.top / gridSize) * gridSize
             });
-        } else { 
+        }
+
+        // 2. Object Snapping (Conditional)
+        const snapToObjects = active.snapToObjects !== false;
+
+        clearGuides();
+
+        if (snapToObjects) {
             const threshold = 10;
             const b = active.getBoundingRect();
             const pts = { x: [b.left, b.left + b.width, b.left + b.width/2], y: [b.top, b.top + b.height, b.top + b.height/2] };
-            
-            clearGuides();
 
             for (const line of snapLines.v) {
                 for (const pt of pts.x) {
@@ -2046,7 +2117,7 @@ async function saveLayout() {
     btn.innerText = "Saving Layout...";
     setUIInteraction(false);
 
-    const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
+    const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects']);
     
     // Filter out fade effects and grid lines BEFORE saving
     layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
@@ -2275,7 +2346,7 @@ function mirrorBackground() {
 
 function saveToLocalStorage() {
     if (!canvas) return;
-    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
+    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects']);
     // Filter out fade effects so they aren't saved as static objects
     json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
     
