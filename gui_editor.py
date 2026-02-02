@@ -44,6 +44,7 @@ OVERLAYS_JSON = 'overlays.json'
 TEXTURES_DIR = 'textures'
 TEXTURES_JSON = 'textures.json'
 FONTS_DIR = 'fonts'
+CUSTOM_ICONS_DIR = 'custom_icons'
 
 if not os.path.exists(LAYOUTS_DIR):
     os.makedirs(LAYOUTS_DIR)
@@ -55,6 +56,8 @@ if not os.path.exists(TEXTURES_DIR):
     os.makedirs(TEXTURES_DIR)
 if not os.path.exists(FONTS_DIR):
     os.makedirs(FONTS_DIR)
+if not os.path.exists(CUSTOM_ICONS_DIR):
+    os.makedirs(CUSTOM_ICONS_DIR)
 
 # --- CONFIGURATION LOGIC ---
 def load_config():
@@ -701,6 +704,41 @@ def delete_font(filename):
 @gui_editor_bp.route('/api/fonts/file/<path:filename>')
 def get_font_file(filename):
     return send_from_directory(FONTS_DIR, filename)
+
+@gui_editor_bp.route('/api/custom-icons/list')
+def list_custom_icons():
+    icons = []
+    if os.path.exists(CUSTOM_ICONS_DIR):
+        icons = [f for f in os.listdir(CUSTOM_ICONS_DIR) if f.lower().endswith(('.png', '.svg', '.jpg', '.jpeg'))]
+    return jsonify(sorted(icons))
+
+@gui_editor_bp.route('/api/custom-icons/add', methods=['POST'])
+def add_custom_icon():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"status": "error", "message": "File required"}), 400
+    
+    filename = file.filename
+    # Basic sanitization
+    filename = "".join(c for c in filename if c.isalnum() or c in "._-").strip()
+    
+    if not filename.lower().endswith(('.png', '.svg', '.jpg', '.jpeg')):
+         return jsonify({"status": "error", "message": "Invalid file type"}), 400
+
+    file.save(os.path.join(CUSTOM_ICONS_DIR, filename))
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/custom-icons/delete/<filename>', methods=['POST'])
+def delete_custom_icon(filename):
+    filename = os.path.basename(filename)
+    path = os.path.join(CUSTOM_ICONS_DIR, filename)
+    if os.path.exists(path):
+        os.remove(path)
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/custom-icons/image/<path:filename>')
+def get_custom_icon_image(filename):
+    return send_from_directory(CUSTOM_ICONS_DIR, filename)
 
 @gui_editor_bp.route('/api/layouts/save', methods=['POST'])
 def save_layout():

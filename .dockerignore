@@ -9,3 +9,4 @@ venv
 .gitignore
 config.json
 .env
+custom_icons

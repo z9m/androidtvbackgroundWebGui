@@ -42,7 +42,7 @@
 
 let canvas, mainBg = null;
 let fades = { left: null, right: null, top: null, bottom: null, corner: null };
-let resizeRaf = null, lastFetchedData = null;
+let resizeRaf = null, lastFetchedData = null, layoutDebounceTimer = null;
 let preferredLogoWidth = null;
 let overlayProfiles = [];
 let textureProfiles = [];
@@ -52,12 +52,60 @@ const screenMargin = 50;
 const BASE_WIDTH = 1920;
 const BASE_HEIGHT = 1080;
 
+function toggleGroup(id) {
+    const group = document.getElementById(id);
+    if (!group) return;
+    const content = group.querySelector('.group-content');
+    const arrow = group.querySelector('.group-arrow');
+    
+    content.classList.toggle('collapsed');
+    if (arrow) arrow.classList.toggle('collapsed');
+
+    saveSidebarState(id, content.classList.contains('collapsed'));
+}
+
+function expandGroup(id) {
+    const group = document.getElementById(id);
+    if (!group) return;
+    const content = group.querySelector('.group-content');
+    const arrow = group.querySelector('.group-arrow');
+    content.classList.remove('collapsed');
+    if (arrow) arrow.classList.remove('collapsed');
+    
+    saveSidebarState(id, false);
+}
+
+function saveSidebarState(id, isCollapsed) {
+    const states = JSON.parse(localStorage.getItem('sidebar_groups') || '{}');
+    states[id] = isCollapsed;
+    localStorage.setItem('sidebar_groups', JSON.stringify(states));
+}
+
+function restoreSidebarState() {
+    const states = JSON.parse(localStorage.getItem('sidebar_groups') || '{}');
+    Object.keys(states).forEach(id => {
+        const group = document.getElementById(id);
+        if (group) {
+            const content = group.querySelector('.group-content');
+            const arrow = group.querySelector('.group-arrow');
+            if (states[id]) {
+                content.classList.add('collapsed');
+                if (arrow) arrow.classList.add('collapsed');
+            } else {
+                content.classList.remove('collapsed');
+                if (arrow) arrow.classList.remove('collapsed');
+            }
+        }
+    });
+}
+
 function updateSelectionUI(e) {
     const activeObj = canvas.getActiveObject();
-    const textPanel = document.getElementById('text-properties');
+    const textPanel = document.getElementById('group-text');
     const iconPanel = document.getElementById('icon-properties');
     const alignControl = document.getElementById('textAlignControl');
     const bgControl = document.getElementById('textBackgroundControl');
+    const genreControl = document.getElementById('genreLimitControl');
     
     // Hide all initially
     textPanel.style.display = 'none';
@@ -102,6 +150,13 @@ function updateSelectionUI(e) {
         activeObj.cornerColor = 'rgba(255, 50, 50, 0.6)';
     }
 
+    if (activeObj === mainBg) {
+        expandGroup('group-canvas');
+        expandGroup('group-effects');
+    } else if (activeObj && (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification'))) {
+        expandGroup('group-logos');
+    }
+
     if (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification')) {
         if (iconPanel) {
             iconPanel.style.display = 'block';
@@ -112,6 +167,7 @@ function updateSelectionUI(e) {
         }
     } else if (activeObj.type === 'i-text' || activeObj.type === 'textbox' || (activeObj.type === 'group' && (activeObj.dataTag === 'rating_star' || activeObj.dataTag === 'rating'))) {
         textPanel.style.display = 'block';
+        expandGroup('group-text');
         
         let textObj = activeObj;
         if (activeObj.type === 'group') textObj = activeObj.getObjects().find(o => o.type === 'i-text');
@@ -184,6 +240,10 @@ function updateSelectionUI(e) {
         } else {
             alignControl.style.display = 'none';
             if (bgControl) bgControl.style.display = 'none';
+        }
+
+        if (genreControl) {
+            genreControl.style.display = (activeObj.dataTag === 'genres') ? 'block' : 'none';
         }
     }
 }
@@ -281,6 +341,40 @@ function applyFontToAll() {
         canvas.requestRenderAll();
         saveToLocalStorage();
     });
+}
+
+function applyFontSizeToAll() {
+    const newSize = parseInt(document.getElementById('fontSizeInput').value);
+    if (!canvas || isNaN(newSize)) return;
+
+    canvas.getObjects().forEach(obj => {
+        // Exclude overview and title/logo
+        if (obj.dataTag === 'overview' || obj.dataTag === 'title') return;
+
+        let textObj = (obj.type === 'group') ? obj.getObjects().find(o => o.type === 'i-text') : obj;
+        
+        if (textObj && (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'group')) {
+            textObj.set("fontSize", newSize);
+            
+            if (obj.type === 'group') {
+                if (obj.dataTag === 'rating_star' || obj.dataTag === 'rating') {
+                    const imgObj = obj.getObjects().find(o => o.type === 'image');
+                    if (imgObj) {
+                        imgObj.scaleToHeight(newSize);
+                        textObj.set('left', imgObj.left + imgObj.getScaledWidth() + 10);
+                        textObj.set('top', imgObj.top + (imgObj.getScaledHeight() - textObj.getScaledHeight()) / 2);
+                    }
+                }
+                obj.addWithUpdate();
+            } else {
+                obj.setCoords();
+            }
+        }
+    });
+
+    updateVerticalLayout();
+    canvas.requestRenderAll();
+    saveToLocalStorage();
 }
 
 function setTextAlignment(align) {
@@ -554,6 +648,13 @@ async function fetchMediaData(itemId = null) {
         await previewTemplate(data, true, newLogoImg);
         saveToLocalStorage();
         canvas.renderAll(); // Force synchronous render to ensure image is ready
+        
+        // Safety Net
+        updateVerticalLayout();
+        setTimeout(() => { 
+            canvas.requestRenderAll(); 
+            updateVerticalLayout(); 
+        }, 500);
         
         const btnSaveGallery = document.getElementById('btn-save-gallery');
         if(btnSaveGallery) btnSaveGallery.disabled = false;
@@ -892,14 +993,57 @@ function applyBrightness(skipRender = false) {
 }
 
 function addMetadataTag(type, placeholder) {
-    let textObj;
-    const count = canvas.getObjects().filter(o => o.dataTag).length;
-    
     const is4K = document.getElementById('resSelect').value === '2160';
     const baseSize = is4K ? 54 : 35;
     const titleSize = is4K ? 120 : 80;
-    const step = is4K ? 150 : 100;
-    const props = { left: 100 + (count * 30), top: 100 + (count * step), fontFamily: 'Roboto', fontSize: type === 'title' ? titleSize : baseSize, fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', dataTag: type };
+    
+    // 1. Smart Positioning Strategy
+    let targetLeft = 100;
+    let targetTop = 100;
+    const activeObj = canvas.getActiveObject();
+
+    if (activeObj && activeObj !== mainBg && activeObj.visible) {
+        // Append to right of selected object (Row building)
+        targetLeft = activeObj.left + activeObj.getScaledWidth() + 20;
+        targetTop = activeObj.top;
+    } else {
+        // Find lowest element to start a new row
+        const elements = canvas.getObjects().filter(o => o.dataTag && o !== mainBg && o.visible);
+        if (elements.length > 0) {
+            let maxBottom = 0;
+            let alignLeft = 100;
+            
+            // Try to align with the Title if available
+            const title = elements.find(o => o.dataTag === 'title');
+            if (title) alignLeft = title.left;
+
+            elements.forEach(el => {
+                const bottom = el.top + el.getScaledHeight();
+                if (bottom > maxBottom) maxBottom = bottom;
+            });
+            
+            targetTop = maxBottom + 20;
+            targetLeft = alignLeft;
+        }
+    }
+
+    const props = { 
+        left: targetLeft, 
+        top: targetTop, 
+        fontFamily: 'Roboto', 
+        fontSize: type === 'title' ? titleSize : baseSize, 
+        fill: 'white', 
+        shadow: '2px 2px 10px rgba(0,0,0,0.8)', 
+        dataTag: type 
+    };
+
+    // Helper to add object and trigger layout update
+    const finalize = (obj) => {
+        canvas.add(obj);
+        canvas.setActiveObject(obj);
+        updateVerticalLayout();
+        saveToLocalStorage();
+    };
     
     if (type === 'rating_star') {
         const starUrl = 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Gold_Star.svg/1024px-Gold_Star.svg.png';
@@ -909,10 +1053,7 @@ function addMetadataTag(type, placeholder) {
             img.scaleToHeight(props.fontSize).set({dataTag: 'rating_star_img'});
             const text = new fabric.IText(placeholder, { ...props, left: img.getScaledWidth() + 10, top: 0, shadow: undefined, editable: false });
             const group = new fabric.Group([img, text], { left: props.left, top: props.top, dataTag: type });
-            canvas.add(group);
-            canvas.setActiveObject(group);
-            if (lastFetchedData) previewTemplate(lastFetchedData);
-            else canvas.requestRenderAll();
+            finalize(group);
         }, { crossOrigin: 'anonymous' });
         return;
     }
@@ -924,10 +1065,7 @@ function addMetadataTag(type, placeholder) {
             if(isError || !img) { console.error("Failed to load certification image"); return; }
             img.scaleToHeight(props.fontSize * 1.5);
             img.set({ left: props.left, top: props.top, dataTag: type });
-            canvas.add(img);
-            canvas.setActiveObject(img);
-            if (lastFetchedData) previewTemplate(lastFetchedData);
-            else canvas.requestRenderAll();
+            finalize(img);
         }, { crossOrigin: 'anonymous', dataTag: type });
         return;
     }
@@ -942,28 +1080,23 @@ function addMetadataTag(type, placeholder) {
             const text = new fabric.IText(textVal, { ...props, left: img.getScaledWidth() + 10, top: 0, shadow: undefined, editable: false });
             text.set('top', (img.getScaledHeight() - text.getScaledHeight()) / 2);
             const group = new fabric.Group([img, text], { left: props.left, top: props.top, dataTag: type });
-            canvas.add(group);
-            canvas.setActiveObject(group);
-            if (lastFetchedData) previewTemplate(lastFetchedData);
-            else canvas.requestRenderAll();
+            finalize(group);
         }, { crossOrigin: 'anonymous' });
         return;
     }
 
+    let textObj;
     if (type === 'overview') {
         textObj = new fabric.Textbox(placeholder, { ...props, width: 600, height: 300, fixedHeight: 300, splitByGrapheme: false, lockScalingY: false, fullMediaText: placeholder, editable: false, objectCaching: false });
         fitTextToContainer(textObj);
     } else {
         textObj = new fabric.IText(placeholder, { ...props, editable: false });
     }
-    canvas.add(textObj);
-    canvas.setActiveObject(textObj);
-    if (lastFetchedData) previewTemplate(lastFetchedData);
-    else canvas.requestRenderAll();
+    finalize(textObj);
 }
 
 function addLogo(url) {
-    const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
+    const proxiedUrl = url.startsWith('/') ? url : `/api/proxy/image?url=${encodeURIComponent(url)}`;
     fabric.Image.fromURL(proxiedUrl, function(img) {
         if(!img) return;
         
@@ -1080,14 +1213,27 @@ function groupElementsByRow(elements, threshold = 30) {
 }
 
 function updateVerticalLayout(skipRender = false) {
-    const padding = 20; // This is the minimum vertical distance
-    const hPadding = 20; // Horizontal spacing between tags
-    const rowThreshold = 30; // How close elements must be to be considered in the same row
-    
-    canvas.renderAll(); // Ensure all dimensions (especially i-text) are calculated correctly
-    
-    const anchor = canvas.getObjects().find(o => o.dataTag === 'title');
-    if (!anchor) { canvas.requestRenderAll(); return; }
+    if (!canvas) return;
+
+    // 1. Check for unready images (width/height 0)
+    const unreadyImages = canvas.getObjects().some(o => 
+        o.type === 'image' && o.visible && (o.width === 0 || o.height === 0)
+    );
+
+    if (unreadyImages) {
+        setTimeout(() => updateVerticalLayout(skipRender), 100);
+        return;
+    }
+
+    document.fonts.ready.then(() => {
+        const padding = 20; // This is the minimum vertical distance
+        const hPadding = 20; // Horizontal spacing between tags
+        const rowThreshold = 30; // How close elements must be to be considered in the same row
+        
+        canvas.renderAll(); // Ensure all dimensions (especially i-text) are calculated correctly
+        
+        const anchor = canvas.getObjects().find(o => o.dataTag === 'title');
+        if (!anchor) { canvas.requestRenderAll(); return; }
 
     // Auto-switch alignment based on position (Left vs Right)
     const alignSelect = document.getElementById('tagAlignSelect');
@@ -1258,8 +1404,9 @@ function updateVerticalLayout(skipRender = false) {
         }
     }
 
-    canvas.getObjects().forEach(o => o.setCoords());
-    if (!skipRender) canvas.requestRenderAll();
+        canvas.getObjects().forEach(o => o.setCoords());
+        if (!skipRender) canvas.requestRenderAll();
+    });
 }
 
 function toggleGrid() {
@@ -1297,6 +1444,7 @@ function removeGrid() {
 }
 
 function init() {
+    restoreSidebarState();
     // Load saved resolution preference
     const savedRes = localStorage.getItem('editor_resolution');
     if (savedRes) {
@@ -1327,6 +1475,10 @@ function init() {
             preferredLogoWidth = t.getScaledWidth();
         }
         if (t === mainBg) updateFades();
+        
+        if (layoutDebounceTimer) clearTimeout(layoutDebounceTimer);
+        layoutDebounceTimer = setTimeout(() => updateVerticalLayout(), 50);
+
         canvas.requestRenderAll();
         saveToLocalStorage();
     });
@@ -1442,6 +1594,7 @@ function init() {
     loadOverlayProfiles();
     loadTextureProfiles();
     loadFonts();
+    loadCustomIcons();
     updateFadeControls();
 }
 
@@ -1866,6 +2019,65 @@ async function deleteFont(filename) {
     if(!confirm(`Delete font "${filename}"?`)) return;
     await fetch(`/api/fonts/delete/${encodeURIComponent(filename)}`, { method: 'POST' });
     loadFonts();
+}
+
+async function loadCustomIcons() {
+    try {
+        const resp = await fetch('/api/custom-icons/list');
+        const icons = await resp.json();
+        
+        // Populate Manager List
+        const list = document.getElementById('customIconList');
+        if (list) {
+            let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:10px;">';
+            icons.forEach(icon => {
+                const src = `/api/custom-icons/image/${encodeURIComponent(icon)}`;
+                html += `<div style="background:rgba(255,255,255,0.1); padding:5px; border-radius:4px; text-align:center;">
+                    <img src="${src}" style="width:100%; height:60px; object-fit:contain; border-radius:4px;">
+                    <div style="font-size:11px; margin:5px 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${icon}</div>
+                    <button onclick="deleteCustomIcon('${icon}')" style="background:#c62828; padding:2px 6px; font-size:10px; width:100%; border:none; color:white; cursor:pointer;">Delete</button>
+                </div>`;
+            });
+            html += '</div>';
+            list.innerHTML = html;
+        }
+
+        // Populate Sidebar
+        const sidebar = document.getElementById('customLogosSidebar');
+        if (sidebar) {
+            let html = '';
+            html += `<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/IMDB_Logo_2016.svg/1200px-IMDB_Logo_2016.svg.png" onclick="addLogo('https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/IMDB_Logo_2016.svg/1200px-IMDB_Logo_2016.svg.png')" style="width:100%; height:40px; object-fit:contain; cursor:pointer; background:rgba(255,255,255,0.1); border-radius:4px; padding:2px;" title="IMDb Logo">`;
+            icons.forEach(icon => {
+                const src = `/api/custom-icons/image/${encodeURIComponent(icon)}`;
+                html += `<img src="${src}" onclick="addLogo('${src}')" style="width:100%; height:40px; object-fit:contain; cursor:pointer; background:rgba(255,255,255,0.1); border-radius:4px; padding:2px;" title="${icon}">`;
+            });
+            sidebar.innerHTML = html;
+        }
+    } catch (e) { console.error("Error loading custom icons", e); }
+}
+
+async function addCustomIcon() {
+    const fileInput = document.getElementById('newIconFile');
+    const file = fileInput.files[0];
+    if (!file) return alert("Please select a file");
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const resp = await fetch('/api/custom-icons/add', { method: 'POST', body: formData });
+    if (resp.ok) {
+        alert("Icon uploaded!");
+        fileInput.value = '';
+        loadCustomIcons();
+    } else {
+        alert("Error uploading icon");
+    }
+}
+
+async function deleteCustomIcon(filename) {
+    if(!confirm(`Delete icon "${filename}"?`)) return;
+    await fetch(`/api/custom-icons/delete/${encodeURIComponent(filename)}`, { method: 'POST' });
+    loadCustomIcons();
 }
 
 async function addTexture() {
@@ -2294,6 +2506,14 @@ async function loadLayout(name, silent = false) {
             openTab({currentTarget: document.querySelector('.tab-link')}, 'editor-tab');
             alert(`Layout "${name}" loaded!`);
         }
+        
+        // Safety Net
+        updateVerticalLayout();
+        setTimeout(() => { 
+            canvas.requestRenderAll(); 
+            updateVerticalLayout(); 
+        }, 500);
+
         resolve();
     });
     });

@@ -6,6 +6,30 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alice&family=Andika&family=Arvo:wght@400;700&family=Barrio&family=Bungee+Spice&family=Codystar&family=Creepster&family=Diplomata+SC&family=Ewert&family=Fascinate+Inline&family=Faster+One&family=Fira+Sans:wght@300;400;700&family=Flavors&family=Fredericka+the+Great&family=Honk&family=IBM+Plex+Sans:wght@300;400;700&family=Inter:wght@300;400;700&family=Jost:wght@300;400;700&family=Lacquer&family=Lato:wght@300;400;700&family=Manrope:wght@300;400;700&family=Merriweather:wght@300;400;700&family=Metal+Mania&family=Modak&family=Monoton&family=Montserrat:wght@300;400;700&family=Mulish:wght@300;400;700&family=Nabla&family=Nosifer&family=Nunito:wght@300;400;700&family=Open+Sans:wght@300;400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@300;400;700&family=Rubik+Beastly&family=Rubik+Vinyl&family=Shojumaru&family=Silkscreen&family=Space+Grotesk:wght@300;400;700&family=Special+Elite&family=Titillium+Web:wght@300;400;700&family=Urbanist:wght@300;400;700&family=Zilla+Slab+Highlight&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
+    <style>
+        .group-content {
+            overflow: hidden;
+        }
+        .group-content.collapsed {
+            display: none;
+        }
+        .control-group h3 {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+        }
+        .group-arrow {
+            display: inline-block;
+            width: 20px;
+            margin-right: 5px;
+            transition: transform 0.2s;
+            text-align: center;
+        }
+        .group-arrow.collapsed {
+            transform: rotate(-90deg);
+        }
+    </style>
 </head>
 <body>
 
@@ -17,6 +41,7 @@
         <div class="tab-link" onclick="openTab(event, 'overlay-tab')" data-i18n="nav_overlay">📏 Overlay Manager</div>
         <div class="tab-link" onclick="openTab(event, 'texture-tab')" data-i18n="nav_texture">🎨 Texture Manager</div>
         <div class="tab-link" onclick="openTab(event, 'font-tab')" data-i18n="nav_font">🔤 Font Manager</div>
+        <div class="tab-link" onclick="openTab(event, 'icon-tab')">🎨 Icon Manager</div>
         <div class="tab-link" onclick="openTab(event, 'settings-tab')" data-i18n="nav_settings">⚙️ Provider Settings</div>
         <div style="margin-left: auto; padding-right: 10px; display: flex; align-items: center;">
             <select id="languageSelect" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px;">
@@ -34,134 +59,125 @@
 
     <div id="editor-tab" class="tab-content active">
         <div class="sidebar">
-            <div class="control-group">
-                <h3 data-i18n="layout_mgmt">Layout Management</h3>
-                <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;" data-i18n="save_changes">💾 Save Changes</button>
-                <label data-i18n="layout_name">Layout Name</label>
-                <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default">
-                <label data-i18n="tag_align">Tag Alignment</label>
-                <select id="tagAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
-                    <option value="left">Left</option>
-                    <option value="center" selected>Center</option>
-                    <option value="right">Right</option>
-                </select>
-                <label data-i18n="text_align_content">Text Content Alignment</label>
-                <select id="textContentAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
-                    <option value="left" selected>Left</option>
-                    <option value="center">Center</option>
-                    <option value="right">Right</option>
-                    <option value="justify">Justify</option>
-                </select>
-                <div style="margin-top:5px;">
-                    <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;" data-i18n="genre_limit">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
-                    <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
-                </div>
-                <div id="snapToggleContainer" style="display:none; align-items:center; gap:10px; margin-top:10px;">
-                    <input type="checkbox" id="snapToggle" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping()">
-                    <label for="snapToggle" style="margin:0; cursor:pointer; font-size:12px;" data-i18n="snap_objects">Snap to Objects</label>
-                </div>
-                <div id="layerControlContainer" style="display:none; gap:5px; margin-top:10px;">
-                    <button onclick="moveLayer('up')" style="flex:1; font-size:11px; padding:4px;">⬆ Bring Forward</button>
-                    <button onclick="moveLayer('down')" style="flex:1; font-size:11px; padding:4px;">⬇ Send Backward</button>
-                </div>
-                <button onclick="saveLayout()" style="background: #00796b; margin-top: 10px;" data-i18n="save_layout">💾 Save Layout</button>
-                <button onclick="resetLayout()" style="background: #d32f2f; margin-top: 5px;" data-i18n="reset_layout">⚠️ Reset Layout</button>
-            </div>
-
-            <div class="control-group">
-                <h3 data-i18n="logos_icons">Logos & Icons</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                    <button onclick="addLogo('https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/IMDB_Logo_2016.svg/1200px-IMDB_Logo_2016.svg.png')" style="grid-column: 1 / -1;">IMDb Logo</button>
-                </div>
-                <div id="icon-properties" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
-                    <label for="iconSizeInput" data-i18n="icon_size">Icon Size</label>
-                    <input type="number" id="iconSizeInput" min="10" max="500" oninput="updateIconSize()">
-                    <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
-                        <input type="checkbox" id="matchHeightToggle" onchange="toggleMatchHeight()" style="width:20px; height:20px; margin:0;">
-                        <label for="matchHeightToggle" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="match_height">Match Height to Neighbor</label>
+            <div class="control-group" id="group-layout">
+                <h3 onclick="toggleGroup('group-layout')"><span class="group-arrow collapsed">▼</span> <span data-i18n="layout_mgmt">Layout Management</span></h3>
+                <div class="group-content collapsed">
+                    <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;" data-i18n="save_changes">💾 Save Changes</button>
+                    <label data-i18n="tag_align">Tag Alignment</label>
+                    <select id="tagAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
+                        <option value="left">Left</option>
+                        <option value="center" selected>Center</option>
+                        <option value="right">Right</option>
+                    </select>
+                    <label data-i18n="text_align_content">Text Content Alignment</label>
+                    <select id="textContentAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
+                        <option value="left" selected>Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                        <option value="justify">Justify</option>
+                    </select>
+                    <div id="snapToggleContainer" style="display:none; align-items:center; gap:10px; margin-top:10px;">
+                        <input type="checkbox" id="snapToggle" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping()">
+                        <label for="snapToggle" style="margin:0; cursor:pointer; font-size:12px;" data-i18n="snap_objects">Snap to Objects</label>
+                    </div>
+                    <div id="layerControlContainer" style="display:none; gap:5px; margin-top:10px;">
+                        <button onclick="moveLayer('up')" style="flex:1; font-size:11px; padding:4px;">⬆ Bring Forward</button>
+                        <button onclick="moveLayer('down')" style="flex:1; font-size:11px; padding:4px;">⬇ Send Backward</button>
                     </div>
                 </div>
             </div>
 
-            <div class="control-group">
-                <h3 data-i18n="metadata_tags">Metadata Tags</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                    <button onclick="addMetadataTag('title', 'TITLE / LOGO')">Title/Logo</button>
-                    <button onclick="addMetadataTag('year', '2024')">Year</button>
-                    <button onclick="addMetadataTag('rating', 'IMDb: 8.5')">Rating (Text)</button>
-                    <button onclick="addMetadataTag('rating_star', '8.5')">Rating (Star)</button>
-                    <button onclick="addMetadataTag('rating_val', '8.5')">Rating (Value)</button>
-                    <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
-                    <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
-                    <button onclick="addMetadataTag('overview', 'Movie description...')">Overview</button>
-                    <button onclick="addMetadataTag('provider_source', 'Now available on...')">Provider Info</button>
-                    <button onclick="addMetadataTag('certification', 'FSK 16')">Age Rating (Image)</button>
+            <div class="control-group" id="group-logos">
+                <h3 onclick="toggleGroup('group-logos')"><span class="group-arrow collapsed">▼</span> <span data-i18n="logos_icons">Logos & Icons</span></h3>
+                <div class="group-content collapsed">
+                    <div id="customLogosSidebar" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;"></div>
+                    <div id="icon-properties" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <label for="iconSizeInput" data-i18n="icon_size">Icon Size</label>
+                        <input type="number" id="iconSizeInput" min="10" max="500" oninput="updateIconSize()">
+                        <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                            <input type="checkbox" id="matchHeightToggle" onchange="toggleMatchHeight()" style="width:20px; height:20px; margin:0;">
+                            <label for="matchHeightToggle" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="match_height">Match Height to Neighbor</label>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="control-group">
-                <h3 data-i18n="preview_controls">Preview Controls</h3>
-                <div style="display:flex; gap:5px; margin-bottom:5px;">
-                    <input type="text" id="mediaSearchInput" placeholder="Search title..." style="margin-top:0;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
-                    <button onclick="searchMedia()" style="width:auto; margin-top:0;">🔍</button>
+            <div class="control-group" id="group-metadata">
+                <h3 onclick="toggleGroup('group-metadata')"><span class="group-arrow collapsed">▼</span> <span data-i18n="metadata_tags">Metadata Tags</span></h3>
+                <div class="group-content collapsed">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <button onclick="addMetadataTag('title', 'TITLE / LOGO')">Title/Logo</button>
+                        <button onclick="addMetadataTag('year', '2024')">Year</button>
+                        <button onclick="addMetadataTag('rating', 'IMDb: 8.5')">Rating (Text)</button>
+                        <button onclick="addMetadataTag('rating_star', '8.5')">Rating (Star)</button>
+                        <button onclick="addMetadataTag('rating_val', '8.5')">Rating (Value)</button>
+                        <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
+                        <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
+                        <button onclick="addMetadataTag('overview', 'Movie description...')">Overview</button>
+                        <button onclick="addMetadataTag('provider_source', 'Now available on...')">Provider Info</button>
+                        <button onclick="addMetadataTag('certification', 'FSK 16')">Age Rating (Image)</button>
+                    </div>
                 </div>
-                <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0;" data-i18n="shuffle_preview">🎲 Shuffle Preview</button>
-                <p id="source-indicator" style="font-size: 9px; color: #555; text-align: center; margin-top: 5px;">Source: None</p>
             </div>
 
-            <div class="control-group">
-                <h3 data-i18n="canvas_settings">Canvas</h3>
-                <label for="resSelect" data-i18n="resolution">Resolution</label>
-                <select id="resSelect" onchange="changeResolution()">
-                    <option value="1080">1080p (Full HD)</option>
-                    <option value="2160">2160p (4K)</option>
-                </select>
-                <label for="overlaySelect" data-i18n="guide_overlay">Guide Overlay</label>
-                <select id="overlaySelect" onchange="updateOverlay()">
-                    <option value="">None</option>
-                </select>
-                <label data-i18n="bg_color">Background Color</label>
-                <div style="display:flex; gap:5px; align-items:center;">
-                    <input type="color" id="bgColor" oninput="updateBgColor()" value="#000000" style="height:35px; width:60px;">
-                    <button onclick="autoDetectBgColor(true)" style="margin-top:0; font-size: 11px;" data-i18n="auto_detect">✨ Auto-Detect</button>
+            <div class="control-group" id="group-canvas">
+                <h3 onclick="toggleGroup('group-canvas')"><span class="group-arrow collapsed">▼</span> <span data-i18n="canvas_settings">Canvas</span></h3>
+                <div class="group-content collapsed">
+                    <label for="resSelect" data-i18n="resolution">Resolution</label>
+                    <select id="resSelect" onchange="changeResolution()">
+                        <option value="1080">1080p (Full HD)</option>
+                        <option value="2160">2160p (4K)</option>
+                    </select>
+                    <label for="overlaySelect" data-i18n="guide_overlay">Guide Overlay</label>
+                    <select id="overlaySelect" onchange="updateOverlay()">
+                        <option value="">None</option>
+                    </select>
+                    <label data-i18n="bg_color">Background Color</label>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="color" id="bgColor" oninput="updateBgColor()" value="#000000" style="height:35px; width:60px;">
+                        <button onclick="autoDetectBgColor(true)" style="margin-top:0; font-size: 11px;" data-i18n="auto_detect">✨ Auto-Detect</button>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                        <label style="font-size:10px; margin:0;" data-i18n="brightness">Brightness</label>
+                        <span id="brightVal" style="font-size:10px;">20%</span>
+                    </div>
+                    <input type="range" id="bgBrightness" min="0" max="100" value="20" oninput="adjustAutoBrightness()" style="margin-top:2px;">
+                    <button onclick="mirrorBackground()" style="margin-top: 10px; background-color: #4a4a4a;" data-i18n="mirror_bg">↔️ Mirror Background</button>
                 </div>
-                <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                    <label style="font-size:10px; margin:0;" data-i18n="brightness">Brightness</label>
-                    <span id="brightVal" style="font-size:10px;">20%</span>
-                </div>
-                <input type="range" id="bgBrightness" min="0" max="100" value="20" oninput="adjustAutoBrightness()" style="margin-top:2px;">
-                <button onclick="mirrorBackground()" style="margin-top: 10px; background-color: #4a4a4a;" data-i18n="mirror_bg">↔️ Mirror Background</button>
             </div>
 
-            <div class="control-group">
-                <h3 data-i18n="bg_effects">Background Effects</h3>
-                <label data-i18n="effect_type">Effect Type</label>
-                <select id="fadeEffect" onchange="updateFadeControls()">
-                    <option value="custom">Custom Linear Fade</option>
-                    <option value="bottom-left">Corner Fade: Bottom-Left</option>
-                    <option value="bottom-right">Corner Fade: Bottom-Right</option>
-                    <option value="top-left">Corner Fade: Top-Left</option>
-                    <option value="top-right">Corner Fade: Top-Right</option>
-                    <option value="vignette">Vignette Fade (Centered)</option>
-                </select>
-                <div id="ctrl-fade-radius" style="display:none;">
-                    <label for="fadeRadius" data-i18n="corner_radius">Corner Radius</label>
-                    <input type="range" id="fadeRadius" min="0" max="3000" value="1000" oninput="updateFades()">
+            <div class="control-group" id="group-effects">
+                <h3 onclick="toggleGroup('group-effects')"><span class="group-arrow collapsed">▼</span> <span data-i18n="bg_effects">Background Effects</span></h3>
+                <div class="group-content collapsed">
+                    <label data-i18n="effect_type">Effect Type</label>
+                    <select id="fadeEffect" onchange="updateFadeControls()">
+                        <option value="custom">Custom Linear Fade</option>
+                        <option value="bottom-left">Corner Fade: Bottom-Left</option>
+                        <option value="bottom-right">Corner Fade: Bottom-Right</option>
+                        <option value="top-left">Corner Fade: Top-Left</option>
+                        <option value="top-right">Corner Fade: Top-Right</option>
+                        <option value="vignette">Vignette Fade (Centered)</option>
+                    </select>
+                    <div id="ctrl-fade-radius" style="display:none;">
+                        <label for="fadeRadius" data-i18n="corner_radius">Corner Radius</label>
+                        <input type="range" id="fadeRadius" min="0" max="3000" value="1000" oninput="updateFades()">
+                    </div>
+                    <div id="ctrl-fade-left"><label for="fadeLeft">Left</label><input type="range" id="fadeLeft" min="0" max="3000" value="580" oninput="updateFades()"></div>
+                    <div id="ctrl-fade-right"><label for="fadeRight">Right</label><input type="range" id="fadeRight" min="0" max="3000" value="0" oninput="updateFades()"></div>
+                    <div id="ctrl-fade-top"><label for="fadeTop">Top</label><input type="range" id="fadeTop" min="0" max="2000" value="0" oninput="updateFades()"></div>
+                    <div id="ctrl-fade-bottom"><label for="fadeBottom">Bottom</label><input type="range" id="fadeBottom" min="0" max="2000" value="320" oninput="updateFades()"></div>
                 </div>
-                <div id="ctrl-fade-left"><label for="fadeLeft">Left</label><input type="range" id="fadeLeft" min="0" max="3000" value="580" oninput="updateFades()"></div>
-                <div id="ctrl-fade-right"><label for="fadeRight">Right</label><input type="range" id="fadeRight" min="0" max="3000" value="0" oninput="updateFades()"></div>
-                <div id="ctrl-fade-top"><label for="fadeTop">Top</label><input type="range" id="fadeTop" min="0" max="2000" value="0" oninput="updateFades()"></div>
-                <div id="ctrl-fade-bottom"><label for="fadeBottom">Bottom</label><input type="range" id="fadeBottom" min="0" max="2000" value="320" oninput="updateFades()"></div>
             </div>
 
-            <div class="control-group" id="text-properties" style="display:none;">
-                <h3 data-i18n="text_props">Text Properties</h3>
-                <label for="fontSizeInput" data-i18n="font_size">Font Size</label>
-                <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
-                <label for="fontFamilySelect" data-i18n="font_family">Font Family</label>
-                <select id="fontFamilySelect" onchange="updateSelectedFontFamily()">
-                    <option value="Roboto" selected>Roboto</option>
-                    <option value="Segoe UI">Segoe UI (System)</option>
+            <div class="control-group" id="group-text" style="display:none;">
+                <h3 onclick="toggleGroup('group-text')"><span class="group-arrow collapsed">▼</span> <span data-i18n="text_props">Text Properties</span></h3>
+                <div class="group-content collapsed">
+                    <label for="fontSizeInput" data-i18n="font_size">Font Size</label>
+                    <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
+                    <label for="fontFamilySelect" data-i18n="font_family">Font Family</label>
+                    <select id="fontFamilySelect" onchange="updateSelectedFontFamily()">
+                        <option value="Roboto" selected>Roboto</option>
+                        <option value="Segoe UI">Segoe UI (System)</option>
                     <option value="Open Sans">Open Sans</option>
                     <option value="Lato">Lato</option>
                     <option value="Montserrat">Montserrat</option>
@@ -206,77 +222,95 @@
                     <option value="Metal Mania">Metal Mania</option>
                     <option value="Diplomata SC">Diplomata SC</option>
                 </select>
-                <button onclick="applyFontToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_font_all">Apply Font & Color to All Tags</button>
-                
-                <label data-i18n="fill_type">Fill Type</label>
-                <div style="display:flex; gap:10px; margin-bottom:5px;">
-                    <input type="radio" id="fillTypeColor" name="fillType" value="color" checked onchange="toggleTextFillType()">
-                    <label for="fillTypeColor" style="margin:0; font-size:12px;" data-i18n="color">Color</label>
-                    <input type="radio" id="fillTypeTexture" name="fillType" value="texture" onchange="toggleTextFillType()">
-                    <label for="fillTypeTexture" style="margin:0; font-size:12px;" data-i18n="texture">Texture</label>
-                </div>
-                <div id="fillColorContainer">
-                    <label for="fontColorInput" data-i18n="text_color">Text Color</label>
-                    <input type="color" id="fontColorInput" oninput="updateSelectedColor()" style="height:35px;">
-                </div>
-                <div id="fillTextureContainer" style="display:none;">
-                    <label for="textureSelect" data-i18n="select_texture">Select Texture</label>
-                    <select id="textureSelect" onchange="applyTextureToSelection()" style="width:100%; padding:5px;"><option value="">None</option></select>
-                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                        <label style="font-size:10px; margin:0;" data-i18n="pattern_scale">Pattern Scale</label>
-                        <span id="textureScaleVal" style="font-size:10px;">1x</span>
+                    <button onclick="applyFontToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_font_all">Apply Font & Color to All Tags</button>
+                    <button onclick="applyFontSizeToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_size_all">Apply Size to All Tags</button>
+                    
+                    <label data-i18n="fill_type">Fill Type</label>
+                    <div style="display:flex; gap:10px; margin-bottom:5px;">
+                        <input type="radio" id="fillTypeColor" name="fillType" value="color" checked onchange="toggleTextFillType()">
+                        <label for="fillTypeColor" style="margin:0; font-size:12px;" data-i18n="color">Color</label>
+                        <input type="radio" id="fillTypeTexture" name="fillType" value="texture" onchange="toggleTextFillType()">
+                        <label for="fillTypeTexture" style="margin:0; font-size:12px;" data-i18n="texture">Texture</label>
                     </div>
-                    <input type="range" id="textureScale" min="0.1" max="3" step="0.1" value="1" oninput="updateTextureScale()" style="margin-top:2px;">
-                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                        <label style="font-size:10px; margin:0;" data-i18n="pattern_rotation">Pattern Rotation</label>
-                        <span id="textureRotationVal" style="font-size:10px;">0°</span>
+                    <div id="fillColorContainer">
+                        <label for="fontColorInput" data-i18n="text_color">Text Color</label>
+                        <input type="color" id="fontColorInput" oninput="updateSelectedColor()" style="height:35px;">
                     </div>
-                    <input type="range" id="textureRotation" min="0" max="360" step="1" value="0" oninput="updateTextureRotation()" style="margin-top:2px;">
-                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                        <label style="font-size:10px; margin:0;" data-i18n="opacity">Opacity</label>
-                        <span id="textureOpacityVal" style="font-size:10px;">100%</span>
-                    </div>
-                    <input type="range" id="textureOpacity" min="0" max="100" value="100" oninput="updateTextureOpacity()" style="margin-top:2px;">
-                    <button onclick="resetTextureSettings()" style="margin-top: 10px; font-size: 11px; background-color: #4a4a4a; width: 100%;" data-i18n="reset_texture">Reset Texture Settings</button>
-                </div>
-
-                <div id="textAlignControl" style="display:none; margin-top:10px;">
-                    <label style="margin-bottom:5px;" data-i18n="text_align">Text Alignment</label>
-                    <div style="display:flex; gap:5px;">
-                        <button onclick="setTextAlignment('left')" style="flex:1;">Left</button>
-                        <button onclick="setTextAlignment('center')" style="flex:1;">Center</button>
-                        <button onclick="setTextAlignment('right')" style="flex:1;">Right</button>
-                    </div>
-                </div>
-                <div id="textBackgroundControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
-                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
-                        <input type="checkbox" id="textBgEnable" onchange="toggleTextBackground()" style="width:20px; height:20px; margin:0;">
-                        <label for="textBgEnable" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="bg_box">Background Box</label>
-                    </div>
-                    <div id="textBgSettings" style="display:none;">
-                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
-                            <input type="checkbox" id="textBgAuto" onchange="updateTextBackgroundSettings()" style="width:20px; height:20px; margin:0;">
-                            <label for="textBgAuto" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="auto_color">Auto-Color (Match BG)</label>
+                    <div id="fillTextureContainer" style="display:none;">
+                        <label for="textureSelect" data-i18n="select_texture">Select Texture</label>
+                        <select id="textureSelect" onchange="applyTextureToSelection()" style="width:100%; padding:5px;"><option value="">None</option></select>
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            <label style="font-size:10px; margin:0;" data-i18n="pattern_scale">Pattern Scale</label>
+                            <span id="textureScaleVal" style="font-size:10px;">1x</span>
                         </div>
-                        <label for="textBgColor" data-i18n="box_color">Box Color</label>
-                        <input type="color" id="textBgColor" oninput="updateTextBackgroundSettings()" style="height:35px;">
+                        <input type="range" id="textureScale" min="0.1" max="3" step="0.1" value="1" oninput="updateTextureScale()" style="margin-top:2px;">
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            <label style="font-size:10px; margin:0;" data-i18n="pattern_rotation">Pattern Rotation</label>
+                            <span id="textureRotationVal" style="font-size:10px;">0°</span>
+                        </div>
+                        <input type="range" id="textureRotation" min="0" max="360" step="1" value="0" oninput="updateTextureRotation()" style="margin-top:2px;">
                         <div style="display:flex; justify-content:space-between; margin-top:5px;">
                             <label style="font-size:10px; margin:0;" data-i18n="opacity">Opacity</label>
-                            <span id="textBgOpacityVal" style="font-size:10px;">50%</span>
+                            <span id="textureOpacityVal" style="font-size:10px;">100%</span>
                         </div>
-                        <input type="range" id="textBgOpacity" min="0" max="100" value="50" oninput="updateTextBackgroundSettings()" style="margin-top:2px;">
+                        <input type="range" id="textureOpacity" min="0" max="100" value="100" oninput="updateTextureOpacity()" style="margin-top:2px;">
+                        <button onclick="resetTextureSettings()" style="margin-top: 10px; font-size: 11px; background-color: #4a4a4a; width: 100%;" data-i18n="reset_texture">Reset Texture Settings</button>
+                    </div>
+
+                    <div id="textAlignControl" style="display:none; margin-top:10px;">
+                        <label style="margin-bottom:5px;" data-i18n="text_align">Text Alignment</label>
+                        <div style="display:flex; gap:5px;">
+                            <button onclick="setTextAlignment('left')" style="flex:1;">Left</button>
+                            <button onclick="setTextAlignment('center')" style="flex:1;">Center</button>
+                            <button onclick="setTextAlignment('right')" style="flex:1;">Right</button>
+                        </div>
+                    </div>
+                    <div id="textBackgroundControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+                            <input type="checkbox" id="textBgEnable" onchange="toggleTextBackground()" style="width:20px; height:20px; margin:0;">
+                            <label for="textBgEnable" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="bg_box">Background Box</label>
+                        </div>
+                        <div id="textBgSettings" style="display:none;">
+                            <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+                                <input type="checkbox" id="textBgAuto" onchange="updateTextBackgroundSettings()" style="width:20px; height:20px; margin:0;">
+                                <label for="textBgAuto" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="auto_color">Auto-Color (Match BG)</label>
+                            </div>
+                            <label for="textBgColor" data-i18n="box_color">Box Color</label>
+                            <input type="color" id="textBgColor" oninput="updateTextBackgroundSettings()" style="height:35px;">
+                            <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                                <label style="font-size:10px; margin:0;" data-i18n="opacity">Opacity</label>
+                                <span id="textBgOpacityVal" style="font-size:10px;">50%</span>
+                            </div>
+                            <input type="range" id="textBgOpacity" min="0" max="100" value="50" oninput="updateTextBackgroundSettings()" style="margin-top:2px;">
+                        </div>
+                    </div>
+                    <div id="genreLimitControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;" data-i18n="genre_limit">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
+                        <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
                     </div>
                 </div>
             </div>
 
             <div style="margin-top:auto">
+                <label data-i18n="layout_name">Layout Name</label>
+                <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default" style="margin-bottom: 10px;">
+                <button onclick="saveLayout()" style="background: #00796b; margin-bottom: 10px;" data-i18n="save_layout">💾 Save Layout</button>
                 <button class="btn-export" onclick="saveImage()" data-i18n="export_jpg">💾 Export JPG (Download)</button>
                 <button id="btn-save-gallery" onclick="saveToGallery()" style="background: #e65100; margin-top: 10px;" data-i18n="save_gallery">📂 Save to Gallery</button>
+                <button onclick="resetLayout()" style="background: #d32f2f; margin-top: 10px;" data-i18n="reset_layout">⚠️ Reset Layout</button>
             </div>
         </div>
 
         <div class="main-view">
-            <button onclick="toggleGrid()" style="position:absolute; top:20px; left:20px; width:auto; z-index:100; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">📏 Toggle Grid</button>
+            <div style="position:absolute; top:20px; left:20px; z-index:100; display:flex; gap:10px; align-items:center;">
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
+                    <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
+                </div>
+                <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0; padding: 8px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);" data-i18n="shuffle_preview">🎲 Shuffle Preview</button>
+                <span id="source-indicator" style="font-size: 11px; color: #aaa; margin-left: 5px; text-shadow: 1px 1px 2px black;">Source: None</span>
+            </div>
+            <button onclick="toggleGrid()" style="position:absolute; top:20px; right:20px; width:auto; z-index:100; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏 Toggle Grid</button>
             <div id="canvas-wrapper">
                 <canvas id="mainCanvas"></canvas>
             </div>
@@ -449,6 +483,21 @@
                 </div>
                 <h4 data-i18n="installed_fonts">Installed Custom Fonts</h4>
                 <div id="fontList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="icon-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px; align-items: flex-start;">
+            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
+                <h3>Custom Icon Manager</h3>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h4>Add New Icon (PNG, SVG, JPG)</h4>
+                    <input type="file" id="newIconFile" accept=".png,.svg,.jpg,.jpeg">
+                    <button onclick="addCustomIcon()" style="margin-top: 15px; background-color: #4CAF50;">Upload Icon</button>
+                </div>
+                <h4>Uploaded Icons</h4>
+                <div id="customIconList"></div>
             </div>
         </div>
     </div>

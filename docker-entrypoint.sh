@@ -30,6 +30,7 @@ check_and_populate() {
 check_and_populate "/app/overlays" "/defaults/overlays"
 check_and_populate "/app/textures" "/defaults/textures"
 check_and_populate "/app/fonts" "/defaults/fonts"
+check_and_populate "/app/custom_icons" "/defaults/custom_icons"
 
 # Execute the main container command
 exec "$@"
