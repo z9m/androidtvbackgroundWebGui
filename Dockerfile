@@ -12,6 +12,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Create defaults directory and backup assets for volume initialization
+RUN mkdir -p /defaults && \
+    cp -r overlays /defaults/ && \
+    cp -r textures /defaults/ && \
+    cp -r fonts /defaults/
+
+# Setup entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
+
 # Expose the port
 EXPOSE 5000
 
