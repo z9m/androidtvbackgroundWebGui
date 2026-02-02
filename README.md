@@ -15,12 +15,20 @@ It features a full WYSIWYG (What You See Is What You Get) editor allowing you to
 ## ✨ Features
 
 - **Web-Based Editor:** Create layouts visually in your browser. Drag, drop, and customize text and images.
-- **Media Server Integration:** Connects directly to **Jellyfin**, **Plex**, **Radarr**, **Sonarr**, **Trakt**, and **TMDB** to fetch metadata and artwork automatically. *(Note: Currently, only **Jellyfin** has been successfully tested.)*
+- **Media Server Integration:** Connects directly to **Jellyfin**, **Plex**, **Radarr**, **Sonarr**, **Trakt**, and **TMDB** to fetch metadata and artwork automatically.
+- **Advanced Layout Tools:**
+    - **Smart Positioning:** Auto-aligns new tags.
+    - **Manual Mode:** Toggle "Snap to Objects" for free positioning.
+    - **Layer Control:** Move elements up/down in the stack.
+    - **Bulk Actions:** Apply font, size, or color to all tags at once.
 - **Texture Manager:** Apply "Magic Textures" (e.g., Gold, Silver, Grunge) to your text for a premium look.
-- **Overlay Manager:** Easily upload and place guide overlays(you need a launcher screenshot with transparent background).
+- **Overlay Manager:** Easily upload and place guide overlays (e.g., for Google TV or ProjectIvy).
 - **Font Manager:** Upload and use your own `.ttf` or `.otf` fonts.
+- **Icon Manager:** Upload custom icons and logos to use in your designs.
+- **Saved Layouts:** Save your designs as templates and reload them later.
 - **Batch Processing:** Automate the generation of backgrounds for entire libraries or collections.
-- **Responsive Design:** Works on Desktop and Mobile devices.
+- **Gallery & Editing:** View generated images and **re-edit** them by loading their original layout state.
+- **Multi-Language:** Interface available in English, German, Italian, French, Polish, Czech, Spanish, and Romanian.
 - **Docker Ready:** Easy deployment on NAS systems like Unraid, TrueNAS, or Synology.
 
 ## 🗺️ Roadmap
@@ -52,6 +60,7 @@ services:
       - ./overlays:/app/overlays
       - ./textures:/app/textures
       - ./fonts:/app/fonts
+      - ./custom_icons:/app/custom_icons
       - ./output:/app/editor_backgrounds
     restart: unless-stopped
 ```
