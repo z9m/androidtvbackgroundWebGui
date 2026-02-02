@@ -76,10 +76,6 @@
                         <option value="right">Right</option>
                         <option value="justify">Justify</option>
                     </select>
-                    <div id="snapToggleContainer" style="display:none; align-items:center; gap:10px; margin-top:10px;">
-                        <input type="checkbox" id="snapToggle" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping()">
-                        <label for="snapToggle" style="margin:0; cursor:pointer; font-size:12px;" data-i18n="snap_objects">Snap to Objects</label>
-                    </div>
                     <div id="layerControlContainer" style="display:none; gap:5px; margin-top:10px;">
                         <button onclick="moveLayer('up')" style="flex:1; font-size:11px; padding:4px;">⬆ Bring Forward</button>
                         <button onclick="moveLayer('down')" style="flex:1; font-size:11px; padding:4px;">⬇ Send Backward</button>
@@ -92,6 +88,11 @@
                 <div class="group-content collapsed">
                     <div id="customLogosSidebar" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;"></div>
                     <div id="icon-properties" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;" title="Uncheck to enable manual positioning (Drag freely)">
+                            <input type="checkbox" id="snapToggleIcon" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping('icon')">
+                            <label for="snapToggleIcon" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="auto_layout_snap">Auto-Layout & Snapping</label>
+                            <button id="resetSnapIcon" onclick="resetSnap('icon')" style="display:none; margin-left:auto; font-size:9px; padding:2px 6px; background:#4a4a4a; border:none; color:white; cursor:pointer; border-radius:3px;" data-i18n="reset">Reset</button>
+                        </div>
                         <label for="iconSizeInput" data-i18n="icon_size">Icon Size</label>
                         <input type="number" id="iconSizeInput" min="10" max="500" oninput="updateIconSize()">
                         <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
@@ -172,6 +173,11 @@
             <div class="control-group" id="group-text" style="display:none;">
                 <h3 onclick="toggleGroup('group-text')"><span class="group-arrow collapsed">▼</span> <span data-i18n="text_props">Text Properties</span></h3>
                 <div class="group-content collapsed">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;" title="Uncheck to enable manual positioning (Drag freely)">
+                        <input type="checkbox" id="snapToggleText" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping('text')">
+                        <label for="snapToggleText" style="margin:0; cursor:pointer; font-size:12px;" data-i18n="auto_layout_snap">Auto-Layout & Snapping</label>
+                        <button id="resetSnapText" onclick="resetSnap('text')" style="display:none; margin-left:auto; font-size:9px; padding:2px 6px; background:#4a4a4a; border:none; color:white; cursor:pointer; border-radius:3px;" data-i18n="reset">Reset</button>
+                    </div>
                     <label for="fontSizeInput" data-i18n="font_size">Font Size</label>
                     <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
                     <label for="fontFamilySelect" data-i18n="font_family">Font Family</label>
@@ -284,6 +290,24 @@
                             <input type="range" id="textBgOpacity" min="0" max="100" value="50" oninput="updateTextBackgroundSettings()" style="margin-top:2px;">
                         </div>
                     </div>
+                    <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <label style="font-size:12px; font-weight:bold;" data-i18n="text_outline">Text Outline</label>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <input type="color" id="textStrokeColor" oninput="updateTextStroke()" style="height:30px; width:40px;">
+                            <input type="number" id="textStrokeWidth" min="0" max="10" step="0.1" value="0" oninput="updateTextStroke()" style="width:60px;">
+                            <span style="font-size:10px;">px</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <label style="font-size:12px; font-weight:bold;" data-i18n="drop_shadow">Drop Shadow</label>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                            <div><label style="font-size:10px;" data-i18n="color">Color</label><input type="color" id="shadowColor" oninput="updateTextShadow()" style="height:30px; width:100%;"></div>
+                            <div><label style="font-size:10px;" data-i18n="blur">Blur</label><input type="number" id="shadowBlur" min="0" max="50" value="0" oninput="updateTextShadow()" style="width:100%;"></div>
+                            <div><label style="font-size:10px;" data-i18n="offset_x">Offset X</label><input type="number" id="shadowOffsetX" min="-50" max="50" value="0" oninput="updateTextShadow()" style="width:100%;"></div>
+                            <div><label style="font-size:10px;" data-i18n="offset_y">Offset Y</label><input type="number" id="shadowOffsetY" min="-50" max="50" value="0" oninput="updateTextShadow()" style="width:100%;"></div>
+                        </div>
+                        <button onclick="resetTextShadow()" style="margin-top:5px; font-size:11px; background:#4a4a4a; width:100%;" data-i18n="reset_shadow">Reset Shadow</button>
+                    </div>
                     <div id="genreLimitControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                         <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;" data-i18n="genre_limit">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
                         <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
@@ -301,18 +325,31 @@
             </div>
         </div>
 
-        <div class="main-view">
-            <div style="position:absolute; top:20px; left:20px; z-index:100; display:flex; gap:10px; align-items:center;">
-                <div style="display:flex; gap:5px;">
-                    <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
-                    <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
+        <div class="main-view" style="display: flex; flex-direction: column; height: 100%; position: relative; overflow: hidden;">
+            <div style="flex: 1; overflow-y: auto; width: 100%; display: flex; flex-direction: column; align-items: center;">
+                <div class="canvas-header" style="display:flex; justify-content:space-between; width:100%; max-width: 100%; padding: 10px 20px; box-sizing: border-box; align-items:center; flex-wrap: wrap; gap: 10px;">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <div style="display:flex; gap:5px;">
+                            <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
+                            <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0; padding: 8px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);" data-i18n="shuffle_preview">🎲 Shuffle Preview</button>
+                            <span id="source-indicator" style="font-size: 11px; color: #aaa; text-shadow: 1px 1px 2px black;">Source: None</span>
+                        </div>
+                    <div style="display: flex; gap: 5px;">
+                        <button id="btn-undo" onclick="undo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="undo">↩ Undo</button>
+                        <select id="historySelect" onchange="jumpToHistory(this.value)" style="padding: 0 10px; text-align: center; background: #444; color: white; border: 1px solid #555; cursor: pointer; border-radius: 4px;">
+                            <option value="" disabled selected>🕒</option>
+                        </select>
+                        <button id="btn-redo" onclick="redo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="redo">↪ Redo</button>
+                    </div>
+                    </div>
+                    <button onclick="toggleGrid()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏 Toggle Grid</button>
                 </div>
-                <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0; padding: 8px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);" data-i18n="shuffle_preview">🎲 Shuffle Preview</button>
-                <span id="source-indicator" style="font-size: 11px; color: #aaa; margin-left: 5px; text-shadow: 1px 1px 2px black;">Source: None</span>
-            </div>
-            <button onclick="toggleGrid()" style="position:absolute; top:20px; right:20px; width:auto; z-index:100; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏 Toggle Grid</button>
-            <div id="canvas-wrapper">
-                <canvas id="mainCanvas"></canvas>
+                <div id="canvas-wrapper" style="margin: auto;">
+                    <canvas id="mainCanvas"></canvas>
+                </div>
             </div>
         </div>
     </div>

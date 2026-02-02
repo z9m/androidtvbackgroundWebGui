@@ -52,6 +52,11 @@ const screenMargin = 50;
 const BASE_WIDTH = 1920;
 const BASE_HEIGHT = 1080;
 
+let undoStack = [];
+let redoStack = [];
+let isUndoRedoProcessing = false;
+const MAX_HISTORY = 10;
+
 function toggleGroup(id) {
     const group = document.getElementById(id);
     if (!group) return;
@@ -111,16 +116,6 @@ function updateSelectionUI(e) {
     textPanel.style.display = 'none';
     if (iconPanel) iconPanel.style.display = 'none';
 
-    // Toggle Snap Checkbox visibility
-    const snapContainer = document.getElementById('snapToggleContainer');
-    if (snapContainer) {
-        snapContainer.style.display = (activeObj && activeObj !== mainBg) ? 'flex' : 'none';
-        const snapCheckbox = document.getElementById('snapToggle');
-        if (snapCheckbox && activeObj) {
-            snapCheckbox.checked = (activeObj.snapToObjects !== false);
-        }
-    }
-
     // Toggle Layer Controls
     const layerContainer = document.getElementById('layerControlContainer');
     if (layerContainer) {
@@ -153,11 +148,23 @@ function updateSelectionUI(e) {
     if (activeObj === mainBg) {
         expandGroup('group-canvas');
         expandGroup('group-effects');
-    } else if (activeObj && (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification'))) {
+    } else if (activeObj && (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification' || activeObj.dataTag === 'title'))) {
         expandGroup('group-logos');
     }
 
-    if (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification')) {
+    // Sync Snap Checkboxes
+    const snapText = document.getElementById('snapToggleText');
+    const snapIcon = document.getElementById('snapToggleIcon');
+    const isSnapEnabled = activeObj ? (activeObj.snapToObjects !== false) : true;
+    if (snapText) snapText.checked = isSnapEnabled;
+    if (snapIcon) snapIcon.checked = isSnapEnabled;
+
+    const resetSnapText = document.getElementById('resetSnapText');
+    const resetSnapIcon = document.getElementById('resetSnapIcon');
+    if (resetSnapText) resetSnapText.style.display = isSnapEnabled ? 'none' : 'block';
+    if (resetSnapIcon) resetSnapIcon.style.display = isSnapEnabled ? 'none' : 'block';
+
+    if (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification' || activeObj.dataTag === 'title')) {
         if (iconPanel) {
             iconPanel.style.display = 'block';
             document.getElementById('iconSizeInput').value = Math.round(activeObj.getScaledHeight());
@@ -165,7 +172,7 @@ function updateSelectionUI(e) {
             document.getElementById('matchHeightToggle').checked = isMatchHeight;
             document.getElementById('iconSizeInput').disabled = isMatchHeight;
         }
-    } else if (activeObj.type === 'i-text' || activeObj.type === 'textbox' || (activeObj.type === 'group' && (activeObj.dataTag === 'rating_star' || activeObj.dataTag === 'rating'))) {
+    } else if (activeObj.type === 'i-text' || activeObj.type === 'textbox' || (activeObj.type === 'group' && (activeObj.dataTag === 'rating_star' || activeObj.dataTag === 'rating')) || activeObj.dataTag === 'title') {
         textPanel.style.display = 'block';
         expandGroup('group-text');
         
@@ -175,6 +182,23 @@ function updateSelectionUI(e) {
         if (textObj) {
             document.getElementById('fontSizeInput').value = textObj.fontSize;
             document.getElementById('fontFamilySelect').value = textObj.fontFamily;
+            
+            // Populate Stroke
+            document.getElementById('textStrokeColor').value = textObj.stroke || "#000000";
+            document.getElementById('textStrokeWidth').value = textObj.strokeWidth || 0;
+
+            // Populate Shadow
+            if (textObj.shadow) {
+                document.getElementById('shadowColor').value = textObj.shadow.color || "#000000";
+                document.getElementById('shadowBlur').value = textObj.shadow.blur || 0;
+                document.getElementById('shadowOffsetX').value = textObj.shadow.offsetX || 0;
+                document.getElementById('shadowOffsetY').value = textObj.shadow.offsetY || 0;
+            } else {
+                document.getElementById('shadowColor').value = "#000000";
+                document.getElementById('shadowBlur').value = 0;
+                document.getElementById('shadowOffsetX').value = 0;
+                document.getElementById('shadowOffsetY').value = 0;
+            }
             
             // Check fill type (Pattern vs Color)
             const isPattern = (textObj.fill && typeof textObj.fill === 'object' && textObj.fill.source);
@@ -397,17 +421,31 @@ function toggleMatchHeight() {
     }
 }
 
-function toggleObjectSnapping() {
+function toggleObjectSnapping(type) {
     const activeObj = canvas.getActiveObject();
     if (activeObj) {
-        const checkbox = document.getElementById('snapToggle');
-        activeObj.snapToObjects = checkbox.checked;
+        let checkbox;
+        if (type === 'text') checkbox = document.getElementById('snapToggleText');
+        else if (type === 'icon') checkbox = document.getElementById('snapToggleIcon');
+        
+        if (checkbox) activeObj.snapToObjects = checkbox.checked;
         
         // Force layout update if snapping is re-enabled to snap tag back to grid
         if (activeObj.snapToObjects) {
             updateVerticalLayout();
         }
 
+        updateSelectionUI();
+        canvas.requestRenderAll();
+        saveToLocalStorage();
+    }
+}
+
+function resetSnap(type) {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj) {
+        activeObj.snapToObjects = true;
+        updateVerticalLayout();
         updateSelectionUI();
         canvas.requestRenderAll();
         saveToLocalStorage();
@@ -431,6 +469,49 @@ function toggleTextBackground() {
     if (activeObj && activeObj.type === 'textbox') {
         saveToLocalStorage();
     }
+}
+
+function updateTextStroke() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj) {
+        let textObj = (activeObj.type === 'group') ? activeObj.getObjects().find(o => o.type === 'i-text') : activeObj;
+        if (textObj && (textObj.type === 'i-text' || textObj.type === 'textbox')) {
+            textObj.set('stroke', document.getElementById('textStrokeColor').value);
+            textObj.set('strokeWidth', parseFloat(document.getElementById('textStrokeWidth').value));
+            if(activeObj.type === 'group') activeObj.addWithUpdate();
+            canvas.requestRenderAll();
+            saveToLocalStorage();
+        }
+    }
+}
+
+function updateTextShadow() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj) {
+        let textObj = (activeObj.type === 'group') ? activeObj.getObjects().find(o => o.type === 'i-text') : activeObj;
+        if (textObj && (textObj.type === 'i-text' || textObj.type === 'textbox')) {
+            const color = document.getElementById('shadowColor').value;
+            const blur = parseInt(document.getElementById('shadowBlur').value);
+            const offsetX = parseInt(document.getElementById('shadowOffsetX').value);
+            const offsetY = parseInt(document.getElementById('shadowOffsetY').value);
+            
+            if (blur === 0 && offsetX === 0 && offsetY === 0) {
+                textObj.set('shadow', null);
+            } else {
+                textObj.set('shadow', new fabric.Shadow({ color, blur, offsetX, offsetY }));
+            }
+            if(activeObj.type === 'group') activeObj.addWithUpdate();
+            canvas.requestRenderAll();
+            saveToLocalStorage();
+        }
+    }
+}
+
+function resetTextShadow() {
+    document.getElementById('shadowBlur').value = 0;
+    document.getElementById('shadowOffsetX').value = 0;
+    document.getElementById('shadowOffsetY').value = 0;
+    updateTextShadow();
 }
 
 function toggleTextBackground() {
@@ -1480,7 +1561,6 @@ function init() {
         layoutDebounceTimer = setTimeout(() => updateVerticalLayout(), 50);
 
         canvas.requestRenderAll();
-        saveToLocalStorage();
     });
 
     canvas.on('mouse:down', (e) => {
@@ -1545,15 +1625,9 @@ function init() {
         }
     });
     
-    canvas.on('mouse:up', (e) => {
+    canvas.on('mouse:up', () => {
         try {
             clearGuides();
-            if (e.target && e.target.dataTag) {
-                setTimeout(() => {
-                    updateVerticalLayout();
-                    saveToLocalStorage();
-                }, 0);
-            }
         } catch (err) { console.error("Error in mouse:up", err); }
     });
 
@@ -1561,18 +1635,55 @@ function init() {
     canvas.on('selection:updated', updateSelectionUI);
     canvas.on('selection:cleared', updateSelectionUI);
     
-    canvas.on('object:modified', saveToLocalStorage);
+    canvas.on('object:modified', () => {
+        updateVerticalLayout();
+        saveToLocalStorage();
+    });
     canvas.on('object:added', saveToLocalStorage);
     canvas.on('object:removed', saveToLocalStorage);
     canvas.on('text:changed', saveToLocalStorage);
     
     window.addEventListener('keydown', (e) => {
+        // CRITICAL FIX: Ignore nudging if user is typing in an input
+        const tag = document.activeElement.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+        // Undo / Redo Shortcuts
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            if (e.shiftKey) redo();
+            else undo();
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            redo();
+            return;
+        }
+
         const active = canvas.getActiveObject();
-        if (active && (active.type === 'i-text' || active.type === 'textbox') && active.isEditing) return;
+        if (!active || (active.isEditing)) return;
 
         if (e.key === "Delete" || e.key === "Backspace") {
             canvas.getActiveObjects().forEach(obj => { if (obj === mainBg) mainBg = null; canvas.remove(obj); });
             canvas.discardActiveObject().requestRenderAll();
+            return;
+        }
+
+        // Smart Nudging
+        const step = e.shiftKey ? 10 : 1;
+        let moved = false;
+        if (e.key === 'ArrowLeft') { active.left -= step; moved = true; }
+        else if (e.key === 'ArrowRight') { active.left += step; moved = true; }
+        else if (e.key === 'ArrowUp') { active.top -= step; moved = true; }
+        else if (e.key === 'ArrowDown') { active.top += step; moved = true; }
+
+        if (moved) {
+            e.preventDefault();
+            active.setCoords();
+            updateVerticalLayout();
+            canvas.requestRenderAll();
+            saveToLocalStorage();
         }
     });
 
@@ -1596,6 +1707,179 @@ function init() {
     loadFonts();
     loadCustomIcons();
     updateFadeControls();
+    
+    // Initial History Save
+    saveHistory();
+}
+
+function jumpToHistory(index) {
+    index = parseInt(index);
+    if (isNaN(index) || index < 0 || index >= undoStack.length - 1) return;
+    
+    isUndoRedoProcessing = true;
+    
+    // Move states from undoStack to redoStack until we reach the target index
+    while (undoStack.length - 1 > index) {
+        const current = undoStack.pop();
+        redoStack.push(current);
+    }
+    
+    const target = undoStack[undoStack.length - 1];
+    restoreState(JSON.parse(target.data));
+    
+    const sel = document.getElementById('historySelect');
+    if(sel) sel.value = "";
+}
+
+function saveHistory(force = false) {
+    if (isUndoRedoProcessing || !canvas) return;
+    
+    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects']);
+    
+    // Filter out fade effects and grid lines (same as saveToLocalStorage)
+    json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay' && o.dataTag !== 'guide');
+    
+    json.custom_effects = {
+        bgColor: document.getElementById('bgColor').value,
+        bgBrightness: document.getElementById('bgBrightness').value,
+        fadeEffect: document.getElementById('fadeEffect').value,
+        fadeRadius: document.getElementById('fadeRadius').value,
+        fadeLeft: document.getElementById('fadeLeft').value,
+        fadeRight: document.getElementById('fadeRight').value,
+        fadeTop: document.getElementById('fadeTop').value,
+        fadeBottom: document.getElementById('fadeBottom').value,
+        tagAlignment: document.getElementById('tagAlignSelect').value,
+        textContentAlignment: document.getElementById('textContentAlignSelect').value,
+        genreLimit: document.getElementById('genreLimitSlider').value,
+        overlayId: document.getElementById('overlaySelect').value
+    };
+    json.lastFetchedData = lastFetchedData;
+
+    const stateStr = JSON.stringify(json);
+    if (!force && undoStack.length > 0 && undoStack[undoStack.length - 1].data === stateStr) return;
+
+    undoStack.push({
+        data: stateStr,
+        time: new Date().toLocaleTimeString()
+    });
+
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = [];
+    
+    updateUndoRedoUI();
+}
+
+function undo() {
+    if (undoStack.length <= 1) return;
+    
+    isUndoRedoProcessing = true;
+    
+    const current = undoStack.pop();
+    redoStack.push(current);
+    
+    const previous = undoStack[undoStack.length - 1];
+    restoreState(JSON.parse(previous.data));
+}
+
+function redo() {
+    if (redoStack.length === 0) return;
+    
+    isUndoRedoProcessing = true;
+    
+    const next = redoStack.pop();
+    undoStack.push(next);
+    
+    restoreState(JSON.parse(next.data));
+}
+
+function restoreState(data) {
+    canvas.loadFromJSON(data, () => {
+        lastFetchedData = data.lastFetchedData || null;
+        mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
+        
+        // Fallback if not tagged
+        if (!mainBg && canvas.getObjects().length > 0) {
+            const firstObj = canvas.item(0);
+            if (firstObj && firstObj.type === 'image' && firstObj.width > 500) {
+                mainBg = firstObj;
+                mainBg.set('dataTag', 'background');
+            }
+        }
+
+        if (data.custom_effects) applyCustomEffects(data.custom_effects);
+        else updateFades();
+
+        canvas.renderAll();
+        updateVerticalLayout();
+        saveToLocalStorage(); // This triggers saveHistory, but isUndoRedoProcessing blocks it
+        
+        isUndoRedoProcessing = false;
+        updateUndoRedoUI();
+    });
+}
+
+function updateUndoRedoUI() {
+    const btnUndo = document.getElementById('btn-undo');
+    const btnRedo = document.getElementById('btn-redo');
+    const historySelect = document.getElementById('historySelect');
+    
+    if (btnUndo) {
+        btnUndo.disabled = undoStack.length <= 1;
+        btnUndo.style.opacity = undoStack.length <= 1 ? '0.5' : '1';
+        btnUndo.style.cursor = undoStack.length <= 1 ? 'default' : 'pointer';
+    }
+    if (btnRedo) {
+        btnRedo.disabled = redoStack.length === 0;
+        btnRedo.style.opacity = redoStack.length === 0 ? '0.5' : '1';
+        btnRedo.style.cursor = redoStack.length === 0 ? 'default' : 'pointer';
+    }
+    
+    if (historySelect) {
+        historySelect.innerHTML = '<option value="" disabled selected>🕒</option>';
+        // Populate history (reverse order, excluding current tip)
+        for (let i = undoStack.length - 2; i >= 0; i--) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            const steps = undoStack.length - 1 - i;
+            opt.innerText = `↩ ${steps} (${undoStack[i].time})`;
+            historySelect.appendChild(opt);
+        }
+        historySelect.disabled = undoStack.length <= 1;
+    }
+}
+
+function applyCustomEffects(eff) {
+    if(eff.bgColor) { document.getElementById('bgColor').value = eff.bgColor; canvas.setBackgroundColor(eff.bgColor, () => {}); }
+    if(eff.bgBrightness) document.getElementById('bgBrightness').value = eff.bgBrightness;
+    if(eff.fadeEffect) document.getElementById('fadeEffect').value = eff.fadeEffect;
+    if(eff.fadeRadius) document.getElementById('fadeRadius').value = eff.fadeRadius;
+    if(eff.fadeLeft) document.getElementById('fadeLeft').value = eff.fadeLeft;
+    if(eff.fadeRight) document.getElementById('fadeRight').value = eff.fadeRight;
+    if(eff.fadeTop) document.getElementById('fadeTop').value = eff.fadeTop;
+    if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
+    if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
+    else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
+    if(eff.textContentAlignment) document.getElementById('textContentAlignSelect').value = eff.textContentAlignment;
+    if(eff.limitGenres !== undefined) {
+        const val = eff.limitGenres ? 2 : 6;
+        document.getElementById('genreLimitSlider').value = val;
+        document.getElementById('genreLimitVal').innerText = (val == 6) ? "Max" : val;
+    }
+    if(eff.genreLimit !== undefined) {
+        document.getElementById('genreLimitSlider').value = eff.genreLimit;
+        document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
+    }
+    if (eff.overlayId) {
+        const sel = document.getElementById('overlaySelect');
+        if (sel && sel.options.length > 1) {
+            sel.value = eff.overlayId;
+            updateOverlay();
+        } else {
+            window.restoredOverlayId = eff.overlayId;
+        }
+    }
+    updateFadeControls();
+    updateBgColor();
 }
 
 function loadBackground(url, skipRender = false) {
@@ -2546,6 +2830,10 @@ function resetLayout() {
     if (document.getElementById('overlaySelect')) document.getElementById('overlaySelect').value = '';
 
     // 4. Reset Canvas (Default 1080p)
+    undoStack = [];
+    redoStack = [];
+    updateUndoRedoUI();
+    
     canvas.clear();
     canvas.setDimensions({ width: 1920, height: 1080 });
     canvas.setBackgroundColor('#000000', canvas.renderAll.bind(canvas));
@@ -2597,6 +2885,7 @@ function saveToLocalStorage() {
     };
     json.lastFetchedData = lastFetchedData;
     localStorage.setItem('autosave_layout', JSON.stringify(json));
+    saveHistory();
 }
 
 function loadFromLocalStorage() {
@@ -2649,38 +2938,7 @@ function loadFromLocalStorage() {
                 }
                 
                 if (data.custom_effects) {
-                    const eff = data.custom_effects;
-                    if(eff.bgColor) { document.getElementById('bgColor').value = eff.bgColor; canvas.setBackgroundColor(eff.bgColor, () => {}); }
-                    if(eff.bgBrightness) document.getElementById('bgBrightness').value = eff.bgBrightness;
-                    if(eff.fadeEffect) document.getElementById('fadeEffect').value = eff.fadeEffect;
-                    if(eff.fadeRadius) document.getElementById('fadeRadius').value = eff.fadeRadius;
-                    if(eff.fadeLeft) document.getElementById('fadeLeft').value = eff.fadeLeft;
-                    if(eff.fadeRight) document.getElementById('fadeRight').value = eff.fadeRight;
-                    if(eff.fadeTop) document.getElementById('fadeTop').value = eff.fadeTop;
-                    if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
-                    if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
-                    else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
-                    if(eff.textContentAlignment) document.getElementById('textContentAlignSelect').value = eff.textContentAlignment;
-                    if(eff.limitGenres !== undefined) {
-                        const val = eff.limitGenres ? 2 : 6;
-                        document.getElementById('genreLimitSlider').value = val;
-                        document.getElementById('genreLimitVal').innerText = (val == 6) ? "Max" : val;
-                    }
-                    if(eff.genreLimit !== undefined) {
-                        document.getElementById('genreLimitSlider').value = eff.genreLimit;
-                        document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
-                    }
-                    if (eff.overlayId) {
-                        const sel = document.getElementById('overlaySelect');
-                        // If profiles are already loaded, set immediately. Otherwise store for later.
-                        if (sel && sel.options.length > 1) {
-                            sel.value = eff.overlayId;
-                            updateOverlay();
-                        } else {
-                            window.restoredOverlayId = eff.overlayId;
-                        }
-                    }
-                    updateFadeControls();
+                    applyCustomEffects(data.custom_effects);
                 }
                 updateFades();
 
