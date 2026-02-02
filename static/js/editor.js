@@ -49,6 +49,8 @@ let textureProfiles = [];
 let gridEnabled = false, movingObjects = [], snapLines = { v: [], h: [] }, guideLines = [], isBatchRunning = false;
 const gridSize = 50;
 const screenMargin = 50;
+const BASE_WIDTH = 1920;
+const BASE_HEIGHT = 1080;
 
 function updateSelectionUI(e) {
     const activeObj = canvas.getActiveObject();
@@ -1190,7 +1192,17 @@ function removeGrid() {
 }
 
 function init() {
-    canvas = new fabric.Canvas('mainCanvas', { width: 1920, height: 1080, backgroundColor: '#000000', preserveObjectStacking: true });
+    // Load saved resolution preference
+    const savedRes = localStorage.getItem('editor_resolution');
+    if (savedRes) {
+        const resSelect = document.getElementById('resSelect');
+        if (resSelect) resSelect.value = savedRes;
+    }
+    const currentRes = document.getElementById('resSelect') ? document.getElementById('resSelect').value : '1080';
+    const initW = (currentRes === '2160') ? 3840 : 1920;
+    const initH = (currentRes === '2160') ? 2160 : 1080;
+
+    canvas = new fabric.Canvas('mainCanvas', { width: initW, height: initH, backgroundColor: '#000000', preserveObjectStacking: true });
     canvas.renderOnAddRemove = false;
     fabric.Object.prototype.objectCaching = true;
 
@@ -1965,6 +1977,7 @@ async function saveSettings() {
 function changeResolution() {
     if (gridEnabled) removeGrid();
     const res = document.getElementById('resSelect').value;
+    localStorage.setItem('editor_resolution', res);
     const targetW = (res === '2160') ? 3840 : 1920;
     const scale = targetW / canvas.width;
     canvas.setDimensions({ width: targetW, height: (res === '2160' ? 2160 : 1080) });
@@ -1988,6 +2001,17 @@ async function saveLayout() {
     
     // Filter out fade effects and grid lines BEFORE saving
     layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
+
+    // Normalize to 1080p base resolution
+    const currentScale = canvas.width / BASE_WIDTH;
+    if (currentScale !== 1) {
+        layout.objects.forEach(obj => {
+            obj.left /= currentScale;
+            obj.top /= currentScale;
+            obj.scaleX /= currentScale;
+            obj.scaleY /= currentScale;
+        });
+    }
 
     layout.custom_effects = {
         bgColor: document.getElementById('bgColor').value,
@@ -2067,6 +2091,20 @@ async function loadLayout(name, silent = false) {
         return;
     }
     const data = await resp.json();
+
+    // Scale up to current resolution
+    const currentRes = document.getElementById('resSelect').value;
+    const targetW = (currentRes === '2160') ? 3840 : 1920;
+    const scaleFactor = targetW / BASE_WIDTH;
+    
+    if (scaleFactor !== 1) {
+        data.objects.forEach(obj => {
+            obj.left *= scaleFactor;
+            obj.top *= scaleFactor;
+            obj.scaleX *= scaleFactor;
+            obj.scaleY *= scaleFactor;
+        });
+    }
     
     return new Promise((resolve) => {
     canvas.loadFromJSON(data, () => {
@@ -2152,6 +2190,17 @@ function saveToLocalStorage() {
     // Filter out fade effects so they aren't saved as static objects
     json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
     
+    // Normalize to 1080p base resolution
+    const currentScale = canvas.width / BASE_WIDTH;
+    if (currentScale !== 1) {
+        json.objects.forEach(obj => {
+            obj.left /= currentScale;
+            obj.top /= currentScale;
+            obj.scaleX /= currentScale;
+            obj.scaleY /= currentScale;
+        });
+    }
+    
     json.custom_effects = {
         bgColor: document.getElementById('bgColor').value,
         bgBrightness: document.getElementById('bgBrightness').value,
@@ -2175,6 +2224,21 @@ function loadFromLocalStorage() {
     if (saved) {
         try {
             const data = JSON.parse(saved);
+
+            // Scale up to current resolution
+            const currentRes = document.getElementById('resSelect').value;
+            const targetW = (currentRes === '2160') ? 3840 : 1920;
+            const scaleFactor = targetW / BASE_WIDTH;
+            
+            if (scaleFactor !== 1) {
+                data.objects.forEach(obj => {
+                    obj.left *= scaleFactor;
+                    obj.top *= scaleFactor;
+                    obj.scaleX *= scaleFactor;
+                    obj.scaleY *= scaleFactor;
+                });
+            }
+
             lastFetchedData = data.lastFetchedData || null;
             canvas.loadFromJSON(data, () => {
                 canvas.renderAll();
