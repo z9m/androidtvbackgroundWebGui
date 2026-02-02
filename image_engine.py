@@ -88,34 +88,41 @@ class ImageGenerator:
         self.canvas.paste(img_resized, (3840 - img_resized.width, 0), img_resized)
         self.draw = ImageDraw.Draw(self.canvas)
 
-    def _adjust_logo_color(self, logo_image):
+    def ensure_high_contrast(self, image, threshold=100):
         """
-        Analyzes the logo's brightness. If it's too dark or black, brightens or makes it white.
+        Analyzes the brightness of non-transparent pixels.
+        If the average brightness is below the threshold, recolors the image to white
+        while preserving the alpha channel.
         """
-        if not logo_image:
+        if not image:
             return None
             
-        img = logo_image.convert("RGBA")
+        img = image.convert("RGBA")
         data = np.array(img)
         
-        if data.size == 0: return logo_image
+        if data.size == 0: return img
             
         r, g, b, a = data[:,:,0], data[:,:,1], data[:,:,2], data[:,:,3]
-        mask = a > 20 # Ignore transparent pixels
+        mask = a > 0 # Requirement 2: ONLY for pixels that are not transparent (Alpha > 0)
         
-        if not np.any(mask): return logo_image 
+        if not np.any(mask): return img
             
         # Calculate luminance: 0.299*R + 0.587*G + 0.114*B
         luminance = 0.299 * r[mask] + 0.587 * g[mask] + 0.114 * b[mask]
         avg_lum = np.mean(luminance)
         
-        # If the logo is too dark (average luminance < 100), make it white
-        if avg_lum < 100:
+        print(f"[DEBUG] Logo Luminance: {avg_lum:.2f} (Threshold: {threshold})")
+
+        # Requirement 3: If below threshold, recolor to pure White (255, 255, 255)
+        if avg_lum < threshold:
+            print("[DEBUG] -> Recoloring logo to WHITE")
             white_img = Image.new("RGBA", img.size, (255, 255, 255, 0))
-            white_img.paste((255, 255, 255, 255), (0, 0), mask=img.split()[3])
+            white_img.paste((255, 255, 255, 255), (0, 0), mask=img)
             return white_img
             
-        return logo_image
+        print("[DEBUG] -> Keeping original logo color")
+        # Requirement 4: Return original if bright enough
+        return img
 
     def _smart_resize_logo(self, logo_image, max_w=1200, max_h=450):
         """
@@ -152,7 +159,7 @@ class ImageGenerator:
     def draw_logo_or_title(self, logo_image=None, title_text=None):
         """Draws the logo if available, otherwise draws the title text."""
         if logo_image:
-            logo_image = self._adjust_logo_color(logo_image)
+            logo_image = self.ensure_high_contrast(logo_image)
             
             # Use Smart Resize
             logo_resized = self._smart_resize_logo(logo_image, max_w=1200, max_h=450)
@@ -289,7 +296,7 @@ class ImageGenerator:
         
         if logo_image:
             # Use Smart Resize logic for measurement
-            logo_image = self._adjust_logo_color(logo_image)
+            logo_image = self.ensure_high_contrast(logo_image)
             logo_image = self._smart_resize_logo(logo_image, max_w=1200, max_h=450)
             w_logo = logo_image.width
         elif title_text:
@@ -343,7 +350,7 @@ class ImageGenerator:
         full_logo_path = os.path.join(self.base_path, provider_logo_path)
         if os.path.exists(full_logo_path):
             p_logo = Image.open(full_logo_path).convert('RGBA')
-            p_logo = self._adjust_logo_color(p_logo)
+            p_logo = self.ensure_high_contrast(p_logo)
             # Center vertically relative to text
             metrics = self.fonts['custom'].getmetrics()
             text_height = metrics[0] + metrics[1]

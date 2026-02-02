@@ -11,6 +11,7 @@ import shutil
 import re
 import uuid
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
+from PIL import Image
 
 # Prevent Python from generating .pyc files and __pycache__ folders
 sys.dont_write_bytecode = True
@@ -21,6 +22,9 @@ from image_engine import ImageGenerator
 # Blueprint Setup
 gui_editor_bp = Blueprint('gui_editor', __name__)
 CONFIG_FILE = 'config.json'
+
+# Initialize Image Generator for Proxy Processing
+image_gen = ImageGenerator()
 
 KNOWN_DIRS = [
     "layouts",
@@ -105,6 +109,22 @@ def proxy_image():
         if resp.status_code != 200:
             return f"Upstream Error: {resp.status_code}", resp.status_code
             
+        # Check if this is likely a logo (PNG or contains 'logo' in path)
+        # This prevents processing backdrops (JPGs) which would turn white if dark.
+        is_likely_logo = 'logo' in url.lower() or url.lower().endswith('.png')
+        
+        if is_likely_logo:
+            try:
+                img = Image.open(io.BytesIO(resp.content))
+                # Apply the contrast logic from image_engine.py
+                img = image_gen.ensure_high_contrast(img)
+                output = io.BytesIO()
+                img.save(output, format='PNG')
+                output.seek(0)
+                return send_file(output, mimetype='image/png')
+            except Exception as e:
+                print(f"Error processing proxy image: {e}")
+
         return send_file(
             io.BytesIO(resp.content),
             mimetype=resp.headers.get('Content-Type') or 'image/jpeg'
