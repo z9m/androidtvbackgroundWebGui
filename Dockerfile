@@ -14,9 +14,9 @@ COPY . .
 
 # Create defaults directory and backup assets for volume initialization
 RUN mkdir -p /defaults && \
-    cp -r overlays /defaults/ && \
-    cp -r textures /defaults/ && \
-    cp -r fonts /defaults/
+    if [ -d "overlays" ]; then cp -r overlays /defaults/; fi && \
+    if [ -d "textures" ]; then cp -r textures /defaults/; fi && \
+    if [ -d "fonts" ]; then cp -r fonts /defaults/; fi
 
 # Setup entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
