@@ -201,6 +201,7 @@ async function editGalleryImage(folder, filename) {
     }
     
     canvas.loadFromJSON(data, () => {
+        canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
         canvas.requestRenderAll();
         
         // Restore mainBg reference

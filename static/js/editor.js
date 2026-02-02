@@ -65,6 +65,21 @@ function updateSelectionUI(e) {
 
     if (!activeObj) return;
 
+    // Enforce Aspect Ratio & Resize Handles
+    if (activeObj.dataTag === 'overview') {
+        // Overview: Allow free resizing (side handles enabled)
+        activeObj.setControlsVisibility({ mt: true, mb: true, ml: true, mr: true, bl: true, br: true, tl: true, tr: true, mtr: true });
+        activeObj.lockUniScaling = false;
+        activeObj.borderColor = 'rgba(102, 153, 255, 0.75)'; // Standard Blue
+        activeObj.cornerColor = 'rgba(102, 153, 255, 0.5)';
+    } else {
+        // Others: Lock aspect ratio (hide side handles)
+        activeObj.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false, bl: true, br: true, tl: true, tr: true, mtr: true });
+        activeObj.lockUniScaling = true;
+        activeObj.borderColor = 'rgba(255, 165, 0, 0.75)'; // Orange to indicate locked aspect
+        activeObj.cornerColor = 'rgba(255, 165, 0, 0.5)';
+    }
+
     if (activeObj.type === 'image' && (activeObj.dataTag === 'icon' || activeObj.dataTag === 'certification')) {
         if (iconPanel) {
             iconPanel.style.display = 'block';
@@ -851,7 +866,7 @@ function addMetadataTag(type, placeholder) {
     }
 
     if (type === 'overview') {
-        textObj = new fabric.Textbox(placeholder, { ...props, width: 600, height: 300, fixedHeight: 300, splitByGrapheme: false, lockScalingY: false, fullMediaText: placeholder, editable: false });
+        textObj = new fabric.Textbox(placeholder, { ...props, width: 600, height: 300, fixedHeight: 300, splitByGrapheme: false, lockScalingY: false, fullMediaText: placeholder, editable: false, objectCaching: false });
     } else {
         textObj = new fabric.IText(placeholder, { ...props, editable: false });
     }
@@ -1209,7 +1224,10 @@ function init() {
     canvas.on('object:scaling', (e) => {
         const t = e.target;
         if (t instanceof fabric.Textbox) {
-            t.set({ width: t.width * t.scaleX, fixedHeight: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
+            const res = document.getElementById('resSelect') ? document.getElementById('resSelect').value : '1080';
+            const resScale = (res === '2160') ? 2 : 1;
+            
+            t.set({ width: (t.width * t.scaleX) / resScale, fixedHeight: (t.height * t.scaleY) / resScale, scaleX: resScale, scaleY: resScale });
             if (t.dataTag === 'overview') { clearTimeout(scalingTimeout); scalingTimeout = setTimeout(() => applyTruncation(t, t.fullMediaText), 50); }
         }
         if (t.dataTag === 'title' && t.type === 'image') {
@@ -2108,6 +2126,7 @@ async function loadLayout(name, silent = false) {
     
     return new Promise((resolve) => {
     canvas.loadFromJSON(data, () => {
+        canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
         canvas.renderAll();
         
         // Restore mainBg reference
@@ -2178,6 +2197,45 @@ async function loadLayout(name, silent = false) {
     });
 }
 
+function resetLayout() {
+    if (!confirm("Are you sure you want to reset the layout? All unsaved changes will be lost.")) return;
+
+    // 1. Clear Storage
+    localStorage.removeItem('autosave_layout');
+    localStorage.removeItem('editor_resolution');
+
+    // 2. Reset Globals
+    mainBg = null;
+    fades = {};
+    preferredLogoWidth = null;
+    lastFetchedData = null;
+
+    // 3. Reset UI Controls
+    const resSelect = document.getElementById('resSelect');
+    if (resSelect) resSelect.value = '1080';
+    
+    if (document.getElementById('bgColor')) document.getElementById('bgColor').value = '#000000';
+    if (document.getElementById('bgBrightness')) {
+        document.getElementById('bgBrightness').value = 20;
+        document.getElementById('brightVal').innerText = '20%';
+    }
+    if (document.getElementById('fadeEffect')) document.getElementById('fadeEffect').value = 'none';
+    if (document.getElementById('layoutName')) document.getElementById('layoutName').value = 'Default';
+    if (document.getElementById('overlaySelect')) document.getElementById('overlaySelect').value = '';
+
+    // 4. Reset Canvas (Default 1080p)
+    canvas.clear();
+    canvas.setDimensions({ width: 1920, height: 1080 });
+    canvas.setBackgroundColor('#000000', canvas.renderAll.bind(canvas));
+
+    // 5. Force UI Updates
+    updateFadeControls();
+    updateOverlay();
+
+    // 6. Load default background
+    if (window.initialBackdropUrl) loadBackground(window.initialBackdropUrl);
+}
+
 function mirrorBackground() {
     if (!mainBg) return;
     mainBg.set('flipX', !mainBg.flipX);
@@ -2241,6 +2299,7 @@ function loadFromLocalStorage() {
 
             lastFetchedData = data.lastFetchedData || null;
             canvas.loadFromJSON(data, () => {
+                canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
                 canvas.renderAll();
                 mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
                 
