@@ -1710,6 +1710,32 @@ function init() {
     
     // Initial History Save
     saveHistory();
+    checkUpdate();
+}
+
+function checkUpdate() {
+    const versionEl = document.getElementById('versionDisplay');
+    if (!versionEl) return;
+
+    const installedVer = versionEl.getAttribute('data-installed') || "1.0.0";
+    
+    fetch('https://api.github.com/repos/z9m/androidtvbackgroundWebGui/tags')
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                const latestTag = data[0].name.replace('v', '');
+                const currentTag = installedVer.replace('v', '');
+                if (latestTag !== currentTag) {
+                    versionEl.innerHTML = `v${installedVer} <span style="margin-left:5px;">⚠️ Update: v${latestTag}</span>`;
+                    versionEl.classList.add('update-available');
+                    versionEl.title = "Click to download new version";
+                    versionEl.href = "https://hub.docker.com/repository/docker/butch708/tv-background-suite/tags";
+                } else {
+                    versionEl.innerText = `v${installedVer} (Latest)`;
+                    versionEl.style.color = "#4caf50";
+                }
+            }
+        }).catch(err => console.log('Update check failed', err));
 }
 
 function jumpToHistory(index) {

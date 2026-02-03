@@ -1,3 +1,4 @@
+CURRENT_VERSION = "1.0.7"
 import os
 import sys
 import json
@@ -959,7 +960,7 @@ def get_local_background():
 @gui_editor_bp.route('/editor')
 def editor_index():
     config = load_config()
-    data = {"title": "TV Background", "backdrop_url": url_for('gui_editor.get_local_background')}
+    data = {"title": "TV Background", "backdrop_url": url_for('gui_editor.get_local_background'), "version": CURRENT_VERSION}
     return render_template('editor.html', data=data, config=config)
 
 @gui_editor_bp.route('/api/gallery/list')

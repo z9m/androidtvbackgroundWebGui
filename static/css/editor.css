@@ -53,3 +53,38 @@ canvas { width: 100% !important; height: 100% !important; }
         padding: 10px 0;
     }
 }
+
+/* Status Bar Footer */
+.status-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 28px;
+    background-color: #1a1a1a;
+    border-top: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 15px;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #888;
+    z-index: 9999;
+    box-sizing: border-box;
+}
+.status-bar a { color: #999; text-decoration: none; margin-left: 15px; transition: color 0.2s; display: flex; align-items: center; gap: 5px; }
+.status-bar a:hover { color: #fff; }
+.update-available { color: #ff9800 !important; font-weight: bold; animation: pulse 2s infinite; }
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* Ensure content isn't hidden behind footer */
+.sidebar, .main-view {
+    /* 50px header + 30px footer space = 80px offset */
+    height: calc(100vh - 80px) !important;
+    padding-bottom: 0 !important;
+}
