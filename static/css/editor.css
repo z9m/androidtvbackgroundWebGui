@@ -42,6 +42,34 @@ canvas { width: 100% !important; height: 100% !important; }
 #preview-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:20px; width:100%; height:100%; overflow-y:auto; padding-right:10px; }
 #preview-grid .gallery-item { height:auto; aspect-ratio:16/9; }
 
+#menuToggle { display: none; background: #333; border: 1px solid #555; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+#mobileOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; }
+#closeSidebarBtn { display: none; }
+
+#pullRefreshIndicator {
+    display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px;
+    z-index: 3000; font-weight: bold; font-size: 14px; pointer-events: none;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5); align-items: center; justify-content: center;
+    transition: background 0.2s, opacity 0.2s;
+    animation: bounceIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes bounceIn {
+    0% { transform: translateX(-50%) scale(0.5); }
+    60% { transform: translateX(-50%) scale(1.1); }
+    100% { transform: translateX(-50%) scale(1); }
+}
+
+.pulse-green {
+    animation: pulseGreen 1s infinite !important;
+}
+@keyframes pulseGreen {
+    0% { transform: translateX(-50%) scale(1); box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.7); }
+    70% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 0 10px rgba(46, 125, 50, 0); }
+    100% { transform: translateX(-50%) scale(1); box-shadow: 0 0 0 0 rgba(46, 125, 50, 0); }
+}
+
 @media (max-width: 768px) {
     .nav-tabs { padding: 5px 10px; }
     .tab-link { padding: 10px 15px; font-size: 13px; flex-grow: 1; text-align: center; }
@@ -51,6 +79,53 @@ canvas { width: 100% !important; height: 100% !important; }
         width: 100%;
         justify-content: center;
         padding: 10px 0;
+    }
+}
+
+@media (max-width: 1100px) {
+    /* A. Sidebar & Navigation */
+    .sidebar {
+        position: fixed; left: 0; top: 0; z-index: 2005; height: 100%; width: 300px; background: #111;
+        transform: translateX(-100%); transition: transform 0.3s ease; box-shadow: 5px 0 15px rgba(0,0,0,0.5); padding-top: 50px !important;
+    }
+    .nav-tabs { display: none; } /* Hide tabs by default or move into sidebar if preferred */
+    
+    .main-view { width: 100%; padding: 10px !important; }
+    
+    /* Show Menu when active */
+    body.mobile-menu-open .sidebar { transform: translateX(0); }
+    body.mobile-menu-open #mobileOverlay { display: block; }
+    body.mobile-menu-open .nav-tabs { display: flex; position: fixed; top: 0; left: 0; width: 100%; z-index: 2001; flex-direction: column; height: auto; padding-bottom: 10px; padding-left: 310px; }
+    
+    /* B. Toolbar Optimization */
+    #menuToggle { display: block; padding: 8px 6px !important; width: 34px; text-align: center; }
+    
+    /* Hide text labels in toolbar buttons */
+    .canvas-header button span, 
+    .main-view > div:last-child button span { display: none; }
+    
+    /* Compact Buttons */
+    .canvas-header button, 
+    .main-view > div:last-child button { padding: 8px 10px !important; }
+    
+    /* Search Bar */
+    #mediaSearchInput { width: 120px !important; transition: width 0.2s; }
+    #mediaSearchInput:focus { width: 200px !important; }
+    
+    /* Adjust Header Layout */
+    .canvas-header { padding: 5px 10px !important; gap: 5px !important; }
+    .canvas-header > div { gap: 5px !important; }
+    
+    /* Source Indicator */
+    #source-indicator { display: none; } /* Hide to save space */
+    
+    /* Ensure Undo/Redo bar fits */
+    .main-view > div:last-child { padding: 5px !important; }
+
+    /* Close Button */
+    #closeSidebarBtn {
+        display: block; position: absolute; top: 5px; right: 10px;
+        background: transparent; border: none; font-size: 24px; color: #fff; cursor: pointer; z-index: 2010;
     }
 }
 
@@ -87,4 +162,28 @@ canvas { width: 100% !important; height: 100% !important; }
     /* 50px header + 30px footer space = 80px offset */
     height: calc(100vh - 80px) !important;
     padding-bottom: 0 !important;
+}
+
+/* Fullscreen Canvas Mode */
+#canvas-wrapper:fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    aspect-ratio: unset !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background-color: #000 !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+#canvas-wrapper:fullscreen .canvas-container {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: calc(100vh * 1.7778) !important;
+    max-height: calc(100vw * 0.5625) !important;
+    margin: auto !important;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
 }

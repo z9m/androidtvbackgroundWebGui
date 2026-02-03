@@ -57,6 +57,10 @@ let redoStack = [];
 let isUndoRedoProcessing = false;
 const MAX_HISTORY = 10;
 
+function toggleMobileMenu() {
+    document.body.classList.toggle('mobile-menu-open');
+}
+
 function toggleGroup(id) {
     const group = document.getElementById(id);
     if (!group) return;
@@ -1490,6 +1494,15 @@ function updateVerticalLayout(skipRender = false) {
     });
 }
 
+function toggleFullscreen() {
+    const wrapper = document.getElementById('canvas-wrapper');
+    if (!document.fullscreenElement) {
+        wrapper.requestFullscreen().catch(err => console.log(err));
+    } else {
+        document.exitFullscreen();
+    }
+}
+
 function toggleGrid() {
     gridEnabled = !gridEnabled;
     if (gridEnabled) drawGrid();
@@ -1686,6 +1699,68 @@ function init() {
             saveToLocalStorage();
         }
     });
+
+    // Touch Gestures (Pull-to-Refresh)
+    let touchStartY = 0;
+    let touchStartX = 0;
+    const refreshIndicator = document.createElement('div');
+    refreshIndicator.id = 'pullRefreshIndicator';
+    refreshIndicator.innerText = '⬇️ Pull to Refresh';
+    document.body.appendChild(refreshIndicator);
+
+    window.addEventListener('touchstart', e => {
+        if (e.target.closest('#canvas-wrapper')) {
+            touchStartY = -1; // Disable gesture tracking on canvas
+            return;
+        }
+        touchStartY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+
+    window.addEventListener('touchmove', e => {
+        if (touchStartY < 0) return; // Gesture tracking disabled
+
+        if (!document.fullscreenElement && window.scrollY === 0) {
+            const touchY = e.touches[0].clientY;
+            const diffY = touchY - touchStartY;
+            const threshold = window.innerHeight / 2;
+
+            if (diffY > 50) {
+                refreshIndicator.style.display = 'flex';
+                refreshIndicator.style.opacity = Math.min(diffY / threshold, 1);
+                
+                if (diffY > threshold) {
+                    refreshIndicator.innerText = '🔄 Release to Refresh';
+                    refreshIndicator.style.background = 'rgba(46, 125, 50, 0.9)'; // Green
+                    refreshIndicator.classList.add('pulse-green');
+                } else {
+                    refreshIndicator.innerText = '⬇️ Pull further...';
+                    refreshIndicator.style.background = 'rgba(0, 0, 0, 0.8)';
+                    refreshIndicator.classList.remove('pulse-green');
+                }
+            }
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchend', e => {
+        if (touchStartY < 0) return; // Gesture tracking disabled
+
+        const touchEndY = e.changedTouches[0].clientY;
+        const touchEndX = e.changedTouches[0].clientX;
+        const diffY = touchEndY - touchStartY;
+        const diffX = touchEndX - touchStartX;
+        const threshold = window.innerHeight / 2;
+        
+        refreshIndicator.style.display = 'none';
+
+        // Check conditions:
+        // 1. Not in fullscreen
+        // 2. Scrolled to top
+        // 3. Swipe down > 50% of screen height
+        if (!document.fullscreenElement && window.scrollY === 0 && diffY > threshold) {
+            location.reload();
+        }
+    }, { passive: true });
 
     if (!loadFromLocalStorage()) {
         if (window.initialBackdropUrl) loadBackground(window.initialBackdropUrl);

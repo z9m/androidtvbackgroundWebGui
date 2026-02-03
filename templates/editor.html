@@ -57,8 +57,11 @@
         </div>
     </div>
 
+    <div id="mobileOverlay" onclick="toggleMobileMenu()"></div>
+
     <div id="editor-tab" class="tab-content active">
         <div class="sidebar">
+            <button id="closeSidebarBtn" onclick="toggleMobileMenu()">×</button>
             <div class="control-group" id="group-layout">
                 <h3 onclick="toggleGroup('group-layout')"><span class="group-arrow collapsed">▼</span> <span data-i18n="layout_mgmt">Layout Management</span></h3>
                 <div class="group-content collapsed">
@@ -329,23 +332,29 @@
             <div style="flex: 1; overflow-y: auto; width: 100%; display: flex; flex-direction: column; align-items: center;">
                 <div class="canvas-header" style="display:flex; justify-content:space-between; width:100%; max-width: 100%; padding: 10px 20px; box-sizing: border-box; align-items:center; flex-wrap: wrap; gap: 10px;">
                     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                        <div style="display:flex; gap:5px;">
-                            <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
-                            <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <button id="menuToggle" onclick="toggleMobileMenu()">☰</button>
+                            <div style="display:flex; gap:5px;">
+                                <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
+                                <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
+                            </div>
                         </div>
                         <div style="display:flex; align-items:center; gap:10px;">
-                            <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0; padding: 8px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);" data-i18n="shuffle_preview">🎲 Shuffle Preview</button>
+                            <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0; padding: 8px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);" data-i18n="shuffle_preview">🎲 <span>Shuffle Preview</span></button>
                             <span id="source-indicator" style="font-size: 11px; color: #aaa; text-shadow: 1px 1px 2px black;">Source: None</span>
                         </div>
-                    <div style="display: flex; gap: 5px;">
-                        <button id="btn-undo" onclick="undo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="undo">↩ Undo</button>
-                        <select id="historySelect" onchange="jumpToHistory(this.value)" style="padding: 0 10px; text-align: center; background: #444; color: white; border: 1px solid #555; cursor: pointer; border-radius: 4px;">
-                            <option value="" disabled selected>🕒</option>
-                        </select>
-                        <button id="btn-redo" onclick="redo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="redo">↪ Redo</button>
+                        <div style="display: flex; gap: 5px;">
+                            <button id="btn-undo" onclick="undo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="undo">↩ <span>Undo</span></button>
+                            <select id="historySelect" onchange="jumpToHistory(this.value)" style="padding: 0 10px; text-align: center; background: #444; color: white; border: 1px solid #555; cursor: pointer; border-radius: 4px;">
+                                <option value="" disabled selected>🕒</option>
+                            </select>
+                            <button id="btn-redo" onclick="redo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="redo">↪ <span>Redo</span></button>
+                        </div>
                     </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="toggleFullscreen()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;" title="Toggle Fullscreen">⛶</button>
+                        <button onclick="toggleGrid()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏 Toggle Grid</button>
                     </div>
-                    <button onclick="toggleGrid()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏 Toggle Grid</button>
                 </div>
                 <div id="canvas-wrapper" style="margin: auto;">
                     <canvas id="mainCanvas"></canvas>
