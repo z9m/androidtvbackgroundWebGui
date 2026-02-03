@@ -614,6 +614,30 @@ function fitTextToContainer(textbox) {
     canvas.requestRenderAll();
 }
 
+function extractMetadata(item) {
+    if (!item) return {};
+    
+    let actionUrl = null;
+    if (item.source === 'Jellyfin' && item.id) {
+        actionUrl = "jellyfin://items/" + item.id;
+    }
+
+    return {
+        title: item.title || item.Name,
+        original_title: item.original_title || item.OriginalTitle,
+        year: item.year || item.ProductionYear,
+        officialRating: item.officialRating || item.OfficialRating, // age_rating
+        communityRating: item.rating || item.CommunityRating, // community_rating
+        genres: item.genres || (Array.isArray(item.Genres) ? item.Genres.join(', ') : ""),
+        overview: item.overview || item.Overview,
+        action_url: actionUrl,
+        provider_ids: item.provider_ids || item.ProviderIds,
+        studios: item.studios || item.Studios,
+        tags: item.tags || item.Tags,
+        source: item.source
+    };
+}
+
 async function searchMedia() {
     const query = document.getElementById('mediaSearchInput').value;
     if (!query) return;
@@ -1916,6 +1940,44 @@ function restoreState(data) {
         
         isUndoRedoProcessing = false;
         updateUndoRedoUI();
+    }, (o, object) => {
+        // --- FIX: State Synchronization & Gradient Restoration ---
+        if (object.fill && object.fill.type === 'linear' && object.fill.colorStops && object.fill.colorStops.length > 0) {
+            try {
+                if (object.dataTag === 'fade_effect') {
+                    // 1. EXTRACT COLOR FROM JSON
+                    let loadedColor = "#000000"; 
+                    let rawColor = object.fill.colorStops[0].color;
+                    
+                    if (rawColor && rawColor.startsWith('rgb')) {
+                        const rgb = rawColor.match(/\d+/g);
+                        if (rgb && rgb.length >= 3) {
+                             loadedColor = "#" + 
+                                ("0" + parseInt(rgb[0], 10).toString(16)).slice(-2) +
+                                ("0" + parseInt(rgb[1], 10).toString(16)).slice(-2) +
+                                ("0" + parseInt(rgb[2], 10).toString(16)).slice(-2);
+                        }
+                    } else if (rawColor && rawColor.startsWith('#')) {
+                        loadedColor = rawColor;
+                    }
+
+                    // 2. SYNC UI TO JSON COLOR
+                    const picker = document.getElementById('bgColor');
+                    if (picker && loadedColor && picker.value.toLowerCase() !== loadedColor.toLowerCase()) {
+                        picker.value = loadedColor;
+                    }
+                }
+                // 3. RE-APPLY GRADIENT (Fabric.js Fix)
+                const freshStops = object.fill.colorStops.map(stop => ({
+                    offset: stop.offset,
+                    color: stop.color
+                }));
+                object.fill.colorStops = freshStops;
+                object.dirty = true;
+            } catch (e) {
+                console.warn("Failed to restore gradient for object:", object, e);
+            }
+        }
     });
 }
 
@@ -1950,7 +2012,10 @@ function updateUndoRedoUI() {
 }
 
 function applyCustomEffects(eff) {
-    if(eff.bgColor) { document.getElementById('bgColor').value = eff.bgColor; canvas.setBackgroundColor(eff.bgColor, () => {}); }
+    if(eff.bgColor) { 
+        document.getElementById('bgColor').value = eff.bgColor; 
+        canvas.setBackgroundColor(eff.bgColor, () => { updateFades(); }); 
+    }
     if(eff.bgBrightness) document.getElementById('bgBrightness').value = eff.bgBrightness;
     if(eff.fadeEffect) document.getElementById('fadeEffect').value = eff.fadeEffect;
     if(eff.fadeRadius) document.getElementById('fadeRadius').value = eff.fadeRadius;
@@ -1979,8 +2044,7 @@ function applyCustomEffects(eff) {
             window.restoredOverlayId = eff.overlayId;
         }
     }
-    updateFadeControls();
-    updateBgColor();
+    // updateFadeControls(); // Removed here, called after bg set or via updateFades inside callback
 }
 
 function loadBackground(url, skipRender = false) {
@@ -2149,7 +2213,16 @@ function createFadeRect(type, size) {
 }
 
 function hexToRgba(hex, a) {
-    let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 4) {
+        r = parseInt(hex[1] + hex[1], 16);
+        g = parseInt(hex[2] + hex[2], 16);
+        b = parseInt(hex[3] + hex[3], 16);
+    } else if (hex.length === 7) {
+        r = parseInt(hex.slice(1, 3), 16);
+        g = parseInt(hex.slice(3, 5), 16);
+        b = parseInt(hex.slice(5, 7), 16);
+    }
     return `rgba(${r}, ${g}, ${b}, ${a === 0 ? 0.005 : a})`;
 }
 
@@ -2748,7 +2821,19 @@ async function saveLayout() {
     // Generate Preview Thumbnail (smaller size)
     const previewData = canvas.toDataURL({ format: 'jpeg', quality: 0.8, multiplier: 0.5 });
 
-    const resp = await fetch('/api/layouts/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, layout, preview_image: previewData}) });
+    // Use shared metadata builder
+    const fullMetadata = extractMetadata(lastFetchedData);
+    const actionUrl = fullMetadata.action_url;
+    const mediaTitle = fullMetadata.title;
+
+    const resp = await fetch('/api/layouts/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+        name, 
+        layout, 
+        preview_image: previewData,
+        action_url: actionUrl,
+        media_title: mediaTitle,
+        metadata: fullMetadata
+    }) });
     if(!resp.ok) {
         alert("Error saving layout");
         btn.innerText = originalText;
@@ -2824,6 +2909,10 @@ async function loadLayout(name, silent = false) {
     }
     
     return new Promise((resolve) => {
+    if (data.metadata) {
+        lastFetchedData = data.metadata;
+    }
+
     canvas.loadFromJSON(data, () => {
         canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
         canvas.renderAll();
@@ -2900,6 +2989,44 @@ async function loadLayout(name, silent = false) {
         }, 500);
 
         resolve();
+    }, (o, object) => {
+        // --- FIX: State Synchronization & Gradient Restoration ---
+        if (object.fill && object.fill.type === 'linear' && object.fill.colorStops && object.fill.colorStops.length > 0) {
+            try {
+                if (object.dataTag === 'fade_effect') {
+                    // 1. EXTRACT COLOR FROM JSON
+                    let loadedColor = "#000000"; 
+                    let rawColor = object.fill.colorStops[0].color;
+                    
+                    if (rawColor && rawColor.startsWith('rgb')) {
+                        const rgb = rawColor.match(/\d+/g);
+                        if (rgb && rgb.length >= 3) {
+                             loadedColor = "#" + 
+                                ("0" + parseInt(rgb[0], 10).toString(16)).slice(-2) +
+                                ("0" + parseInt(rgb[1], 10).toString(16)).slice(-2) +
+                                ("0" + parseInt(rgb[2], 10).toString(16)).slice(-2);
+                        }
+                    } else if (rawColor && rawColor.startsWith('#')) {
+                        loadedColor = rawColor;
+                    }
+
+                    // 2. SYNC UI TO JSON COLOR
+                    const picker = document.getElementById('bgColor');
+                    if (picker && loadedColor && picker.value.toLowerCase() !== loadedColor.toLowerCase()) {
+                        picker.value = loadedColor;
+                    }
+                }
+                // 3. RE-APPLY GRADIENT (Fabric.js Fix)
+                const freshStops = object.fill.colorStops.map(stop => ({
+                    offset: stop.offset,
+                    color: stop.color
+                }));
+                object.fill.colorStops = freshStops;
+                object.dirty = true;
+            } catch (e) {
+                console.warn("Failed to restore gradient for object:", object, e);
+            }
+        }
     });
     });
 }
@@ -2931,6 +3058,10 @@ function resetLayout() {
     if (document.getElementById('overlaySelect')) document.getElementById('overlaySelect').value = '';
 
     // 4. Reset Canvas (Default 1080p)
+    // Reset Editing UI if active
+    document.getElementById('btn-save-changes').style.display = 'none';
+    document.getElementById('btn-save-layout').style.display = 'block';
+    document.getElementById('layoutNameContainer').style.display = 'block';
     undoStack = [];
     redoStack = [];
     updateUndoRedoUI();
@@ -2995,6 +3126,10 @@ function loadFromLocalStorage() {
         try {
             const data = JSON.parse(saved);
 
+            if (data.metadata) {
+                lastFetchedData = data.metadata;
+            }
+
             // Scale up to current resolution
             const currentRes = document.getElementById('resSelect').value;
             const targetW = (currentRes === '2160') ? 3840 : 1920;
@@ -3053,6 +3188,44 @@ function loadFromLocalStorage() {
                     updateVerticalLayout();
                     canvas.requestRenderAll();
                 });
+            }, (o, object) => {
+                // --- FIX: State Synchronization & Gradient Restoration ---
+                if (object.fill && object.fill.type === 'linear' && object.fill.colorStops && object.fill.colorStops.length > 0) {
+                    try {
+                        if (object.dataTag === 'fade_effect') {
+                    // 1. EXTRACT COLOR FROM JSON
+                    let loadedColor = "#000000"; 
+                    let rawColor = object.fill.colorStops[0].color;
+                    
+                    if (rawColor && rawColor.startsWith('rgb')) {
+                        const rgb = rawColor.match(/\d+/g);
+                        if (rgb && rgb.length >= 3) {
+                             loadedColor = "#" + 
+                                ("0" + parseInt(rgb[0], 10).toString(16)).slice(-2) +
+                                ("0" + parseInt(rgb[1], 10).toString(16)).slice(-2) +
+                                ("0" + parseInt(rgb[2], 10).toString(16)).slice(-2);
+                                }
+                    } else if (rawColor && rawColor.startsWith('#')) {
+                        loadedColor = rawColor;
+                            }
+
+                    // 2. SYNC UI TO JSON COLOR
+                    const picker = document.getElementById('bgColor');
+                    if (picker && loadedColor && picker.value.toLowerCase() !== loadedColor.toLowerCase()) {
+                        picker.value = loadedColor;
+                    }
+                        }
+                // 3. RE-APPLY GRADIENT (Fabric.js Fix)
+                        const freshStops = object.fill.colorStops.map(stop => ({
+                            offset: stop.offset,
+                            color: stop.color
+                        }));
+                        object.fill.colorStops = freshStops;
+                        object.dirty = true;
+                    } catch (e) {
+                        console.warn("Failed to restore gradient for object:", object, e);
+                    }
+                }
             });
             return true;
         } catch(e) { console.error("Autosave load error", e); }

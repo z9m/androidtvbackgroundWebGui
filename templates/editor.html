@@ -65,7 +65,6 @@
             <div class="control-group" id="group-layout">
                 <h3 onclick="toggleGroup('group-layout')"><span class="group-arrow collapsed">▼</span> <span data-i18n="layout_mgmt">Layout Management</span></h3>
                 <div class="group-content collapsed">
-                    <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;" data-i18n="save_changes">💾 Save Changes</button>
                     <label data-i18n="tag_align">Tag Alignment</label>
                     <select id="tagAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
                         <option value="left">Left</option>
@@ -319,9 +318,12 @@
             </div>
 
             <div style="margin-top:auto">
-                <label data-i18n="layout_name">Layout Name</label>
-                <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default" style="margin-bottom: 10px;">
-                <button onclick="saveLayout()" style="background: #00796b; margin-bottom: 10px;" data-i18n="save_layout">💾 Save Layout</button>
+                <div id="layoutNameContainer">
+                    <label data-i18n="layout_name">Layout Name</label>
+                    <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default" style="margin-bottom: 10px;">
+                </div>
+                <button id="btn-save-layout" onclick="saveLayout()" style="background: #00796b; margin-bottom: 10px;" data-i18n="save_layout">💾 Save Layout</button>
+                <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;" data-i18n="save_changes">💾 Save Changes</button>
                 <button class="btn-export" onclick="saveImage()" data-i18n="export_jpg">💾 Export JPG (Download)</button>
                 <button id="btn-save-gallery" onclick="saveToGallery()" style="background: #e65100; margin-top: 10px;" data-i18n="save_gallery">📂 Save to Gallery</button>
                 <button onclick="resetLayout()" style="background: #d32f2f; margin-top: 10px;" data-i18n="reset_layout">⚠️ Reset Layout</button>
@@ -447,6 +449,18 @@
                     <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
                         <input type="checkbox" id="batchDryRun" style="width:20px; height:20px; margin:0;">
                         <label for="batchDryRun" style="margin:0; cursor:pointer;" data-i18n="dry_run">Dry Run (Simulate only)</label>
+                    </div>
+
+                    <div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+                        <h4 style="margin:0 0 10px 0; font-size:12px; color:#888; text-transform:uppercase;" data-i18n="automation">Automation</h4>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <input type="checkbox" id="batchAutoRun" style="width:20px; height:20px; margin:0;" onchange="toggleBatchInputs()">
+                            <label for="batchAutoRun" style="margin:0; cursor:pointer;" data-i18n="enable_autorun">Enable Auto-Run (Loop)</label>
+                        </div>
+                        <div id="autoRunSettings" style="display:none; margin-top:5px;">
+                            <label for="batchInterval" data-i18n="interval_min">Interval (Minutes)</label>
+                            <input type="number" id="batchInterval" value="60" min="1">
+                        </div>
                     </div>
 
                     <button id="btn-start-batch" onclick="startBatchProcess()" style="margin-top: 20px; background: #2e7d32;" data-i18n="start_batch">▶ Start Batch</button>

@@ -1,3 +1,5 @@
+let batchTimer = null;
+
 function toggleBatchInputs() {
     const mode = document.getElementById('batchMode').value;
     const filterMode = document.getElementById('batchFilterMode').value;
@@ -16,6 +18,9 @@ function toggleBatchInputs() {
     const countLabel = document.querySelector('label[for="batchCount"]');
     if (mode === 'library') countLabel.innerText = "Limit (Max Images)";
     else countLabel.innerText = "Number of Images";
+
+    // Auto-Run Visibility
+    document.getElementById('autoRunSettings').style.display = document.getElementById('batchAutoRun').checked ? 'block' : 'none';
 }
 
 async function loadBatchLayouts() {
@@ -43,6 +48,7 @@ function logBatch(msg) {
 
 function stopBatchProcess() {
     isBatchRunning = false;
+    if (batchTimer) clearTimeout(batchTimer);
     logBatch("Stopping batch process...");
     document.getElementById('btn-start-batch').style.display = 'block';
     document.getElementById('btn-stop-batch').style.display = 'none';
@@ -51,6 +57,7 @@ function stopBatchProcess() {
 
 async function startBatchProcess() {
     if (isBatchRunning) return;
+    if (batchTimer) clearTimeout(batchTimer);
     isBatchRunning = true;
     
     const layoutName = document.getElementById('batchLayoutSelect').value;
@@ -135,7 +142,39 @@ async function startBatchProcess() {
         logBatch(`Processing (${i+1}/${total}): ${label}`);
         
         await fetchMediaData(item ? item.id : null); 
-        await saveToGalleryInternal(layoutName, overwrite ? null : null, 'gallery', sortGenre);
+        
+        // --- FIX: Ensure Full Metadata is captured (Client-Side Cron Job) ---
+        // We manually construct the payload to ensure all metadata fields (officialRating, etc.) are included.
+        
+        const overlay = canvas.getObjects().find(o => o.dataTag === 'guide_overlay');
+        const wasVisible = overlay ? overlay.visible : false;
+        if (overlay) overlay.visible = false;
+
+        const dataURL = canvas.toDataURL({ format: 'jpeg', quality: 0.95 });
+        if (overlay) overlay.visible = wasVisible;
+
+        const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
+        
+        let metadata = {};
+        if (typeof extractMetadata === 'function' && lastFetchedData) {
+            metadata = extractMetadata(lastFetchedData);
+        }
+
+        const payload = { 
+            image: dataURL, 
+            layout_name: layoutName, 
+            canvas_json: json, 
+            overwrite_filename: null, 
+            target_type: 'gallery',
+            organize_by_genre: sortGenre,
+            metadata: metadata
+        };
+
+        await fetch('/api/save_image', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
         
         // Update preview image in batch tab
         document.getElementById('batchPreviewImg').src = canvas.toDataURL({ format: 'jpeg', quality: 0.5 });
@@ -146,6 +185,16 @@ async function startBatchProcess() {
     document.getElementById('batchProgressBar').style.width = `100%`;
     document.getElementById('batchProgressBar').innerText = `100%`;
     logBatch("Batch processing finished!");
-    stopBatchProcess();
+    
     loadGallery();
+
+    // Auto-Run Logic
+    if (document.getElementById('batchAutoRun').checked) {
+        const interval = parseInt(document.getElementById('batchInterval').value) || 60;
+        logBatch(`Auto-Run enabled. Waiting ${interval} minutes for next run...`);
+        // Do NOT call stopBatchProcess() here to keep the "Stop" button active
+        batchTimer = setTimeout(startBatchProcess, interval * 60 * 1000);
+    } else {
+        stopBatchProcess();
+    }
 }

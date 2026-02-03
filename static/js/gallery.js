@@ -155,7 +155,7 @@ async function saveToGallery() {
     loadGallery();
 }
 
-async function saveToGalleryInternal(layoutName, overwriteFilename = null, targetType = 'gallery', organizeByGenre = false) {
+async function saveToGalleryInternal(layoutName, overwriteFilename = null, targetType = 'gallery', organizeByGenre = false, useSharedMetadata = false) {
     const overlay = canvas.getObjects().find(o => o.dataTag === 'guide_overlay');
     const wasVisible = overlay ? overlay.visible : false;
     if (overlay) overlay.visible = false;
@@ -176,12 +176,15 @@ async function saveToGalleryInternal(layoutName, overwriteFilename = null, targe
     };
     
     if (lastFetchedData) {
-        payload.metadata = { 
-            title: lastFetchedData.title, 
-            year: lastFetchedData.year, 
-            imdb_id: lastFetchedData.imdb_id,
-            genres: lastFetchedData.genres
-        };
+        if (typeof extractMetadata === 'function') {
+            payload.metadata = extractMetadata(lastFetchedData);
+        } else {
+            // Fallback if extractMetadata is not available (e.g. standalone gallery page)
+            payload.metadata = { 
+                ...lastFetchedData,
+                action_url: (lastFetchedData.source === 'Jellyfin' && lastFetchedData.id) ? "jellyfin://items/" + lastFetchedData.id : null,
+            };
+        }
     }
     const resp = await fetch('/api/save_image', {
         method: 'POST',
@@ -200,6 +203,10 @@ async function editGalleryImage(folder, filename) {
         return;
     }
     
+    if (data.metadata) {
+        lastFetchedData = data.metadata;
+    }
+
     canvas.loadFromJSON(data, () => {
         canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
         canvas.requestRenderAll();
@@ -221,7 +228,16 @@ async function editGalleryImage(folder, filename) {
         // Restore UI settings from saved data
         if (data.custom_effects) {
             const eff = data.custom_effects;
-            if(eff.bgColor) { document.getElementById('bgColor').value = eff.bgColor; canvas.setBackgroundColor(eff.bgColor, () => {}); }
+            
+            // Helper to finalize UI updates after BG is ready
+            const finalizeEffects = () => {
+                if (typeof updateFadeControls === 'function') updateFadeControls();
+            };
+
+            if(eff.bgColor) { 
+                document.getElementById('bgColor').value = eff.bgColor; 
+                canvas.setBackgroundColor(eff.bgColor, () => { finalizeEffects(); }); 
+            }
             if(eff.bgBrightness) document.getElementById('bgBrightness').value = eff.bgBrightness;
             if(eff.fadeEffect) document.getElementById('fadeEffect').value = eff.fadeEffect;
             if(eff.fadeRadius) document.getElementById('fadeRadius').value = eff.fadeRadius;
@@ -241,7 +257,9 @@ async function editGalleryImage(folder, filename) {
                 document.getElementById('genreLimitSlider').value = eff.genreLimit;
                 document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
             }
-            if (typeof updateFadeControls === 'function') updateFadeControls();
+            
+            // If no bgColor was set, we must call finalize manually here, otherwise it happens in callback
+            if (!eff.bgColor) finalizeEffects();
         } else {
             if (typeof updateFades === 'function') updateFades();
         }
@@ -250,7 +268,11 @@ async function editGalleryImage(folder, filename) {
         openTab({currentTarget: document.querySelector('.tab-link')}, 'editor-tab');
         
         currentEditingFile = { folder: folder, filename: filename };
+        
+        // Toggle UI for Editing Mode
         document.getElementById('btn-save-changes').style.display = 'block';
+        document.getElementById('btn-save-layout').style.display = 'none';
+        document.getElementById('layoutNameContainer').style.display = 'none';
 
         // Lock UI
         document.querySelectorAll('.tab-link').forEach(el => { el.style.pointerEvents = 'none'; el.style.opacity = '0.5'; });
@@ -298,6 +320,8 @@ async function saveEditedImage() {
     
     currentEditingFile = null;
     saveBtn.style.display = 'none';
+    document.getElementById('btn-save-layout').style.display = 'block';
+    document.getElementById('layoutNameContainer').style.display = 'block';
     saveBtn.disabled = false;
     saveBtn.innerText = originalText;
 }

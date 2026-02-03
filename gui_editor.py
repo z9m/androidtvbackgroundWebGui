@@ -13,6 +13,7 @@ import re
 import uuid
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
 from PIL import Image
+from urllib.parse import quote
 
 # Prevent Python from generating .pyc files and __pycache__ folders
 sys.dont_write_bytecode = True
@@ -181,11 +182,16 @@ def format_jellyfin_item(item, clean_url, api_key):
     runtime_str = f"{h}h {m}min" if h > 0 else f"{m}min"
 
     return {
+        "id": item.get('Id'),
         "title": item.get('Name'),
+        "original_title": item.get('OriginalTitle'),
         "year": item.get('ProductionYear', 'N/A'),
         "rating": item.get('CommunityRating', 'N/A'),
         "overview": item.get('Overview', ''),
         "genres": ", ".join(item.get('Genres', [])),
+        "tags": item.get('Tags', []),
+        "studios": [s.get('Name') for s in item.get('Studios', [])],
+        "provider_ids": item.get('ProviderIds', {}),
         "runtime": runtime_str,
         "backdrop_url": f"{clean_url}/Items/{item['Id']}/Images/Backdrop?api_key={api_key}",
         "logo_url": logo_url,
@@ -747,6 +753,9 @@ def save_layout():
     name = data.get('name')
     layout = data.get('layout')
     preview_image = data.get('preview_image')
+    action_url = data.get('action_url')
+    media_title = data.get('media_title')
+    metadata = data.get('metadata')
     if not name or not layout:
         return jsonify({"status": "error", "message": "Missing name or layout data"}), 400
     
@@ -754,6 +763,10 @@ def save_layout():
     if not safe_name: return jsonify({"status": "error", "message": "Invalid name"}), 400
 
     path = os.path.join(LAYOUTS_DIR, f"{safe_name}.json")
+    
+    if metadata:
+        layout['metadata'] = metadata
+
     with open(path, 'w') as f:
         json.dump(layout, f)
     
@@ -773,6 +786,19 @@ def save_layout():
         except Exception as e:
             print(f"Error saving layout preview: {e}")
             
+    # Save status.json for Android App Deep Link
+    bg_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'editor_backgrounds', safe_name)
+    if not os.path.exists(bg_dir):
+        os.makedirs(bg_dir)
+        
+    status_data = {
+        "action_url": action_url,
+        "title": media_title,
+        "timestamp": int(time.time())
+    }
+    with open(os.path.join(bg_dir, 'status.json'), 'w') as f:
+        json.dump(status_data, f)
+
     return jsonify({"status": "success"})
 
 @gui_editor_bp.route('/api/layouts/load/<name>')
@@ -789,6 +815,123 @@ def get_layout_preview(name):
     safe_name = "".join(c for c in name if c.isalnum() or c in " ._-").strip()
     filename = f"{safe_name}.jpg"
     return send_from_directory(LAYOUT_PREVIEWS_DIR, filename)
+
+@gui_editor_bp.route('/api/layouts/for-app')
+def list_layouts_for_app():
+    layouts = []
+    if os.path.exists(LAYOUTS_DIR):
+        files = [f for f in os.listdir(LAYOUTS_DIR) if f.endswith('.json')]
+        for f in sorted(files):
+            name = f.replace('.json', '')
+            preview_url = url_for('gui_editor.get_layout_preview', name=name, _external=True)
+            layouts.append({"name": name, "preview_url": preview_url})
+    return jsonify(layouts)
+
+@gui_editor_bp.route('/api/wallpaper/status')
+def get_wallpaper_status():
+    # --- Search Engine Logic ---
+    layout_name = request.args.get('layout', 'Default')
+    genre_filter = request.args.get('genre')
+    age_rating_filter = request.args.get('age_rating') or request.args.get('age')
+    sort_mode = request.args.get('sort', 'random') # random, year, rating
+
+    safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    target_dir = os.path.join(base_path, 'editor_backgrounds', safe_layout)
+    
+    response = {
+        "imageUrl": None,
+        "actionUrl": None,
+        "title": None
+    }
+
+    if not os.path.exists(target_dir):
+        return jsonify(response) # Return empty if layout not found
+
+    # 1. Collect Candidates
+    candidates = []
+    for f in os.listdir(target_dir):
+        if f.endswith('.json') and f != 'status.json':
+            full_path = os.path.join(target_dir, f)
+            try:
+                with open(full_path, 'r') as json_file:
+                    data = json.load(json_file)
+                    meta = data.get('metadata', {})
+                    
+                    item = {
+                        "path": full_path,
+                        "data": data,
+                        "year": int(meta.get('year', 0)) if str(meta.get('year', '0')).isdigit() else 0,
+                        "rating": float(meta.get('rating', 0)) if str(meta.get('rating', '0')).replace('.','',1).isdigit() else 0.0,
+                        "genres": str(meta.get('genres', '')),
+                        "officialRating": str(meta.get('officialRating', '')),
+                        "mtime": os.path.getmtime(full_path)
+                    }
+                    candidates.append(item)
+            except: continue
+
+    if not candidates:
+        return jsonify(response)
+
+    # 2. Filter
+    filtered = candidates
+    if genre_filter:
+        g_search = genre_filter.lower().strip()
+        filtered = [c for c in filtered if g_search in c['genres'].lower()]
+        
+    if age_rating_filter:
+        # Normalize: remove spaces and dashes for comparison (e.g. "FSK-16" -> "fsk16")
+        a_search = "".join(c for c in age_rating_filter.lower() if c.isalnum())
+        filtered = [c for c in filtered if a_search in "".join(k for k in c['officialRating'].lower() if k.isalnum())]
+
+    # Fallback if filter too strict
+    if not filtered:
+        filtered = candidates
+
+    # 3. Sort / Pick
+    selected = None
+    if sort_mode == 'year':
+        filtered.sort(key=lambda x: x['year'], reverse=True)
+        selected = filtered[0]
+    elif sort_mode == 'rating':
+        filtered.sort(key=lambda x: x['rating'], reverse=True)
+        selected = filtered[0]
+    elif sort_mode == 'latest':
+        filtered.sort(key=lambda x: x['mtime'], reverse=True)
+        selected = filtered[0]
+    else: # random
+        selected = random.choice(filtered)
+
+    # 4. Construct Response
+    if selected:
+        data = selected['data']
+        filename = os.path.basename(selected['path']).replace('.json', '.jpg')
+        # Use layout subfolder logic for URL
+        folder_param = f"Layout: {safe_layout}"
+        response["imageUrl"] = url_for('gui_editor.get_gallery_image', folder=folder_param, filename=filename, _external=True)
+        response["actionUrl"] = data.get("metadata", {}).get("action_url") or data.get("action_url")
+        response["title"] = data.get("metadata", {}).get("title")
+            
+    return jsonify(response)
+
+@gui_editor_bp.route('/api/current-background')
+def get_current_background():
+    layout_name = request.args.get('layout', 'Default')
+    safe_name = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
+    
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    # 1. Try High-Res Render (e.g. rendered_LayoutName.jpg in editor_backgrounds)
+    high_res_path = os.path.join(base_path, 'editor_backgrounds', f"rendered_{safe_name}.jpg")
+    if os.path.exists(high_res_path):
+        return send_file(high_res_path)
+        
+    # 2. Fallback: Layout Preview
+    preview_path = os.path.join(LAYOUT_PREVIEWS_DIR, f"{safe_name}.jpg")
+    if os.path.exists(preview_path):
+        return send_from_directory(LAYOUT_PREVIEWS_DIR, f"{safe_name}.jpg")
+        
+    return jsonify({"error": "Background not found"}), 404
 
 @gui_editor_bp.route('/api/layouts/delete/<name>', methods=['POST'])
 def delete_layout(name):
@@ -842,6 +985,11 @@ def delete_all_gallery_images():
             file_path = os.path.join(target_dir, filename)
             if os.path.isfile(file_path) and filename.lower().endswith(('.jpg', '.jpeg', '.png', '.json')):
                 os.remove(file_path)
+        
+        # Check if directory is empty and remove it if so (only for subfolders)
+        if not os.listdir(target_dir) and target_dir != os.path.join(base_path, "editor_backgrounds"):
+            os.rmdir(target_dir)
+            
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -913,6 +1061,22 @@ def save_editor_image():
             with open(json_path, "w") as f:
                 json.dump(canvas_json, f)
                 
+        # Update JSON with action_url if provided in metadata
+        if metadata and metadata.get('action_url'):
+            # Re-read or just update the dict before dumping if we hadn't dumped yet.
+            # Since we dumped canvas_json above, let's load it back or just append to it if canvas_json was a dict.
+            # Better: Modify canvas_json before dumping.
+            pass # Logic moved below to be cleaner
+            
+        final_json_data = canvas_json if canvas_json else {}
+        if metadata:
+            final_json_data['metadata'] = metadata
+            final_json_data['action_url'] = metadata.get('action_url')
+            
+        json_path = os.path.splitext(filepath)[0] + ".json"
+        with open(json_path, "w") as f:
+            json.dump(final_json_data, f)
+
         return jsonify({"status": "success", "filename": filename})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
