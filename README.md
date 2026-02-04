@@ -37,6 +37,14 @@ It features a full WYSIWYG (What You See Is What You Get) editor allowing you to
 
 ---
 
+## 🧩 Projectivy Launcher Plugin
+
+For users of the **Projectivy Launcher**, there is now a dedicated plugin available to easily integrate the generated backgrounds directly into your launcher.
+
+👉 **[Get the Projectivy TVBG Suite Plugin](https://github.com/z9m/projectivy-tvbgsuite-plugin)**
+
+---
+
 ## 🚀 Installation (Docker)
 
 The easiest way to run the application is via Docker.
