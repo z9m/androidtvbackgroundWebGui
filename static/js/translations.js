@@ -103,7 +103,12 @@ const translations = {
         "token": "Token",
         "language": "Language",
         "save_settings": "Save Settings",
-        "generated_previews": "Generated Previews"
+        "generated_previews": "Generated Previews",
+        "logo_auto_fix": "Auto-Fix Color",
+        "logo_brightness": "Brightness",
+        "logo_color": "Tint",
+        "use_text_title": "Use Text Title",
+        "use_logo": "Use Logo"
     },
     "de": {
         "nav_editor": "🎨 Layout Editor",
@@ -209,7 +214,12 @@ const translations = {
         "token": "Token",
         "language": "Sprache",
         "save_settings": "Einstellungen speichern",
-        "generated_previews": "Generierte Vorschauen"
+        "generated_previews": "Generierte Vorschauen",
+        "logo_auto_fix": "Auto-Korrektur Farbe",
+        "logo_brightness": "Helligkeit",
+        "logo_color": "Farbton",
+        "use_text_title": "Titel-Text benutzen",
+        "use_logo": "Logo benutzen"
     },
     "it": {
         "nav_editor": "🎨 Editor Layout",

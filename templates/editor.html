@@ -102,6 +102,27 @@
                             <label for="matchHeightToggle" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="match_height">Match Height to Neighbor</label>
                         </div>
                     </div>
+                    <div id="logoSettings" style="display:none; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <input type="checkbox" id="logoAutoFixToggle" onchange="toggleLogoAutoFix()" style="width:20px; height:20px; margin:0;">
+                            <label for="logoAutoFixToggle" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="logo_auto_fix">Auto-Fix Color</label>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <div style="display:flex; justify-content:space-between;">
+                                <label data-i18n="logo_brightness" style="font-size:11px; margin:0;">Brightness</label>
+                                <span id="logoBrightnessVal" style="font-size:11px;">0%</span>
+                            </div>
+                            <input type="range" id="logoBrightnessInput" min="-100" max="100" value="0" oninput="updateLogoBrightness()" style="margin-top:2px;">
+                        </div>
+                        <div style="display:flex; align-items:center; justify-content:space-between;">
+                            <label data-i18n="logo_color" style="font-size:11px; margin:0;">Tint</label>
+                            <div style="display:flex; align-items:center; gap:5px;">
+                                <input type="color" id="logoColorInput" oninput="updateLogoColor()" value="#ffffff" style="height:30px; width:40px;">
+                                <button onclick="resetLogoColor()" style="font-size:9px; padding:2px 6px; background:#4a4a4a; border:none; color:white; cursor:pointer; border-radius:3px;" data-i18n="reset">Reset</button>
+                            </div>
+                        </div>
+                        <button onclick="toggleTitleType()" style="width:100%; margin-top:10px; background:#4a4a4a; font-size:11px; padding:5px;" data-i18n="use_text_title">Use Text Title</button>
+                    </div>
                 </div>
             </div>
 
@@ -175,6 +196,7 @@
             <div class="control-group" id="group-text" style="display:none;">
                 <h3 onclick="toggleGroup('group-text')"><span class="group-arrow collapsed">▼</span> <span data-i18n="text_props">Text Properties</span></h3>
                 <div class="group-content collapsed">
+                    <button id="btn-use-logo" onclick="toggleTitleType()" style="display:none; width:100%; margin-bottom:10px; background:#4a4a4a; font-size:11px; padding:5px;" data-i18n="use_logo">Use Logo</button>
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;" title="Uncheck to enable manual positioning (Drag freely)">
                         <input type="checkbox" id="snapToggleText" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping('text')">
                         <label for="snapToggleText" style="margin:0; cursor:pointer; font-size:12px;" data-i18n="auto_layout_snap">Auto-Layout & Snapping</label>

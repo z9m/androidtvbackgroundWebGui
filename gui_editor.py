@@ -105,6 +105,7 @@ def clean_tmdb_url(path):
 def proxy_image():
     """ Proxies an image URL to bypass CORS/CORB blocks. """
     url = request.args.get('url')
+    raw = request.args.get('raw', 'false').lower() == 'true'
     if not url:
         return "Missing URL", 400
     try:
@@ -118,7 +119,7 @@ def proxy_image():
         # This prevents processing backdrops (JPGs) which would turn white if dark.
         is_likely_logo = 'logo' in url.lower() or url.lower().endswith('.png')
         
-        if is_likely_logo:
+        if is_likely_logo and not raw:
             try:
                 img = Image.open(io.BytesIO(resp.content))
                 # Apply the contrast logic from image_engine.py

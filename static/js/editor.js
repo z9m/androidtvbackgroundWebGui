@@ -112,6 +112,7 @@ function updateSelectionUI(e) {
     const activeObj = canvas.getActiveObject();
     const textPanel = document.getElementById('group-text');
     const iconPanel = document.getElementById('icon-properties');
+    const logoSettings = document.getElementById('logoSettings');
     const alignControl = document.getElementById('textAlignControl');
     const bgControl = document.getElementById('textBackgroundControl');
     const genreControl = document.getElementById('genreLimitControl');
@@ -119,6 +120,7 @@ function updateSelectionUI(e) {
     // Hide all initially
     textPanel.style.display = 'none';
     if (iconPanel) iconPanel.style.display = 'none';
+    if (logoSettings) logoSettings.style.display = 'none';
 
     // Toggle Layer Controls
     const layerContainer = document.getElementById('layerControlContainer');
@@ -176,12 +178,41 @@ function updateSelectionUI(e) {
             document.getElementById('matchHeightToggle').checked = isMatchHeight;
             document.getElementById('iconSizeInput').disabled = isMatchHeight;
         }
+        if (logoSettings) {
+            logoSettings.style.display = 'block';
+            const autoFix = document.getElementById('logoAutoFixToggle');
+            if (autoFix) autoFix.checked = activeObj.logoAutoFix !== false;
+            
+            const bright = document.getElementById('logoBrightnessInput');
+            if (bright) {
+                const f = (activeObj.filters || []).find(x => x.type === 'Brightness');
+                bright.value = f ? (f.brightness * 100) : 0;
+                const valDisplay = document.getElementById('logoBrightnessVal');
+                if(valDisplay) valDisplay.innerText = bright.value + "%";
+            }
+            
+            const col = document.getElementById('logoColorInput');
+            const blend = (activeObj.filters || []).find(x => x.type === 'BlendColor');
+            if (col) col.value = blend ? blend.color : (activeObj.tint || "#ffffff");
+            
+            // Hide "Use Text Title" if this is not the title tag
+            const useTextBtn = document.querySelector('button[data-i18n="use_text_title"]');
+            if (useTextBtn) {
+                useTextBtn.style.display = (activeObj.dataTag === 'title') ? 'block' : 'none';
+            }
+        }
     } else if (activeObj.type === 'i-text' || activeObj.type === 'textbox' || (activeObj.type === 'group' && (activeObj.dataTag === 'rating_star' || activeObj.dataTag === 'rating')) || activeObj.dataTag === 'title') {
         textPanel.style.display = 'block';
         expandGroup('group-text');
         
         let textObj = activeObj;
         if (activeObj.type === 'group') textObj = activeObj.getObjects().find(o => o.type === 'i-text');
+        
+        // Show "Use Logo" button only if it is a title and we have a logo url
+        const useLogoBtn = document.getElementById('btn-use-logo');
+        if (useLogoBtn) {
+            useLogoBtn.style.display = (activeObj.dataTag === 'title' && lastFetchedData && lastFetchedData.logo_url) ? 'block' : 'none';
+        }
         
         if (textObj) {
             document.getElementById('fontSizeInput').value = textObj.fontSize;
@@ -1859,7 +1890,7 @@ function jumpToHistory(index) {
 function saveHistory(force = false) {
     if (isUndoRedoProcessing || !canvas) return;
     
-    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects']);
+    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects', 'logoAutoFix']);
     
     // Filter out fade effects and grid lines (same as saveToLocalStorage)
     json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay' && o.dataTag !== 'guide');
@@ -2787,7 +2818,7 @@ async function saveLayout() {
     btn.innerText = "Saving Layout...";
     setUIInteraction(false);
 
-    const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects']);
+    const layout = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects', 'logoAutoFix']);
     
     // Filter out fade effects and grid lines BEFORE saving
     layout.objects = layout.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
@@ -3086,7 +3117,7 @@ function mirrorBackground() {
 
 function saveToLocalStorage() {
     if (!canvas) return;
-    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects']);
+    const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects', 'logoAutoFix']);
     // Filter out fade effects so they aren't saved as static objects
     json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
     
@@ -3232,4 +3263,147 @@ function loadFromLocalStorage() {
     }
     return false;
 }
+
+function toggleLogoAutoFix() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj && activeObj.type === 'image') {
+        activeObj.logoAutoFix = document.getElementById('logoAutoFixToggle').checked;
+        
+        const currentSrc = activeObj.getSrc();
+        if (currentSrc.includes('/api/proxy/image')) {
+            const urlObj = new URL(currentSrc, window.location.origin);
+            if (activeObj.logoAutoFix) {
+                urlObj.searchParams.delete('raw');
+            } else {
+                urlObj.searchParams.set('raw', 'true');
+            }
+            
+            activeObj.setSrc(urlObj.toString(), function() {
+                if (activeObj.filters && activeObj.filters.length > 0) activeObj.applyFilters();
+                canvas.renderAll();
+                saveToLocalStorage();
+            }, { crossOrigin: 'anonymous' });
+        } else {
+             saveToLocalStorage();
+        }
+    }
+}
+
+function updateLogoBrightness() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj && activeObj.type === 'image') {
+        const val = parseInt(document.getElementById('logoBrightnessInput').value) / 100;
+        document.getElementById('logoBrightnessVal').innerText = Math.round(val * 100) + '%';
+        if (!activeObj.filters) activeObj.filters = [];
+        activeObj.filters = activeObj.filters.filter(f => f.type !== 'Brightness');
+        if (val !== 0) activeObj.filters.push(new fabric.Image.filters.Brightness({ brightness: val }));
+        activeObj.applyFilters();
+        canvas.requestRenderAll();
+        saveToLocalStorage();
+    }
+}
+
+function updateLogoColor() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj && activeObj.type === 'image') {
+        const color = document.getElementById('logoColorInput').value;
+        
+        // Clear legacy tint property if present
+        if (activeObj.tint) activeObj.set('tint', null);
+
+        if (!activeObj.filters) activeObj.filters = [];
+        activeObj.filters = activeObj.filters.filter(f => f.type !== 'BlendColor');
+        
+        if (color !== '#ffffff') {
+            activeObj.filters.push(new fabric.Image.filters.BlendColor({ color: color, mode: 'tint' }));
+        }
+        
+        activeObj.applyFilters();
+        canvas.requestRenderAll();
+        saveToLocalStorage();
+    }
+}
+
+function resetLogoColor() {
+    const activeObj = canvas.getActiveObject();
+    if (activeObj && activeObj.type === 'image') {
+        document.getElementById('logoColorInput').value = "#ffffff";
+        
+        if (activeObj.tint) activeObj.set('tint', null);
+        
+        if (activeObj.filters) {
+            activeObj.filters = activeObj.filters.filter(f => f.type !== 'BlendColor');
+            activeObj.applyFilters();
+        }
+        
+        canvas.requestRenderAll();
+        saveToLocalStorage();
+    }
+}
+
+function toggleTitleType() {
+    const activeObj = canvas.getActiveObject();
+    if (!activeObj || activeObj.dataTag !== 'title') return;
+    
+    if (!lastFetchedData) {
+        alert("No media data available.");
+        return;
+    }
+
+    if (activeObj.type === 'image') {
+        // Switch to Text
+        const title = lastFetchedData.title || "Title";
+        const is4K = document.getElementById('resSelect').value === '2160';
+        const titleSize = is4K ? 120 : 80;
+        
+        const newText = new fabric.IText(title, { 
+            left: activeObj.left, 
+            top: activeObj.top, 
+            fontFamily: 'Roboto', 
+            fontSize: titleSize, 
+            fill: 'white', 
+            shadow: '2px 2px 10px rgba(0,0,0,0.8)', 
+            dataTag: 'title', 
+            editable: false 
+        });
+        
+        canvas.remove(activeObj);
+        canvas.add(newText);
+        canvas.setActiveObject(newText);
+        updateVerticalLayout();
+        saveToLocalStorage();
+    } else {
+        // Switch to Logo
+        if (!lastFetchedData.logo_url) {
+            alert("No logo available.");
+            return;
+        }
+        
+        const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(lastFetchedData.logo_url)}`;
+        fabric.Image.fromURL(proxiedLogo, function(img, isError) {
+            if (isError || !img) return;
+            
+            // Use standard sizing logic
+            const baseMaxW = canvas.width * 0.55;
+            const baseMaxH = canvas.height * 0.35;
+            const ratio = img.width / img.height;
+            let allowedHeight = baseMaxH;
+
+            if (ratio < 0.65) allowedHeight = baseMaxH * 0.50;
+            else if (ratio < 1.2) allowedHeight = baseMaxH * 0.75;
+            
+            let scale = Math.min(baseMaxW / img.width, allowedHeight / img.height) * 0.9;
+            
+            img.set({ left: activeObj.left, top: activeObj.top, dataTag: 'title' });
+            img.scale(scale);
+            
+            canvas.remove(activeObj);
+            canvas.add(img);
+            canvas.setActiveObject(img);
+            updateVerticalLayout();
+            saveToLocalStorage();
+        }, { crossOrigin: 'anonymous' });
+    }
+}
+
 window.onload = init;
