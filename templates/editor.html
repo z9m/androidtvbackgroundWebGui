@@ -74,6 +74,43 @@
         .font-file-row:last-child {
             border-bottom: none;
         }
+        /* Compact Settings & Mobile Menu */
+        .settings-compact-panel {
+            padding: 10px 15px !important;
+        }
+        .settings-compact-panel h3 {
+            margin-top: 5px;
+            margin-bottom: 5px;
+            font-size: 1.1em;
+        }
+        .settings-compact-panel label {
+            margin-bottom: 0;
+            font-size: 0.85em;
+            color: #ccc;
+            display: block;
+        }
+        .settings-compact-panel input[type="text"],
+        .settings-compact-panel input[type="password"] {
+            margin-bottom: 2px;
+            padding: 2px 8px;
+            height: 26px;
+            font-size: 0.9em;
+        }
+        .settings-compact-panel button {
+            margin-top: 2px;
+            padding: 6px;
+            font-size: 0.9em;
+        }
+        .mobile-menu-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0 10px 0 0;
+        }
+        @media (max-width: 768px) { .mobile-menu-btn { display: inline-block; } }
     </style>
 </head>
 <body>
@@ -396,9 +433,9 @@
 
     <div id="batch-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="batch-grid" style="width: 100%; max-width: 1200px;">
+            <div class="batch-grid" style="width: 100%; max-width: none;">
                 <div class="sidebar" style="width: 100%; height: auto; border: 1px solid #333; border-radius: 8px;">
-                    <h3 data-i18n="batch_config">Batch Configuration</h3>
+                    <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="batch_config" style="margin:0;">Batch Configuration</h3></div>
                     
                     <label for="batchLayoutSelect" data-i18n="select_layout">Select Layout</label>
                     <select id="batchLayoutSelect"></select>
@@ -510,13 +547,15 @@
         </div>
     </div>
 
-    <div id="layouts-tab" class="tab-content">
+    <div id="layouts-tab" class="tab-content" style="flex-direction: column;">
+        <div style="padding: 10px 20px; display: flex; align-items: center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h2 style="margin:0; font-size:1.2em;" data-i18n="nav_layouts">Saved Layouts</h2></div>
         <div class="gallery-container" id="layouts-content">
             <p style="color:#888; text-align:center; margin-top:50px;">Loading layouts...</p>
         </div>
     </div>
 
-    <div id="gallery-tab" class="tab-content">
+    <div id="gallery-tab" class="tab-content" style="flex-direction: column;">
+        <div style="padding: 10px 20px; display: flex; align-items: center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h2 style="margin:0; font-size:1.2em;" data-i18n="nav_gallery">Gallery</h2></div>
         <div class="gallery-container" id="gallery-content">
             <p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>
         </div>
@@ -524,17 +563,19 @@
 
     <div id="overlay-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
-                <h3 data-i18n="overlay_manager">Overlay Manager</h3>
-                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
+                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="overlay_manager" style="margin:0;">Overlay Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4 data-i18n="add_overlay">Add New Overlay Profile</h4>
                     <label data-i18n="profile_name">Profile Name</label>
                     <input type="text" id="newOverlayName" placeholder="e.g. Google TV">
                     <label data-i18n="img_1080">1080p Image (Optional)</label>
                     <input type="file" id="newOverlay1080" accept="image/*">
                     <label data-i18n="img_4k">4K Image (Optional)</label>
-                    <input type="file" id="newOverlay4K" accept="image/*">
-                    <button onclick="addOverlay()" style="margin-top: 15px; background-color: #4CAF50;" data-i18n="save_profile">Save Profile</button>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newOverlay4K" accept="image/*" style="flex:1;">
+                        <button onclick="addOverlay()" style="background-color: #4CAF50; width:auto; margin-top:0;" data-i18n="save_profile">Save Profile</button>
+                    </div>
                 </div>
                 <h4 data-i18n="existing_profiles">Existing Profiles</h4>
                 <div id="overlayList"></div>
@@ -544,15 +585,17 @@
 
     <div id="texture-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
-                <h3 data-i18n="texture_manager">Texture Manager</h3>
-                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
+                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="texture_manager" style="margin:0;">Texture Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4 data-i18n="add_texture">Add New Texture</h4>
                     <label data-i18n="texture_name">Texture Name</label>
                     <input type="text" id="newTextureName" placeholder="e.g. Gold Foil">
                     <label data-i18n="img_file">Image File</label>
-                    <input type="file" id="newTextureFile" accept="image/*">
-                    <button onclick="addTexture()" style="margin-top: 15px; background-color: #4CAF50;" data-i18n="save_texture">Save Texture</button>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newTextureFile" accept="image/*" style="flex:1;">
+                        <button onclick="addTexture()" style="background-color: #4CAF50; width:auto; margin-top:0;" data-i18n="save_texture">Save Texture</button>
+                    </div>
                 </div>
                 <h4 data-i18n="existing_textures">Existing Textures</h4>
                 <div id="textureList"></div>
@@ -563,8 +606,8 @@
     <div id="font-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start; width: 100%;">
             <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
-                <h3 data-i18n="font_manager">Font Manager</h3>
-                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="font_manager" style="margin:0;">Font Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4 data-i18n="add_font">Add New Font (.ttf, .otf, .woff)</h4>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <input type="file" id="newFontFile" accept=".ttf,.otf,.woff,.woff2" style="flex:1;">
@@ -579,12 +622,14 @@
 
     <div id="icon-tab" class="tab-content">
         <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
-                <h3>Custom Icon Manager</h3>
-                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
+                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 style="margin:0;">Custom Icon Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4>Add New Icon (PNG, SVG, JPG)</h4>
-                    <input type="file" id="newIconFile" accept=".png,.svg,.jpg,.jpeg">
-                    <button onclick="addCustomIcon()" style="margin-top: 15px; background-color: #4CAF50;">Upload Icon</button>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newIconFile" accept=".png,.svg,.jpg,.jpeg" style="flex:1;">
+                        <button onclick="addCustomIcon()" style="background-color: #4CAF50; width:auto; margin-top:0;">Upload Icon</button>
+                    </div>
                 </div>
                 <h4>Uploaded Icons</h4>
                 <div id="customIconList"></div>
@@ -593,8 +638,12 @@
     </div>
 
     <div id="settings-tab" class="tab-content">
-        <div class="settings-grid">
-            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+        <div class="settings-grid" style="width: 100%; max-width: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; align-items: start;">
+            <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
+                <button onclick="saveSettings()" style="flex:1; max-width: 400px; margin: 0 auto; background-color: #4CAF50;" data-i18n="save_settings">Save Settings</button>
+            </div>
+            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Jellyfin</h3>
                 <label for="set-jf-url" data-i18n="server_url">Server URL</label>
                 <input type="text" id="set-jf-url" value="{{ config.jellyfin.url }}">
@@ -607,7 +656,7 @@
                 <button onclick="testJellyfinConnection()" style="margin-top: 10px; background-color: #1976d2; width: 100%;">Test Connection</button>
             </div>
 
-            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Plex</h3>
                 <label for="set-plex-url" data-i18n="server_url">Server URL</label>
                 <input type="text" id="set-plex-url" value="{{ config.plex.url }}">
@@ -616,7 +665,7 @@
                 <button onclick="testPlexConnection()" style="margin-top: 10px; background-color: #e5a00d; width: 100%;">Test Connection</button>
             </div>
 
-            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>TMDB</h3>
                 <label for="set-tmdb-key" data-i18n="api_key">API Key (Bearer Token)</label>
                 <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
@@ -625,7 +674,7 @@
                 <button onclick="testTmdbConnection()" style="margin-top: 10px; background-color: #01b4e4; width: 100%;">Test Connection</button>
             </div>
 
-            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Radarr & Sonarr</h3>
                 <label for="set-radarr-url">Radarr URL</label>
                 <input type="text" id="set-radarr-url" value="{{ config.radarr.url }}">
@@ -640,7 +689,7 @@
                 <button onclick="testSonarrConnection()" style="margin-top: 5px; background-color: #2196f3; width: 100%;">Test Sonarr</button>
             </div>
 
-            <div class="sidebar" style="width:100%; border:1px solid #333; border-radius:8px;">
+            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
                 <h3>Other Services</h3>
                 <label for="set-jellyseerr-url">Jellyseerr URL</label>
                 <input type="text" id="set-jellyseerr-url" value="{{ config.jellyseerr.url }}">
@@ -656,8 +705,6 @@
                 <input type="text" id="set-trakt-list" value="{{ config.trakt.listname }}">
                 <button onclick="testTraktConnection()" style="margin-top: 5px; background-color: #ed1c24; width: 100%;">Test Trakt</button>
             </div>
-
-            <button onclick="saveSettings()" style="grid-column: 1 / -1; max-width: 400px; margin: 20px auto;" data-i18n="save_settings">Save Settings</button>
         </div>
     </div>
 
