@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Function to check if a directory is empty and populate it from defaults
-check_and_populate() {
+# Function to populate directory with missing files from defaults (Merge strategy)
+populate_missing() {
     local target_dir="$1"
     local source_dir="$2"
 
@@ -12,25 +12,26 @@ check_and_populate() {
         mkdir -p "$target_dir"
     fi
 
-    # Check if target directory is empty
-    if [ -z "$(ls -A "$target_dir")" ]; then
-        echo "Volume mounted at $target_dir is empty. Populating from defaults..."
-        if [ -d "$source_dir" ]; then
-            cp -r "$source_dir"/. "$target_dir"/
-            echo "Successfully populated $target_dir"
-        else
-            echo "Warning: Default source $source_dir not found. Skipping."
-        fi
+    # Check if default source exists
+    if [ -d "$source_dir" ]; then
+        echo "Checking for new files in $source_dir to copy to $target_dir..."
+        
+        # cp -rn copies recursively but DOES NOT overwrite existing files.
+        # This adds new system assets (e.g. new fonts) while keeping user data safe.
+        cp -rn "$source_dir"/. "$target_dir"/ || true
+        
+        echo "Population/Update check for $target_dir completed."
     else
-        echo "Directory $target_dir contains files. Skipping population."
+        echo "Warning: Default source $source_dir not found. Skipping."
     fi
 }
 
-# Check and populate the specific asset directories
-check_and_populate "/app/overlays" "/defaults/overlays"
-check_and_populate "/app/textures" "/defaults/textures"
-check_and_populate "/app/fonts" "/defaults/fonts"
-check_and_populate "/app/custom_icons" "/defaults/custom_icons"
+# Check and populate/update the specific asset directories
+# This will now add NEW fonts even if the folder is not empty!
+populate_missing "/app/overlays" "/defaults/overlays"
+populate_missing "/app/textures" "/defaults/textures"
+populate_missing "/app/fonts" "/defaults/fonts"
+populate_missing "/app/custom_icons" "/defaults/custom_icons"
 
 # Execute the main container command
 exec "$@"

@@ -6,6 +6,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alice&family=Andika&family=Arvo:wght@400;700&family=Barrio&family=Bungee+Spice&family=Codystar&family=Creepster&family=Diplomata+SC&family=Ewert&family=Fascinate+Inline&family=Faster+One&family=Fira+Sans:wght@300;400;700&family=Flavors&family=Fredericka+the+Great&family=Honk&family=IBM+Plex+Sans:wght@300;400;700&family=Inter:wght@300;400;700&family=Jost:wght@300;400;700&family=Lacquer&family=Lato:wght@300;400;700&family=Manrope:wght@300;400;700&family=Merriweather:wght@300;400;700&family=Metal+Mania&family=Modak&family=Monoton&family=Montserrat:wght@300;400;700&family=Mulish:wght@300;400;700&family=Nabla&family=Nosifer&family=Nunito:wght@300;400;700&family=Open+Sans:wght@300;400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@300;400;700&family=Rubik+Beastly&family=Rubik+Vinyl&family=Shojumaru&family=Silkscreen&family=Space+Grotesk:wght@300;400;700&family=Special+Elite&family=Titillium+Web:wght@300;400;700&family=Urbanist:wght@300;400;700&family=Zilla+Slab+Highlight&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
+    <link rel="stylesheet" href="{{ url_for('gui_editor.dynamic_fonts_css') }}">
     <style>
         .group-content {
             overflow: hidden;
@@ -29,6 +30,50 @@
         .group-arrow.collapsed {
             transform: rotate(-90deg);
         }
+        /* Font Manager Accordion Styles */
+        #fontList {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            align-items: start;
+        }
+        @media (max-width: 1200px) { #fontList { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { #fontList { grid-template-columns: 1fr; } }
+
+        .font-family-header {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        .font-family-header:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .font-family-wrapper {
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+        .font-family-content {
+            display: none;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid #444;
+        }
+        .font-family-content.active {
+            display: block;
+        }
+        .font-file-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 15px;
+            border-bottom: 1px solid #333;
+        }
+        .font-file-row:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
@@ -40,7 +85,7 @@
         <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()" data-i18n="nav_batch">⚡ Batch Processing</div>
         <div class="tab-link" onclick="openTab(event, 'overlay-tab')" data-i18n="nav_overlay">📏 Overlay Manager</div>
         <div class="tab-link" onclick="openTab(event, 'texture-tab')" data-i18n="nav_texture">🎨 Texture Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'font-tab')" data-i18n="nav_font">🔤 Font Manager</div>
+        <div class="tab-link" onclick="openTab(event, 'font-tab'); loadFontManager()" data-i18n="nav_font">🔤 Font Manager</div>
         <div class="tab-link" onclick="openTab(event, 'icon-tab')">🎨 Icon Manager</div>
         <div class="tab-link" onclick="openTab(event, 'settings-tab')" data-i18n="nav_settings">⚙️ Provider Settings</div>
         <div style="margin-left: auto; padding-right: 10px; display: flex; align-items: center;">
@@ -205,53 +250,15 @@
                     <label for="fontSizeInput" data-i18n="font_size">Font Size</label>
                     <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
                     <label for="fontFamilySelect" data-i18n="font_family">Font Family</label>
-                    <select id="fontFamilySelect" onchange="updateSelectedFontFamily()">
-                        <option value="Roboto" selected>Roboto</option>
-                        <option value="Segoe UI">Segoe UI (System)</option>
-                    <option value="Open Sans">Open Sans</option>
-                    <option value="Lato">Lato</option>
-                    <option value="Montserrat">Montserrat</option>
-                    <option value="Merriweather">Merriweather</option>
-                    <option value="Playfair Display">Playfair Display</option>
-                    <option value="Space Grotesk">Space Grotesque</option>
-                    <option value="Nunito">Nunito</option>
-                    <option value="Manrope">Manrope</option>
-                    <option value="Jost">Jost</option>
-                    <option value="Titillium Web">Titillium Web</option>
-                    <option value="Mulish">Muli</option>
-                    <option value="Urbanist">Urbanist</option>
-                    <option value="Inter">Inter</option>
-                    <option value="Abril Fatface">Abril Fatface</option>
-                    <option value="Arvo">Arvo</option>
-                    <option value="IBM Plex Sans">IBM Plex Sans</option>
-                    <option value="Alice">Alice</option>
-                    <option value="Fira Sans">Fira Sans</option>
-                    <option value="Evolventa">Evolventa</option>
-                    <option value="Andika">Andika</option>
-                    <option value="Nabla">Nabla</option>
-                    <option value="Honk">Honk</option>
-                    <option value="Monoton">Monoton</option>
-                    <option value="Rubik Beastly">Rubik Beastly</option>
-                    <option value="Faster One">Faster One</option>
-                    <option value="Creepster">Creepster</option>
-                    <option value="Modak">Modak</option>
-                    <option value="Silkscreen">Silkscreen</option>
-                    <option value="Lacquer">Lacquer</option>
-                    <option value="Zilla Slab Highlight">Zilla Slab Highlight</option>
-                    <option value="Codystar">Codystar</option>
-                    <option value="Fascinate Inline">Fascinate Inline</option>
-                    <option value="Ewert">Ewert</option>
-                    <option value="Nosifer">Nosifer</option>
-                    <option value="Shojumaru">Shojumaru</option>
-                    <option value="Bungee Spice">Bungee Spice</option>
-                    <option value="Rubik Vinyl">Rubik Vinyl</option>
-                    <option value="Special Elite">Special Elite</option>
-                    <option value="Flavors">Flavors</option>
-                    <option value="Barrio">Barrio</option>
-                    <option value="Fredericka the Great">Fredericka the Great</option>
-                    <option value="Metal Mania">Metal Mania</option>
-                    <option value="Diplomata SC">Diplomata SC</option>
-                </select>
+                    <select id="fontFamilySelect" onchange="updateSelectedFontFamily()" class="form-control">
+                        {% for family in data.font_families %}
+                        <option value="{{ family }}" style="font-family: '{{ family }}';">{{ family }}</option>
+                        {% endfor %}
+                    </select>
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        <button id="btn-bold" onclick="toggleBold()" style="flex:1; font-weight:bold;" title="Bold">B</button>
+                        <button id="btn-italic" onclick="toggleItalic()" style="flex:1; font-style:italic;" title="Italic">I</button>
+                    </div>
                     <button onclick="applyFontToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_font_all">Apply Font & Color to All Tags</button>
                     <button onclick="applyFontSizeToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_size_all">Apply Size to All Tags</button>
                     
@@ -554,14 +561,15 @@
     </div>
 
     <div id="font-tab" class="tab-content">
-        <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="sidebar" style="width: 100%; max-width: 800px; margin: 0 auto; border: 1px solid #333; border-radius: 8px;">
+        <div class="main-view" style="padding: 20px; align-items: flex-start; width: 100%;">
+            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
                 <h3 data-i18n="font_manager">Font Manager</h3>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
                     <h4 data-i18n="add_font">Add New Font (.ttf, .otf, .woff)</h4>
-                    <label data-i18n="font_file">Font File</label>
-                    <input type="file" id="newFontFile" accept=".ttf,.otf,.woff,.woff2">
-                    <button onclick="addFont()" style="margin-top: 15px; background-color: #4CAF50;" data-i18n="upload_font">Upload Font</button>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newFontFile" accept=".ttf,.otf,.woff,.woff2" style="flex:1;">
+                        <button onclick="addFont()" style="background-color: #4CAF50; width:auto;" data-i18n="upload_font">Upload Font</button>
+                    </div>
                 </div>
                 <h4 data-i18n="installed_fonts">Installed Custom Fonts</h4>
                 <div id="fontList"></div>
@@ -765,6 +773,153 @@
                 body: JSON.stringify({client_id: key, username: user})
             }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
             .catch(e => alert("❌ Network Error"));
+        }
+
+        // --- Font Style Controls (Bold/Italic) ---
+        function toggleBold() {
+            if (typeof canvas === 'undefined') return;
+            var activeObj = canvas.getActiveObject();
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'text' || activeObj.type === 'textbox')) {
+                activeObj.set('fontWeight', activeObj.fontWeight === 'bold' ? 'normal' : 'bold');
+                canvas.requestRenderAll();
+                updateFontControls();
+            }
+        }
+
+        function toggleItalic() {
+            if (typeof canvas === 'undefined') return;
+            var activeObj = canvas.getActiveObject();
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'text' || activeObj.type === 'textbox')) {
+                activeObj.set('fontStyle', activeObj.fontStyle === 'italic' ? 'normal' : 'italic');
+                canvas.requestRenderAll();
+                updateFontControls();
+            }
+        }
+
+        function updateFontControls() {
+            if (typeof canvas === 'undefined') return;
+            var activeObj = canvas.getActiveObject();
+            var btnBold = document.getElementById('btn-bold');
+            var btnItalic = document.getElementById('btn-italic');
+            var fontSelect = document.getElementById('fontFamilySelect');
+            
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'text' || activeObj.type === 'textbox')) {
+                btnBold.style.backgroundColor = activeObj.fontWeight === 'bold' ? '#e6e6e6' : '';
+                btnBold.style.color = activeObj.fontWeight === 'bold' ? '#000' : '';
+                
+                btnItalic.style.backgroundColor = activeObj.fontStyle === 'italic' ? '#e6e6e6' : '';
+                btnItalic.style.color = activeObj.fontStyle === 'italic' ? '#000' : '';
+                
+                if(activeObj.fontFamily) {
+                    fontSelect.value = activeObj.fontFamily;
+                }
+            } else {
+                btnBold.style.backgroundColor = '';
+                btnBold.style.color = '';
+                btnItalic.style.backgroundColor = '';
+                btnItalic.style.color = '';
+            }
+        }
+
+        // Hook into canvas events once loaded
+        window.addEventListener('load', function() {
+            if (typeof canvas !== 'undefined') {
+                canvas.on('selection:created', updateFontControls);
+                canvas.on('selection:updated', updateFontControls);
+                canvas.on('selection:cleared', updateFontControls);
+            }
+        });
+
+        // --- Font Manager Logic ---
+        function loadFontManager() {
+            fetch('/api/fonts/grouped')
+                .then(r => r.json())
+                .then(data => {
+                    const container = document.getElementById('fontList');
+                    container.innerHTML = '';
+                    
+                    if (Object.keys(data).length === 0) {
+                        container.innerHTML = '<p style="padding:15px; color:#888;">No custom fonts installed.</p>';
+                        return;
+                    }
+
+                    for (const [family, files] of Object.entries(data)) {
+                        // Wrapper for Grid Item
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'font-family-wrapper';
+
+                        // Header
+                        const header = document.createElement('div');
+                        header.className = 'font-family-header';
+                        header.innerHTML = `<span style="font-family:'${family}'; font-size:1.1em;">${family}</span> <span style="font-size:0.8em; opacity:0.7;">${files.length} variants ▼</span>`;
+                        header.onclick = function() {
+                            this.nextElementSibling.classList.toggle('active');
+                            const arrow = this.querySelector('span:last-child');
+                            if (this.nextElementSibling.classList.contains('active')) {
+                                arrow.innerHTML = `${files.length} variants ▲`;
+                            } else {
+                                arrow.innerHTML = `${files.length} variants ▼`;
+                            }
+                        };
+                        
+                        // Content (Files)
+                        const content = document.createElement('div');
+                        content.className = 'font-family-content';
+                        
+                        files.forEach(file => {
+                            const row = document.createElement('div');
+                            row.className = 'font-file-row';
+                            
+                            // Determine readable weight/style
+                            let details = [];
+                            if (file.weight !== '400' && file.weight !== 'normal') details.push('Weight: ' + file.weight);
+                            if (file.style !== 'normal') details.push(file.style);
+                            const detailStr = details.length > 0 ? `(${details.join(', ')})` : '(Regular)';
+
+                            row.innerHTML = `
+                                <div style="display:flex; flex-direction:column;">
+                                    <span style="font-family: '${family}'; font-weight: ${file.weight}; font-style: ${file.style}; font-size: 16px;">
+                                        The quick brown fox jumps over the lazy dog
+                                    </span>
+                                    <span style="font-size: 11px; color: #aaa; margin-top:2px;">${file.src} ${detailStr}</span>
+                                </div>
+                                <button onclick="deleteFont('${file.src}')" style="background: #c62828; padding: 5px 10px; font-size: 11px; width:auto;">Delete</button>
+                            `;
+                            content.appendChild(row);
+                        });
+                        
+                        wrapper.appendChild(header);
+                        wrapper.appendChild(content);
+                        container.appendChild(wrapper);
+                    }
+                });
+        }
+
+        function addFont() {
+            const fileInput = document.getElementById('newFontFile');
+            if (!fileInput.files.length) return alert("Please select a file");
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            fetch('/api/fonts/add', {method: 'POST', body: formData})
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    fileInput.value = '';
+                    loadFontManager();
+                } else alert("Error: " + data.message);
+            });
+        }
+
+        function deleteFont(filename) {
+            if(!confirm("Delete " + filename + "?")) return;
+            fetch('/api/fonts/delete/' + filename, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') loadFontManager();
+                else alert("Error: " + data.message);
+            });
         }
     </script>
 </body>

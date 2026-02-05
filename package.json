@@ -1,0 +1,26 @@
+{
+  "name": "androidtvbackgroundwebgui",
+  "version": "1.0.0",
+  "description": "**TV Background Suite** is a powerful, web-based tool designed to generate high-quality, customized background images and posters for media servers like **Jellyfin**, **Emby**, and **Plex**, or for use with Android TV launchers.",
+  "main": "render_task.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/z9m/androidtvbackgroundWebGui.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/z9m/androidtvbackgroundWebGui/issues"
+  },
+  "homepage": "https://github.com/z9m/androidtvbackgroundWebGui#readme",
+  "dependencies": {
+    "canvas": "^3.2.1",
+    "fabric": "^5.3.0",
+    "jsdom": "^28.0.0"
+  }
+}

@@ -1,4 +1,24 @@
 // --- GLOBAL FIXES ---
+// Helper: Extracts all font families directly from the JSON data structure
+function extractFontsFromJSON(data) {
+    const fonts = new Set();
+    
+    const traverse = (objects) => {
+        if (!objects) return;
+        objects.forEach(obj => {
+            if (obj.fontFamily) {
+                fonts.add(obj.fontFamily);
+            }
+            // Check inside groups recursively
+            if (obj.objects) {
+                traverse(obj.objects);
+            }
+        });
+    };
+
+    if (data.objects) traverse(data.objects);
+    return Array.from(fonts);
+}
 (function() {
     const originalSetter = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'textBaseline').set;
     Object.defineProperty(CanvasRenderingContext2D.prototype, 'textBaseline', {
@@ -2429,7 +2449,7 @@ async function loadTextureProfiles() {
 async function loadFonts() {
     try {
         const resp = await fetch('/api/fonts/list');
-        const fonts = await resp.json();
+        const families = await resp.json(); // These are now just ["Inter", "Roboto", ...]
         
         const sel = document.getElementById('fontFamilySelect');
         const list = document.getElementById('fontList');
@@ -2444,36 +2464,35 @@ async function loadFonts() {
         }
         if (customGroup) customGroup.innerHTML = '';
 
-        // Inject CSS styles
-        let style = document.getElementById('custom-font-styles');
-        if (!style) {
-            style = document.createElement('style');
-            style.id = 'custom-font-styles';
-            document.head.appendChild(style);
-        }
-        let css = '';
-        let listHtml = '<ul style="list-style:none; padding:0;">';
-
-        fonts.forEach(fontFile => {
-            const fontName = fontFile.replace(/\.[^/.]+$/, ""); // Remove extension
-            
-            if (customGroup) {
-                const opt = document.createElement('option');
-                opt.value = fontName;
-                opt.innerText = fontName;
-                customGroup.appendChild(opt);
-            }
-
-            css += `@font-face { font-family: '${fontName}'; src: url('/api/fonts/file/${encodeURIComponent(fontFile)}'); }\n`;
-
-            listHtml += `<li style="background:rgba(255,255,255,0.1); margin-bottom:5px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-family:'${fontName}', sans-serif; font-size:16px;">${fontName}</span>
-                <button onclick="deleteFont('${fontFile}')" style="background:#c62828; border:none; color:white; padding:5px 10px; cursor:pointer; border-radius:4px; font-size:11px;">Delete</button>
-            </li>`;
-        });
+        // NOTE: For the Manager Tab (delete), it would be better to list files.
+        // But for the dropdown we need families.
+        // Workaround: We use families only for the dropdown.
         
-        style.textContent = css;
-        if (list) list.innerHTML = listHtml + '</ul>';
+        if (customGroup) {
+            families.forEach(family => {
+                const opt = document.createElement('option');
+                opt.value = family;
+                opt.innerText = family;
+                // We set the font-family style directly on the option so you can see a preview
+                opt.style.fontFamily = family; 
+                customGroup.appendChild(opt);
+            });
+        }
+
+        // --- Update Manager Tab List (optional) ---
+        // Since the API now only returns families, we display the families here.
+        // To delete individual files, we would actually need to build a more detailed API.
+        // For now, we display the families.
+        if (list) {
+            let listHtml = '<ul style="list-style:none; padding:0;">';
+            families.forEach(family => {
+                listHtml += `<li style="background:rgba(255,255,255,0.1); margin-bottom:5px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-family:'${family}', sans-serif; font-size:16px;">${family}</span>
+                    <span style="font-size:10px; color:#aaa;">(Family Group)</span>
+                </li>`;
+            });
+            list.innerHTML = listHtml + '</ul>';
+        }
 
     } catch (e) { console.error("Error loading fonts", e); }
 }
@@ -2940,125 +2959,98 @@ async function loadLayout(name, silent = false) {
     }
     
     return new Promise((resolve) => {
-    if (data.metadata) {
-        lastFetchedData = data.metadata;
-    }
+        if (data.metadata) lastFetchedData = data.metadata;
 
-    canvas.loadFromJSON(data, () => {
-        canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
-        canvas.renderAll();
-        
-        // Restore mainBg reference
-        mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
-        
-        const title = canvas.getObjects().find(o => o.dataTag === 'title' && o.type === 'image');
-        if (title) preferredLogoWidth = title.getScaledWidth();
+        // Hier nutzen wir den Callback (1. Funktion) UND den Reviver (2. Funktion für Gradienten)
+        canvas.loadFromJSON(data, () => {
+            // --- CALLBACK START (Wird ausgeführt, wenn alles geladen ist) ---
+            canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
+            
+            mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
+            const title = canvas.getObjects().find(o => o.dataTag === 'title' && o.type === 'image');
+            if (title) preferredLogoWidth = title.getScaledWidth();
 
-        // Fallback if not tagged
-        if (!mainBg && canvas.getObjects().length > 0) {
-            const firstObj = canvas.item(0);
-            if (firstObj && firstObj.type === 'image' && firstObj.width > 500) {
-                mainBg = firstObj;
-                mainBg.set('dataTag', 'background');
-            }
-        }
-        // Remove ghost effects
-        const ghosts = canvas.getObjects().filter(o => o.dataTag === 'fade_effect' || o.dataTag === 'grid_line');
-        ghosts.forEach(g => canvas.remove(g));
-
-        document.getElementById('layoutName').value = name;
-        
-        if (data.custom_effects) {
-            const eff = data.custom_effects;
-            if(eff.bgColor) { document.getElementById('bgColor').value = eff.bgColor; canvas.setBackgroundColor(eff.bgColor); }
-            if(eff.bgBrightness) document.getElementById('bgBrightness').value = eff.bgBrightness;
-            if(eff.fadeEffect) document.getElementById('fadeEffect').value = eff.fadeEffect;
-            if(eff.fadeRadius) document.getElementById('fadeRadius').value = eff.fadeRadius;
-            if(eff.fadeLeft) document.getElementById('fadeLeft').value = eff.fadeLeft;
-            if(eff.fadeRight) document.getElementById('fadeRight').value = eff.fadeRight;
-            if(eff.fadeTop) document.getElementById('fadeTop').value = eff.fadeTop;
-            if(eff.fadeBottom) document.getElementById('fadeBottom').value = eff.fadeBottom;
-            if(eff.tagAlignment) document.getElementById('tagAlignSelect').value = eff.tagAlignment;
-            else if(eff.centerTags !== undefined) document.getElementById('tagAlignSelect').value = eff.centerTags ? 'center' : 'left';
-            if(eff.textContentAlignment) document.getElementById('textContentAlignSelect').value = eff.textContentAlignment;
-            if(eff.limitGenres !== undefined) {
-                const val = eff.limitGenres ? 2 : 6;
-                document.getElementById('genreLimitSlider').value = val;
-                document.getElementById('genreLimitVal').innerText = (val == 6) ? "Max" : val;
-            }
-            if(eff.genreLimit !== undefined) {
-                document.getElementById('genreLimitSlider').value = eff.genreLimit;
-                document.getElementById('genreLimitVal').innerText = (eff.genreLimit == 6) ? "Max" : eff.genreLimit;
-            }
-            if(eff.overlayId) {
-                document.getElementById('overlaySelect').value = eff.overlayId;
-                updateOverlay();
+            // Fallback Background
+            if (!mainBg && canvas.getObjects().length > 0) {
+                const firstObj = canvas.item(0);
+                if (firstObj && firstObj.type === 'image' && firstObj.width > 500) {
+                    mainBg = firstObj;
+                    mainBg.set('dataTag', 'background');
+                }
             }
             
-            updateFadeControls();
-            updateBgColor();
-        } else {
-            updateFades();
-        }
+            // Remove ghosts
+            const ghosts = canvas.getObjects().filter(o => o.dataTag === 'fade_effect' || o.dataTag === 'grid_line');
+            ghosts.forEach(g => canvas.remove(g));
 
-        const btnSaveGallery = document.getElementById('btn-save-gallery');
-        if(btnSaveGallery) btnSaveGallery.disabled = true;
-        
-        const btnShuffle = document.getElementById('btn-shuffle');
-        if(btnShuffle) btnShuffle.disabled = false;
-        
-        if (!silent) {
-            openTab({currentTarget: document.querySelector('.tab-link')}, 'editor-tab');
-            alert(`Layout "${name}" loaded!`);
-        }
-        
-        // Safety Net
-        updateVerticalLayout();
-        setTimeout(() => { 
-            canvas.requestRenderAll(); 
-            updateVerticalLayout(); 
-        }, 500);
-
-        resolve();
-    }, (o, object) => {
-        // --- FIX: State Synchronization & Gradient Restoration ---
-        if (object.fill && object.fill.type === 'linear' && object.fill.colorStops && object.fill.colorStops.length > 0) {
-            try {
-                if (object.dataTag === 'fade_effect') {
-                    // 1. EXTRACT COLOR FROM JSON
-                    let loadedColor = "#000000"; 
-                    let rawColor = object.fill.colorStops[0].color;
-                    
-                    if (rawColor && rawColor.startsWith('rgb')) {
-                        const rgb = rawColor.match(/\d+/g);
-                        if (rgb && rgb.length >= 3) {
-                             loadedColor = "#" + 
-                                ("0" + parseInt(rgb[0], 10).toString(16)).slice(-2) +
-                                ("0" + parseInt(rgb[1], 10).toString(16)).slice(-2) +
-                                ("0" + parseInt(rgb[2], 10).toString(16)).slice(-2);
-                        }
-                    } else if (rawColor && rawColor.startsWith('#')) {
-                        loadedColor = rawColor;
-                    }
-
-                    // 2. SYNC UI TO JSON COLOR
-                    const picker = document.getElementById('bgColor');
-                    if (picker && loadedColor && picker.value.toLowerCase() !== loadedColor.toLowerCase()) {
-                        picker.value = loadedColor;
-                    }
-                }
-                // 3. RE-APPLY GRADIENT (Fabric.js Fix)
-                const freshStops = object.fill.colorStops.map(stop => ({
-                    offset: stop.offset,
-                    color: stop.color
-                }));
-                object.fill.colorStops = freshStops;
-                object.dirty = true;
-            } catch (e) {
-                console.warn("Failed to restore gradient for object:", object, e);
+            document.getElementById('layoutName').value = name;
+            
+            // UI Updates
+            if (data.custom_effects) {
+                applyCustomEffects(data.custom_effects);
+                updateFadeControls();
+                updateBgColor();
+            } else {
+                updateFades();
             }
-        }
-    });
+
+            const btnSaveGallery = document.getElementById('btn-save-gallery');
+            if(btnSaveGallery) btnSaveGallery.disabled = true;
+            
+            const btnShuffle = document.getElementById('btn-shuffle');
+            if(btnShuffle) btnShuffle.disabled = false;
+            
+            if (!silent) {
+                openTab({currentTarget: document.querySelector('.tab-link')}, 'editor-tab');
+                // alert(`Layout "${name}" loaded!`); // Alert nervt oft, kann ausbleiben
+            }
+            
+            // --- HIER IST DER FIX: Warten auf Schriften statt setTimeout ---
+            waitForUsedFonts(canvas).then(() => {
+                canvas.getObjects().forEach(o => o.setCoords()); // Koordinaten neu berechnen
+                updateVerticalLayout(); // Jetzt Text ausrichten (da Breiten nun stimmen)
+                canvas.requestRenderAll();
+                resolve();
+            });
+            // --- FIX ENDE ---
+
+        }, (o, object) => {
+            // --- REVIVER START (Deine Gradienten-Reparatur) ---
+            if (object.fill && object.fill.type === 'linear' && object.fill.colorStops && object.fill.colorStops.length > 0) {
+                try {
+                    if (object.dataTag === 'fade_effect') {
+                        let loadedColor = "#000000"; 
+                        let rawColor = object.fill.colorStops[0].color;
+                        
+                        if (rawColor && rawColor.startsWith('rgb')) {
+                            const rgb = rawColor.match(/\d+/g);
+                            if (rgb && rgb.length >= 3) {
+                                 loadedColor = "#" + 
+                                    ("0" + parseInt(rgb[0], 10).toString(16)).slice(-2) +
+                                    ("0" + parseInt(rgb[1], 10).toString(16)).slice(-2) +
+                                    ("0" + parseInt(rgb[2], 10).toString(16)).slice(-2);
+                            }
+                        } else if (rawColor && rawColor.startsWith('#')) {
+                            loadedColor = rawColor;
+                        }
+
+                        const picker = document.getElementById('bgColor');
+                        if (picker && loadedColor && picker.value.toLowerCase() !== loadedColor.toLowerCase()) {
+                            picker.value = loadedColor;
+                        }
+                    }
+                    const freshStops = object.fill.colorStops.map(stop => ({
+                        offset: stop.offset,
+                        color: stop.color
+                    }));
+                    object.fill.colorStops = freshStops;
+                    object.dirty = true;
+                } catch (e) {
+                    console.warn("Failed to restore gradient for object:", object, e);
+                }
+            }
+            // --- REVIVER ENDE ---
+        });
     });
 }
 
@@ -3151,15 +3143,64 @@ function saveToLocalStorage() {
     saveHistory();
 }
 
-function loadFromLocalStorage() {
+// Helper: Waits precisely for Font Family AND Weight (Bold/Italic)
+// Also forces loading of the base version to support Color Fonts like Bungee Spice
+function waitForUsedFonts(canvas) {
+    const promises = [];
+    const families = new Set();
+    
+    const collectFonts = (obj) => {
+        if ((obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text') && obj.fontFamily) {
+            // Load specific style (e.g. "bold 20px Roboto")
+            const weight = obj.fontWeight || 'normal';
+            const style = obj.fontStyle || 'normal';
+            promises.push(document.fonts.load(`${style} ${weight} 20px "${obj.fontFamily}"`));
+            
+            families.add(obj.fontFamily);
+        }
+        // Recursively check groups
+        if (obj.type === 'group' && obj.getObjects) {
+            obj.getObjects().forEach(collectFonts);
+        }
+    };
+
+    canvas.getObjects().forEach(collectFonts);
+    
+    // Safety Net: ALWAYS load the standard version of the family.
+    // Critical for fonts like "Bungee Spice" which only exist as Regular but might be used as Bold.
+    families.forEach(family => {
+        promises.push(document.fonts.load(`16px "${family}"`));
+        promises.push(document.fonts.load(`normal normal 16px "${family}"`));
+    });
+
+    return Promise.all(promises);
+}
+
+async function loadFromLocalStorage() {
     const saved = localStorage.getItem('autosave_layout');
     if (saved) {
         try {
             const data = JSON.parse(saved);
 
-            if (data.metadata) {
-                lastFetchedData = data.metadata;
+            if (data.metadata) lastFetchedData = data.metadata;
+
+            // --- STEP 1: Pre-load Fonts (The Fix) ---
+            // We identify needed fonts and force the browser to load them BEFORE rendering.
+            const neededFonts = extractFontsFromJSON(data);
+            if (neededFonts.length > 0) {
+                // console.log("Preloading fonts:", neededFonts);
+                const fontPromises = neededFonts.flatMap(font => [
+                    // Load Regular
+                    document.fonts.load(`16px "${font}"`),
+                    // Load Bold/Italic variants just to be safe
+                    document.fonts.load(`bold 16px "${font}"`),
+                    document.fonts.load(`italic 16px "${font}"`)
+                ]);
+                
+                // Wait here until fonts are ready!
+                await Promise.all(fontPromises);
             }
+            // ----------------------------------------
 
             // Scale up to current resolution
             const currentRes = document.getElementById('resSelect').value;
@@ -3176,26 +3217,26 @@ function loadFromLocalStorage() {
             }
 
             lastFetchedData = data.lastFetchedData || null;
+
+            // Now it is safe to load the JSON, because fonts are in memory.
             canvas.loadFromJSON(data, () => {
                 canvas.getObjects().forEach(o => { if(o.dataTag === 'overview') o.set('objectCaching', false); });
-                canvas.renderAll();
-                mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
                 
+                mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
                 const title = canvas.getObjects().find(o => o.dataTag === 'title' && o.type === 'image');
                 if (title) preferredLogoWidth = title.getScaledWidth();
                 
-                // Cleanup: Remove any existing fade effects (tagged or untagged ghosts)
+                // Cleanup Ghosts
                 const ghosts = canvas.getObjects().filter(o => 
                     o.dataTag === 'fade_effect' || 
                     o.dataTag === 'grid_line' || 
                     o.dataTag === 'guide_overlay' ||
                     (o.type === 'rect' && !o.selectable && !o.evented) ||
-                    (o.type === 'line' && o.stroke === '#555' && !o.selectable) // Legacy grid cleanup
+                    (o.type === 'line' && o.stroke === '#555' && !o.selectable)
                 );
                 ghosts.forEach(g => canvas.remove(g));
                 
-                
-                // Fallback: If no background tag found, assume the first large image is the background
+                // Fallback Background
                 if (!mainBg && canvas.getObjects().length > 0) {
                     const firstObj = canvas.item(0);
                     if (firstObj && firstObj.type === 'image' && firstObj.width > 500) {
@@ -3204,58 +3245,44 @@ function loadFromLocalStorage() {
                     }
                 }
                 
-                if (data.custom_effects) {
-                    applyCustomEffects(data.custom_effects);
-                }
+                if (data.custom_effects) applyCustomEffects(data.custom_effects);
                 updateFades();
 
-                // Ensure fonts are loaded before final layout adjustment
-                document.fonts.ready.then(() => {
-                    canvas.getObjects().forEach(obj => {
-                        if (obj.dataTag === 'overview' && obj.type === 'textbox') {
-                            fitTextToContainer(obj);
-                        }
-                    });
-                    updateVerticalLayout();
-                    canvas.requestRenderAll();
+                // Final layout adjustment
+                // Even though we preloaded, we trigger a recalc just to be 100% sure
+                canvas.getObjects().forEach(obj => {
+                    if (obj.dataTag === 'overview' && obj.type === 'textbox') {
+                        fitTextToContainer(obj);
+                    }
+                    obj.setCoords();
                 });
+                
+                updateVerticalLayout();
+                canvas.requestRenderAll();
+
             }, (o, object) => {
-                // --- FIX: State Synchronization & Gradient Restoration ---
+                // Gradient Restoration Reviver
                 if (object.fill && object.fill.type === 'linear' && object.fill.colorStops && object.fill.colorStops.length > 0) {
                     try {
                         if (object.dataTag === 'fade_effect') {
-                    // 1. EXTRACT COLOR FROM JSON
-                    let loadedColor = "#000000"; 
-                    let rawColor = object.fill.colorStops[0].color;
-                    
-                    if (rawColor && rawColor.startsWith('rgb')) {
-                        const rgb = rawColor.match(/\d+/g);
-                        if (rgb && rgb.length >= 3) {
-                             loadedColor = "#" + 
-                                ("0" + parseInt(rgb[0], 10).toString(16)).slice(-2) +
-                                ("0" + parseInt(rgb[1], 10).toString(16)).slice(-2) +
-                                ("0" + parseInt(rgb[2], 10).toString(16)).slice(-2);
+                            let loadedColor = "#000000"; 
+                            let rawColor = object.fill.colorStops[0].color;
+                            if (rawColor && rawColor.startsWith('rgb')) {
+                                const rgb = rawColor.match(/\d+/g);
+                                if (rgb && rgb.length >= 3) {
+                                     loadedColor = "#" + 
+                                        ("0" + parseInt(rgb[0], 10).toString(16)).slice(-2) +
+                                        ("0" + parseInt(rgb[1], 10).toString(16)).slice(-2) +
+                                        ("0" + parseInt(rgb[2], 10).toString(16)).slice(-2);
                                 }
-                    } else if (rawColor && rawColor.startsWith('#')) {
-                        loadedColor = rawColor;
-                            }
-
-                    // 2. SYNC UI TO JSON COLOR
-                    const picker = document.getElementById('bgColor');
-                    if (picker && loadedColor && picker.value.toLowerCase() !== loadedColor.toLowerCase()) {
-                        picker.value = loadedColor;
-                    }
+                            } else if (rawColor && rawColor.startsWith('#')) { loadedColor = rawColor; }
+                            const picker = document.getElementById('bgColor');
+                            if (picker && loadedColor && picker.value.toLowerCase() !== loadedColor.toLowerCase()) picker.value = loadedColor;
                         }
-                // 3. RE-APPLY GRADIENT (Fabric.js Fix)
-                        const freshStops = object.fill.colorStops.map(stop => ({
-                            offset: stop.offset,
-                            color: stop.color
-                        }));
+                        const freshStops = object.fill.colorStops.map(stop => ({ offset: stop.offset, color: stop.color }));
                         object.fill.colorStops = freshStops;
                         object.dirty = true;
-                    } catch (e) {
-                        console.warn("Failed to restore gradient for object:", object, e);
-                    }
+                    } catch (e) { console.warn("Gradient restore fail", e); }
                 }
             });
             return true;
@@ -3267,7 +3294,8 @@ function loadFromLocalStorage() {
 function toggleLogoAutoFix() {
     const activeObj = canvas.getActiveObject();
     if (activeObj && activeObj.type === 'image') {
-        activeObj.logoAutoFix = document.getElementById('logoAutoFixToggle').checked;
+        activeObj.logoAutoFix = document.getElemen
+        tById('logoAutoFixToggle').checked;
         
         const currentSrc = activeObj.getSrc();
         if (currentSrc.includes('/api/proxy/image')) {

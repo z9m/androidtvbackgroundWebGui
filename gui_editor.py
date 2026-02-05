@@ -676,13 +676,135 @@ def delete_texture(texture_id):
 def get_texture_image(filename):
     return send_from_directory(TEXTURES_DIR, filename)
 
+# --- FONT PARSING LOGIC START ---
+
+def parse_font_filename(filename):
+    """
+    Analyzes the filename and extracts family, weight, and style.
+    Example: "Inter_18pt-BoldItalic.ttf" -> Family: "Inter", Weight: 700, Style: "italic"
+    """
+    name_part = os.path.splitext(filename)[0]
+    
+    # 1. Default values
+    weight = 'normal' # 400
+    style = 'normal'
+    
+    # 2. Detect style (Italic/Oblique)
+    if re.search(r'(italic|oblique)', name_part, re.IGNORECASE):
+        style = 'italic'
+    
+    # 3. Detect weight (Keywords & Mapping to CSS numbers)
+    # Order is important: Check 'ExtraBold' before 'Bold'!
+    weight_map = {
+        r'(thin|hairline|100)': '100',
+        r'(extra[-]?light|ultra[-]?light|200)': '200',
+        r'(light|300)': '300',
+        r'(normal|regular|book|400)': '400',
+        r'(medium|500)': '500',
+        r'(semi[-]?bold|demi[-]?bold|600)': '600',
+        r'(extra[-]?bold|ultra[-]?bold|800)': '800', # Check ExtraBold before Bold
+        r'(bold|700)': '700',                         # Bold as the last of the bold variants
+        r'(black|heavy|900)': '900'
+    }
+    
+    lower_name = name_part.lower()
+    for pattern, w_val in weight_map.items():
+        if re.search(pattern, lower_name):
+            weight = w_val
+            break # First match wins (hence order above is important)
+
+    # 4. Cleaning up the family name
+    # We remove all keywords found above from the name
+    remove_patterns = [
+        r'(italic|oblique)',
+        r'(thin|hairline|100)',
+        r'(extra[-]?light|ultra[-]?light|200)',
+        r'(light|300)',
+        r'(normal|regular|book|400)',
+        r'(medium|500)',
+        r'(semi[-]?bold|demi[-]?bold|600)',
+        r'(extra[-]?bold|ultra[-]?bold|800)',
+        r'(bold|700)',
+        r'(black|heavy|900)',
+        r'(_\d+pt)', # Removes e.g. "_18pt" or "_24pt" (like in Inter)
+        r'(variablefont_wght)'
+    ]
+    
+    clean_name = name_part
+    for p in remove_patterns:
+        clean_name = re.sub(p, '', clean_name, flags=re.IGNORECASE)
+        
+    # Clean up separators (underscores, hyphens at the end/beginning)
+    clean_name = re.sub(r'[-_ ]+', ' ', clean_name).strip()
+    
+    # Fallback: If everything was deleted (e.g. filename was just "Bold.ttf"), use original
+    if not clean_name:
+        clean_name = name_part
+
+    return {
+        'family': clean_name,
+        'weight': weight,
+        'style': style,
+        'src': filename
+    }
+
+def get_font_metadata():
+    if not os.path.exists(FONTS_DIR):
+        return []
+        
+    fonts = []
+    for f in os.listdir(FONTS_DIR):
+        if f.lower().endswith(('.ttf', '.otf', '.woff', '.woff2')):
+            meta = parse_font_filename(f)
+            fonts.append(meta)
+    return fonts
+
+@gui_editor_bp.route('/dynamic_fonts.css')
+def dynamic_fonts_css():
+    """Generates CSS @font-face rules that group families."""
+    fonts = get_font_metadata()
+    css = []
+    
+    for font in fonts:
+        # Here is the trick: We use the same 'font-family' name for different files
+        rule = (
+            f"@font-face {{\n"
+            f"    font-family: '{font['family']}';\n"
+            f"    src: url('{url_for('gui_editor.get_font_file', filename=font['src'])}');\n"
+            f"    font-weight: {font['weight']};\n"
+            f"    font-style: {font['style']};\n"
+            f"    font-display: swap;\n"
+            f"}}"
+        )
+        css.append(rule)
+        
+    return "\n".join(css), 200, {'Content-Type': 'text/css'}
+
 @gui_editor_bp.route('/api/fonts/list')
 def list_fonts():
-    fonts = []
-    if os.path.exists(FONTS_DIR):
-        # Filter for common font files
-        fonts = [f for f in os.listdir(FONTS_DIR) if f.lower().endswith(('.ttf', '.otf', '.woff', '.woff2'))]
-    return jsonify(sorted(fonts))
+    """Returns only the unique family names for the dropdown."""
+    fonts = get_font_metadata()
+    # Use Set to remove duplicates, then sort
+    families = sorted(list(set(f['family'] for f in fonts)))
+    return jsonify(families)
+
+@gui_editor_bp.route('/api/fonts/grouped')
+def list_fonts_grouped():
+    """Returns fonts grouped by family for the manager UI."""
+    fonts = get_font_metadata()
+    grouped = {}
+    for f in fonts:
+        fam = f['family']
+        if fam not in grouped:
+            grouped[fam] = []
+        grouped[fam].append(f)
+    
+    # Sort families alphabetically
+    sorted_keys = sorted(grouped.keys())
+    result = {k: grouped[k] for k in sorted_keys}
+    return jsonify(result)
+
+# --- FONT PARSING LOGIC END ---
 
 @gui_editor_bp.route('/api/fonts/add', methods=['POST'])
 def add_font():
@@ -1125,7 +1247,9 @@ def get_local_background():
 @gui_editor_bp.route('/editor')
 def editor_index():
     config = load_config()
-    data = {"title": "TV Background", "backdrop_url": url_for('gui_editor.get_local_background'), "version": CURRENT_VERSION}
+    fonts = get_font_metadata()
+    families = sorted(list(set(f['family'] for f in fonts)))
+    data = {"title": "TV Background", "backdrop_url": url_for('gui_editor.get_local_background'), "version": CURRENT_VERSION, "font_families": families}
     return render_template('editor.html', data=data, config=config)
 
 @gui_editor_bp.route('/api/gallery/list')
