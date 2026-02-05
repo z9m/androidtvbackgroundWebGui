@@ -1311,10 +1311,17 @@
                         // Header
                         const header = document.createElement('div');
                         header.className = 'font-family-header';
-                        header.innerHTML = `<span style="font-family:'${family}'; font-size:1.1em;">${family}</span> <span style="font-size:0.8em; opacity:0.7;">${files.length} variants ▼</span>`;
-                        header.onclick = function() {
+                        header.innerHTML = `
+                            <div style="flex:1; display:flex; align-items:center; justify-content:space-between;">
+                                <span style="font-family:'${family}'; font-size:1.1em;">${family}</span> 
+                                <span class="arrow" style="font-size:0.8em; opacity:0.7; margin-right:10px;">${files.length} variants ▼</span>
+                            </div>
+                            <button onclick="event.stopPropagation(); deleteFontFamily('${family}')" style="background: #c62828; padding: 4px 8px; font-size: 11px; width:auto; border:none; color:white; cursor:pointer; border-radius:3px;">Delete Family</button>
+                        `;
+                        header.onclick = function(e) {
+                            if (e.target.tagName === 'BUTTON') return;
                             this.nextElementSibling.classList.toggle('active');
-                            const arrow = this.querySelector('span:last-child');
+                            const arrow = this.querySelector('.arrow');
                             if (this.nextElementSibling.classList.contains('active')) {
                                 arrow.innerHTML = `${files.length} variants ▲`;
                             } else {
@@ -1380,6 +1387,39 @@
                 if(data.status === 'success') loadFontManager();
                 else alert("Error: " + data.message);
             });
+        }
+
+        async function deleteFontFamily(family) {
+            if(!confirm(`Delete entire font family "${family}"? This will remove all associated font files.`)) return;
+            
+            try {
+                const r = await fetch('/api/fonts/grouped');
+                const data = await r.json();
+                const files = data[family];
+                
+                if (!files || files.length === 0) {
+                    alert("Family not found or empty.");
+                    return;
+                }
+                
+                let errors = [];
+                for (const file of files) {
+                    const res = await fetch('/api/fonts/delete/' + encodeURIComponent(file.src), {method: 'POST'});
+                    const resData = await res.json();
+                    if (resData.status !== 'success') {
+                        errors.push(`${file.src}: ${resData.message}`);
+                    }
+                }
+                
+                if (errors.length > 0) {
+                    alert("Some files could not be deleted:\n" + errors.join("\n"));
+                }
+                
+                loadFontManager();
+            } catch (e) {
+                console.error(e);
+                alert("Error deleting family.");
+            }
         }
     </script>
 </body>
