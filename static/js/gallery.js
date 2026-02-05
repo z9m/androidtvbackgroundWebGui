@@ -81,6 +81,7 @@ function renderGalleryUI() {
                     <img src="${src}" loading="lazy" onclick="openLightbox('${currentGalleryTab}', ${index})">
                     <div class="caption">${img}</div>
                     <button onclick="editGalleryImage('${currentGalleryTab}', '${img}')" style="position:absolute; top:5px; right:5px; width:auto; padding:4px 8px; font-size:12px; background:rgba(0,0,0,0.7); border:1px solid #fff; cursor:pointer; color:white;">✏️</button>
+                    <button onclick="deleteGalleryImage('${currentGalleryTab}', '${img}')" style="position:absolute; top:5px; left:5px; width:auto; padding:4px 8px; font-size:12px; background:rgba(198, 40, 40, 0.7); border:1px solid #fff; cursor:pointer; color:white;">🗑️</button>
                 </div>`;
         });
     }
@@ -327,7 +328,7 @@ async function saveEditedImage() {
 }
 
 async function deleteAllGalleryImages(folder) {
-    if (!confirm(`⚠️ DANGER ⚠️\n\nAre you sure you want to delete ALL images in ""?\n\nThis action cannot be undone!`)) {
+    if (!confirm(`⚠️ DANGER ⚠️\n\nAre you sure you want to delete ALL images in "${folder}"?\n\nThis action cannot be undone!`)) {
         return;
     }
     
@@ -335,6 +336,23 @@ async function deleteAllGalleryImages(folder) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ folder: folder })
+    });
+    
+    if (resp.ok) {
+        loadGallery();
+    } else {
+        const err = await resp.json();
+        alert("Error: " + (err.message || "Unknown error"));
+    }
+}
+
+async function deleteGalleryImage(folder, filename) {
+    if (!confirm(`Delete image "${filename}"?`)) return;
+    
+    const resp = await fetch('/api/gallery/delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ folder: folder, filename: filename })
     });
     
     if (resp.ok) {

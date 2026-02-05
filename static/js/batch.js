@@ -141,8 +141,6 @@ async function startBatchProcess() {
 
         logBatch(`Processing (${i+1}/${total}): ${label}`);
         
-        logBatch(`Processing (${i+1}/${total}): ${label}`);
-        
         // 1. Load data and update canvas text
         // (fetchMediaData comes from editor.js and handles the data fetching)
         await fetchMediaData(item ? item.id : null); 
