@@ -2574,7 +2574,6 @@ async function loadFonts() {
         const families = await resp.json(); // These are now just ["Inter", "Roboto", ...]
         
         const sel = document.getElementById('fontFamilySelect');
-        const list = document.getElementById('fontList');
         
         // Add custom group to dropdown if not exists
         let customGroup = document.getElementById('customFontsGroup');
@@ -2599,21 +2598,6 @@ async function loadFonts() {
                 opt.style.fontFamily = family; 
                 customGroup.appendChild(opt);
             });
-        }
-
-        // --- Update Manager Tab List (optional) ---
-        // Since the API now only returns families, we display the families here.
-        // To delete individual files, we would actually need to build a more detailed API.
-        // For now, we display the families.
-        if (list) {
-            let listHtml = '<ul style="list-style:none; padding:0;">';
-            families.forEach(family => {
-                listHtml += `<li style="background:rgba(255,255,255,0.1); margin-bottom:5px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-family:'${family}', sans-serif; font-size:16px;">${family}</span>
-                    <span style="font-size:10px; color:#aaa;">(Family Group)</span>
-                </li>`;
-            });
-            list.innerHTML = listHtml + '</ul>';
         }
 
     } catch (e) { console.error("Error loading fonts", e); }
