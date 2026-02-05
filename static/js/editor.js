@@ -1,3 +1,36 @@
+// --- MOBILE NAVIGATION ---
+function toggleTopNav() {
+    const navContainer = document.querySelector('.nav-links-container');
+    if (navContainer) {
+        navContainer.classList.toggle('open');
+    }
+}
+
+function openTab(evt, tabName) {
+    var i, tabcontent, tablinks;
+    tabcontent = document.getElementsByClassName("tab-content");
+    for (i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = "none";
+    }
+    tablinks = document.getElementsByClassName("tab-link");
+    for (i = 0; i < tablinks.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(" active", "");
+    }
+    document.getElementById(tabName).style.display = "flex";
+    if (evt.currentTarget) {
+        evt.currentTarget.className += " active";
+        const mobileTitle = document.getElementById('mobile-header-title');
+        if (mobileTitle) mobileTitle.innerText = evt.currentTarget.innerText;
+    }
+
+    // Close mobile nav if open
+    const navContainer = document.querySelector('.nav-links-container');
+    if (navContainer && navContainer.classList.contains('open')) {
+        navContainer.classList.remove('open');
+    }
+}
+
+
 // --- GLOBAL FIXES ---
 // Helper: Extracts all font families directly from the JSON data structure
 function extractFontsFromJSON(data) {
@@ -748,15 +781,8 @@ async function fetchMediaData(itemId = null) {
         
         // 1. Assets vorladen (Preload) - noch nichts am Canvas ändern!
         const assetPromises = [];
-        let newBgImg = null;
         let newLogoImg = null;
 
-        if (data.backdrop_url) {
-            assetPromises.push(new Promise(resolve => {
-                const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(data.backdrop_url)}`;
-                fabric.Image.fromURL(proxiedUrl, (img) => { newBgImg = img; resolve(); }, { crossOrigin: 'anonymous' });
-            }));
-        }
         if (data.logo_url) {
             assetPromises.push(new Promise(resolve => {
                 const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(data.logo_url)}`;
@@ -765,42 +791,14 @@ async function fetchMediaData(itemId = null) {
         }
         await Promise.all(assetPromises);
 
-        // 2. Jetzt alles auf einmal anwenden (synchron)
-        let prevBgState = null;
-        if (mainBg) {
-            prevBgState = {
-                left: mainBg.left,
-                top: mainBg.top,
-                visualWidth: mainBg.getScaledWidth(),
-                flipX: mainBg.flipX,
-                flipY: mainBg.flipY
-            };
-            canvas.remove(mainBg);
-        }
-        mainBg = newBgImg;
-        
-        if (mainBg) {
-            mainBg.set({ selectable: true, dataTag: 'background' });
-            
-            let appliedState = false;
-            if (prevBgState && prevBgState.visualWidth > 0 && mainBg.width > 0) {
-                const scale = prevBgState.visualWidth / mainBg.width;
-                if (isFinite(scale) && scale > 0.001) {
-                    mainBg.set({ left: prevBgState.left, top: prevBgState.top, scaleX: scale, scaleY: scale, flipX: !!prevBgState.flipX, flipY: !!prevBgState.flipY });
-                    appliedState = true;
-                }
-            }
-            
-            if (!appliedState) {
-                const targetWidth = canvas.width * 0.70;
-                mainBg.scaleToWidth(targetWidth);
-                mainBg.set({ left: canvas.width - targetWidth, top: 0 });
-            }
-            
-            canvas.add(mainBg); canvas.sendToBack(mainBg); 
-            updateFades(true);
+        // 2. Apply Background (using fixed resolution logic)
+        if (data.backdrop_url) {
+            await loadBackground(data.backdrop_url, true);
         } else {
-            // Ensure fades are updated (removed) if no background
+            if (mainBg) {
+                canvas.remove(mainBg);
+                mainBg = null;
+            }
             updateFades(true);
         }
 
@@ -839,16 +837,6 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
             
             let boundsL = oldObj.left;
             let boundsR = oldObj.left + oldW;
-
-            // If centered, the "visual block" includes the tags
-            if (align === 'center') {
-                const tags = canvas.getObjects().filter(o => ['year', 'genres', 'runtime', 'rating_val', 'rating_star', 'certification', 'overview', 'provider_source'].includes(o.dataTag) && o.visible);
-                tags.forEach(t => {
-                    if (t.left < boundsL) boundsL = t.left;
-                    const r = t.left + t.getScaledWidth();
-                    if (r > boundsR) boundsR = r;
-                });
-            }
 
             const isStickyLeft = Math.abs(boundsL - screenMargin) < 20;
             const isStickyRight = Math.abs(boundsR - (cW - screenMargin)) < 20;
@@ -979,6 +967,10 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                                     fill: 'white', shadow: '2px 2px 10px rgba(0,0,0,0.8)', 
                                     dataTag: 'title', editable: false 
                                 });
+                                
+                                const newLeft = getNewLogoLeft(obj, newText.width, newText.scaleX);
+                                newText.set('left', newLeft);
+
                                 canvas.remove(obj); canvas.add(newText);
                             }
                         }
@@ -1613,6 +1605,7 @@ function removeGrid() {
 }
 
 function init() {
+    closePreviewPopup(); // Explicitly hide popup on load to prevent state issues
     restoreSidebarState();
     // Load saved resolution preference
     const savedRes = localStorage.getItem('editor_resolution');
@@ -1627,6 +1620,15 @@ function init() {
     canvas = new fabric.Canvas('mainCanvas', { width: initW, height: initH, backgroundColor: '#000000', preserveObjectStacking: true });
     canvas.renderOnAddRemove = false;
     fabric.Object.prototype.objectCaching = true;
+    
+    // Optimize handles for touch devices
+    if (window.innerWidth < 1024) {
+        fabric.Object.prototype.cornerSize = 70;
+        fabric.Object.prototype.touchCornerSize = 70;
+        fabric.Object.prototype.cornerStyle = 'circle';
+        fabric.Object.prototype.transparentCorners = false;
+        fabric.Object.prototype.borderScaleFactor = 2;
+    }
 
     canvas.on('object:scaling', (e) => {
         const t = e.target;
@@ -1784,8 +1786,16 @@ function init() {
     document.body.appendChild(refreshIndicator);
 
     window.addEventListener('touchstart', e => {
-        if (e.target.closest('#canvas-wrapper')) {
-            touchStartY = -1; // Disable gesture tracking on canvas
+        // Disable pull-to-refresh on canvas and scrollable containers (menus, lists, sidebars)
+        if (e.target.closest('#canvas-wrapper') || 
+            e.target.closest('.sidebar') || 
+            e.target.closest('.nav-links-container') || 
+            e.target.closest('.batch-sidebar') || 
+            e.target.closest('#preview-popup') || 
+            e.target.closest('.layouts-container') || 
+            e.target.closest('#gallery-content') ||
+            e.target.closest('#batchLog')) {
+            touchStartY = -1; // Disable gesture tracking
             return;
         }
         touchStartY = e.touches[0].clientY;
@@ -1858,6 +1868,13 @@ function init() {
     loadCustomIcons();
     updateFadeControls();
     
+    // Set initial mobile title
+    const activeLink = document.querySelector('.tab-link.active');
+    if (activeLink) {
+        const mobileTitle = document.getElementById('mobile-header-title');
+        if (mobileTitle) mobileTitle.innerText = activeLink.innerText;
+    }
+
     // Initial History Save
     saveHistory();
     checkUpdate();
@@ -2101,17 +2118,78 @@ function applyCustomEffects(eff) {
 function loadBackground(url, skipRender = false) {
     return new Promise((resolve) => {
         const proxiedUrl = url.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(url)}` : url;
-        fabric.Image.fromURL(proxiedUrl, function(img, isError) {
-            if (isError || !img) { resolve(); return; }
-            if (mainBg) canvas.remove(mainBg);
+        fabric.Image.fromURL(proxiedUrl, function(img) {
+            if (!img) { resolve(); return; }
+
+            // --- FIX: Enforce Fixed Canvas Resolution ---
+            // We determine the target resolution based on user selection (1080p or 4K).
+            // This prevents the canvas from shrinking if the source image is low-res (e.g. 720p).
+            const currentRes = document.getElementById('resSelect') ? document.getElementById('resSelect').value : '1080';
+            const targetW = (currentRes === '2160') ? 3840 : 1920;
+            const targetH = (currentRes === '2160') ? 2160 : 1080;
+
+            // Ensure canvas dimensions are strictly set to target
+            if (canvas.getWidth() !== targetW || canvas.getHeight() !== targetH) {
+                canvas.setDimensions({ width: targetW, height: targetH });
+            }
+
+            // Default: "Cover" Scaling Logic
+            let scale = Math.max(targetW / img.width, targetH / img.height);
+            let left = targetW / 2;
+            let top = targetH / 2;
+            let flipX = false;
+            let flipY = false;
+
+            // Check for existing background to preserve state
+            const oldBg = canvas.getObjects().find(o => o.dataTag === 'background');
+            if (oldBg) {
+                const center = oldBg.getCenterPoint();
+                left = center.x;
+                top = center.y;
+                flipX = oldBg.flipX;
+                flipY = oldBg.flipY;
+                
+                // Preserve visual size
+                if (img.width > 0) {
+                    scale = oldBg.getScaledWidth() / img.width;
+                }
+                canvas.remove(oldBg);
+            } else {
+                if (canvas.backgroundImage) canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas));
+            }
+
+            img.set({
+                left: left,
+                top: top,
+                originX: 'center',      // Set origin to center for proper scaling
+                originY: 'center',
+                scaleX: scale,
+                scaleY: scale,
+                flipX: flipX,
+                flipY: flipY,
+                dataTag: 'background',
+                selectable: true,
+                evented: true
+            });
+
+            // Add new background and send to back
+            canvas.add(img);
+            canvas.sendToBack(img);
             mainBg = img;
-            img.set({ left: 0, top: 0, selectable: true, dataTag: 'background' });
-        
-            const targetWidth = canvas.width * 0.70;
-            img.scaleToWidth(targetWidth);
-            img.set({ left: canvas.width - targetWidth, top: 0 });
-        
-            canvas.add(img); canvas.sendToBack(img); updateFades(skipRender);
+
+            // Re-apply gradient overlay if it exists (fixes stacking order)
+            const fade = canvas.getObjects().find(o => o.dataTag === 'fade_effect');
+            if (fade) canvas.bringToFront(fade);
+
+            // --- FIX: Re-align Layout ---
+            // Since canvas dimensions might have been reset, we must force a layout update.
+            // This ensures right-aligned tags sit correctly at the 1920px/3840px edge.
+            if (typeof updateVerticalLayout === 'function') {
+                updateVerticalLayout();
+            }
+            
+            updateFades(skipRender);
+            canvas.requestRenderAll();
             resolve();
             saveToLocalStorage();
         }, { crossOrigin: 'anonymous' });
@@ -2202,20 +2280,27 @@ function addCornerFade(pos) {
     const r = parseInt(document.getElementById('fadeRadius').value);
     if (r <= 0) return;
     const bgColor = document.getElementById('bgColor').value;
-    const w = mainBg.getScaledWidth(), h = mainBg.getScaledHeight();
+    
+    const w = mainBg.getScaledWidth();
+    const h = mainBg.getScaledHeight();
+    let bgLeft = mainBg.left;
+    let bgTop = mainBg.top;
+    if (mainBg.originX === 'center') bgLeft -= w / 2;
+    if (mainBg.originY === 'center') bgTop -= h / 2;
+
     let rectLeft, rectTop, gradCx, gradCy;
 
     if (pos === 'bottom-left') {
-        rectLeft = mainBg.left; rectTop = mainBg.top + h - r;
+        rectLeft = bgLeft; rectTop = bgTop + h - r;
         gradCx = 0; gradCy = r;
     } else if (pos === 'bottom-right') {
-        rectLeft = mainBg.left + w - r; rectTop = mainBg.top + h - r;
+        rectLeft = bgLeft + w - r; rectTop = bgTop + h - r;
         gradCx = r; gradCy = r;
     } else if (pos === 'top-left') {
-        rectLeft = mainBg.left; rectTop = mainBg.top;
+        rectLeft = bgLeft; rectTop = bgTop;
         gradCx = 0; gradCy = 0;
     } else if (pos === 'top-right') {
-        rectLeft = mainBg.left + w - r; rectTop = mainBg.top;
+        rectLeft = bgLeft + w - r; rectTop = bgTop;
         gradCx = r; gradCy = 0;
     }
 
@@ -2235,7 +2320,13 @@ function addVignette() {
     if (r <= 0) return;
     const bgColor = document.getElementById('bgColor').value;
     const padding = 10;
-    const w = Math.ceil(mainBg.getScaledWidth()) + padding, h = Math.ceil(mainBg.getScaledHeight()) + padding;
+    const w = Math.ceil(mainBg.getScaledWidth()) + padding;
+    const h = Math.ceil(mainBg.getScaledHeight()) + padding;
+    
+    let bgLeft = mainBg.left;
+    let bgTop = mainBg.top;
+    if (mainBg.originX === 'center') bgLeft -= mainBg.getScaledWidth() / 2;
+    if (mainBg.originY === 'center') bgTop -= mainBg.getScaledHeight() / 2;
     
     const grad = new fabric.Gradient({
         type: 'radial',
@@ -2243,19 +2334,27 @@ function addVignette() {
         colorStops: [{ offset: 0, color: hexToRgba(bgColor, 0) }, { offset: 1, color: bgColor }]
     });
 
-    fades.corner = new fabric.Rect({ left: mainBg.left - (padding/2), top: mainBg.top - (padding/2), width: w, height: h, fill: grad, selectable: false, evented: false, dataTag: 'fade_effect' });
+    fades.corner = new fabric.Rect({ left: bgLeft - (padding/2), top: bgTop - (padding/2), width: w, height: h, fill: grad, selectable: false, evented: false, dataTag: 'fade_effect' });
     canvas.add(fades.corner);
     fades.corner.moveTo(canvas.getObjects().indexOf(mainBg) + 1);
 }
 
 function createFadeRect(type, size) {
     const bgColor = document.getElementById('bgColor').value;
-    const b = 2, wImg = mainBg.getScaledWidth(), hImg = mainBg.getScaledHeight();
+    const b = 2;
+    const wImg = mainBg.getScaledWidth();
+    const hImg = mainBg.getScaledHeight();
+    
+    let bgLeft = mainBg.left;
+    let bgTop = mainBg.top;
+    if (mainBg.originX === 'center') bgLeft -= wImg / 2;
+    if (mainBg.originY === 'center') bgTop -= hImg / 2;
+
     let w, h, x, y, c;
-    if (type === 'left') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 1, y2: 0 }; }
-    else if (type === 'right') { w = parseInt(size) + b; h = hImg + b*2; x = mainBg.left + wImg - size; y = mainBg.top - b; c = { x1: 1, y1: 0, x2: 0, y2: 0 }; }
-    else if (type === 'top') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top - b; c = { x1: 0, y1: 0, x2: 0, y2: 1 }; }
-    else if (type === 'bottom') { w = wImg + b*2; h = parseInt(size) + b; x = mainBg.left - b; y = mainBg.top + hImg - size; c = { x1: 0, y1: 1, x2: 0, y2: 0 }; }
+    if (type === 'left') { w = parseInt(size) + b; h = hImg + b*2; x = bgLeft - b; y = bgTop - b; c = { x1: 0, y1: 0, x2: 1, y2: 0 }; }
+    else if (type === 'right') { w = parseInt(size) + b; h = hImg + b*2; x = bgLeft + wImg - size; y = bgTop - b; c = { x1: 1, y1: 0, x2: 0, y2: 0 }; }
+    else if (type === 'top') { w = wImg + b*2; h = parseInt(size) + b; x = bgLeft - b; y = bgTop - b; c = { x1: 0, y1: 0, x2: 0, y2: 1 }; }
+    else if (type === 'bottom') { w = wImg + b*2; h = parseInt(size) + b; x = bgLeft - b; y = bgTop + hImg - size; c = { x1: 0, y1: 1, x2: 0, y2: 0 }; }
     return new fabric.Rect({
         left: x, top: y, width: w, height: h, selectable: false, evented: false,
         fill: new fabric.Gradient({ type: 'linear', gradientUnits: 'percentage', coords: c, colorStops: [{ offset: 0, color: bgColor }, { offset: 1, color: hexToRgba(bgColor, 0) }] }),
@@ -2770,7 +2869,6 @@ function setUIInteraction(enabled) {
     if (enabled) updateSelectionUI();
 }
 
-function openTab(evt, tabId) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active')); document.getElementById(tabId).classList.add('active'); evt.currentTarget.classList.add('active'); }
 async function saveSettings() {
     const config = {
         general: {
@@ -2978,6 +3076,7 @@ async function loadLayout(name, silent = false) {
                     mainBg.set('dataTag', 'background');
                 }
             }
+            if (mainBg) mainBg.set({ selectable: true, evented: true });
             
             // Remove ghosts
             const ghosts = canvas.getObjects().filter(o => o.dataTag === 'fade_effect' || o.dataTag === 'grid_line');
@@ -3244,6 +3343,7 @@ async function loadFromLocalStorage() {
                         mainBg.set('dataTag', 'background');
                     }
                 }
+                if (mainBg) mainBg.set({ selectable: true, evented: true });
                 
                 if (data.custom_effects) applyCustomEffects(data.custom_effects);
                 updateFades();
@@ -3294,8 +3394,7 @@ async function loadFromLocalStorage() {
 function toggleLogoAutoFix() {
     const activeObj = canvas.getActiveObject();
     if (activeObj && activeObj.type === 'image') {
-        activeObj.logoAutoFix = document.getElemen
-        tById('logoAutoFixToggle').checked;
+        activeObj.logoAutoFix = document.getElementById('logoAutoFixToggle').checked;
         
         const currentSrc = activeObj.getSrc();
         if (currentSrc.includes('/api/proxy/image')) {
@@ -3431,6 +3530,23 @@ function toggleTitleType() {
             updateVerticalLayout();
             saveToLocalStorage();
         }, { crossOrigin: 'anonymous' });
+    }
+}
+
+function toggleBatchConfig() {
+    if (window.innerWidth > 1280) return;
+    const content = document.getElementById('batch-config-content');
+    const header = document.querySelector('.batch-header');
+    if (content && header) {
+        content.classList.toggle('active');
+        header.classList.toggle('active');
+    }
+}
+
+function toggleMobileTools() {
+    const tools = document.getElementById('toolsDropdown');
+    if (tools) {
+        tools.classList.toggle('open');
     }
 }
 

@@ -141,11 +141,41 @@ async function startBatchProcess() {
 
         logBatch(`Processing (${i+1}/${total}): ${label}`);
         
+        logBatch(`Processing (${i+1}/${total}): ${label}`);
+        
+        // 1. Load data and update canvas text
+        // (fetchMediaData comes from editor.js and handles the data fetching)
         await fetchMediaData(item ? item.id : null); 
         
-        // --- FIX: Ensure Full Metadata is captured (Client-Side Cron Job) ---
-        // We manually construct the payload to ensure all metadata fields (officialRating, etc.) are included.
-        
+        // --- FIX: Correct Layout (Fixes overflow issues) ---
+        // Since the text content has changed, widths have changed.
+        // We must manually trigger a layout recalculation before saving.
+        if (typeof canvas !== 'undefined') {
+            
+            // A. Recalculate Textboxes (e.g. Overview) to fit container
+            canvas.getObjects().forEach(obj => {
+                if (obj.dataTag === 'overview' && obj.type === 'textbox') {
+                    if (typeof fitTextToContainer === 'function') {
+                        fitTextToContainer(obj);
+                    }
+                }
+                // Invalidate cache to prevent artifacts
+                obj.setCoords(); 
+                obj.dirty = true;
+            });
+
+            // B. CRITICAL: Re-align right-aligned tags
+            // This pulls tags back to the left if they grew wider.
+            if (typeof updateVerticalLayout === 'function') {
+                updateVerticalLayout();
+            }
+            
+            // C. Force a clean redraw
+            canvas.renderAll();
+        }
+        // --- FIX END ---
+
+        // 2. Hide overlay for screenshot
         const overlay = canvas.getObjects().find(o => o.dataTag === 'guide_overlay');
         const wasVisible = overlay ? overlay.visible : false;
         if (overlay) overlay.visible = false;

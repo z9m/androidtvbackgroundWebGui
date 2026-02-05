@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <title>TV Background Suite</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
@@ -110,23 +111,390 @@
             cursor: pointer;
             padding: 0 10px 0 0;
         }
-        @media (max-width: 768px) { .mobile-menu-btn { display: inline-block; } }
+        @media (max-width: 1024px) { .mobile-menu-btn { display: inline-block; } }
+
+        /* Preview Popup Styles */
+        #preview-popup {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            flex-direction: column;
+        }
+        #preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        #preview-grid img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            border: 1px solid #444;
+        }
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1600px;
+            margin: 0 auto 20px auto;
+            color: white;
+        }
+        .preview-header h2 { margin: 0; font-size: 24px; }
+        .preview-header span { font-size: 40px; cursor: pointer; line-height: 1; }
+        @media (max-width: 768px) {
+            #preview-popup { padding: 10px; }
+            .preview-header h2 { font-size: 18px; }
+            .preview-header span { font-size: 30px; }
+        }
+
+        /* Gallery & Saved Layouts Grid */
+        .gallery-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 5px;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .gallery-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 4px;
+        }
+        
+        /* Gallery Specific Styles */
+        .sub-nav-tabs {
+            display: flex;
+            flex-shrink: 0;
+            background: rgba(0,0,0,0.2);
+            border-bottom: 1px solid #444;
+            padding: 5px 20px 0 20px;
+        }
+        .sub-tab-link {
+            padding: 10px 15px;
+            cursor: pointer;
+            color: #aaa;
+            border-bottom: 3px solid transparent;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .sub-tab-link:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.05);
+        }
+        .sub-tab-link.active {
+            color: #fff;
+            border-bottom-color: #00796b;
+        }
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 5px;
+            padding: 10px;
+            overflow-y: auto;
+            flex: 1;
+            align-content: start;
+        }
+        .gallery-item {
+            position: relative;
+            border: 1px solid #333;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+        }
+        .mobile-header-title {
+            display: none;
+            font-size: 18px;
+            margin-left: 15px;
+            color: white;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        @media (max-width: 768px) {
+            .mobile-header-title { display: block; }
+        }
+        .batch-sidebar {
+            background: #1a1a1a;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        .gallery-item img {
+            width: 100%;
+            height: auto;
+            display: block;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            cursor: pointer;
+        }
+        .gallery-item .caption {
+            padding: 4px;
+            font-size: 12px;
+            color: #ccc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background: rgba(0,0,0,0.5);
+        }
+
+        /* Saved Layouts List Styles */
+        .layouts-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .layouts-container > div {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 2px;
+        }
+        .layouts-container img {
+            width: 9%;
+            height: auto;
+            max-width: 100%;
+            border-radius: 4px;
+            margin-right: 0.2%;
+            margin-top: 2px;
+            display: inline-block;
+            vertical-align: top;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .layout-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+        }
+
+        /* Fix for radio buttons size on desktop */
+        @media (min-width: 769px) {
+            input[name="fillType"] {
+                width: 13px;
+                height: 13px;
+            }
+        }
+
+        /* Batch Processing Tab Layout */
+        .batch-grid {
+            display: grid;
+            grid-template-columns: 350px 350px 1fr;
+            gap: 20px;
+            align-items: stretch;
+            height: 100%;
+        }
+        #batchLog {
+            background-color: #000;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            text-shadow: 0 0 2px #003300;
+            border: 1px solid #333;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+        @media (max-width: 1280px) {
+            .batch-grid {
+                grid-template-columns: 250px 1fr;
+                grid-template-rows: auto 1fr;
+            }
+            .batch-sidebar {
+                grid-column: 1;
+                grid-row: 1;
+                height: auto !important;
+                overflow-y: visible !important;
+            }
+            .batch-grid > div:nth-child(2) {
+                grid-column: 1;
+                grid-row: 2;
+            }
+            .batch-preview-container {
+                grid-column: 2;
+                grid-row: 1 / span 2;
+                height: 100% !important;
+            }
+            .batch-header {
+                cursor: pointer;
+                background: rgba(255,255,255,0.05);
+                padding: 10px;
+                border-radius: 4px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .batch-arrow { display: block !important; transition: transform 0.3s; }
+            .batch-header.active .batch-arrow { transform: rotate(180deg); }
+            
+            #batch-config-content {
+                display: none;
+                padding-top: 10px;
+            }
+            #batch-config-content.active {
+                display: block;
+            }
+        }
+        @media (max-width: 768px) {
+            .batch-grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto 1fr;
+            }
+            .batch-sidebar, .batch-grid > div:nth-child(2), .batch-preview-container {
+                grid-column: auto;
+                grid-row: auto;
+            }
+        }
+        
+        /* Mobile Tools Menu Styles */
+        .canvas-header { position: relative; }
+        .header-controls-left { display: flex; align-items: center; gap: 10px; }
+        .header-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .tool-group { display: flex; align-items: center; gap: 5px; }
+        #toolsToggle { display: none; }
+        
+        @media (max-width: 1024px) {
+            #toolsToggle { display: inline-block; }
+            .header-tools {
+                display: none;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                width: 100%;
+                background: rgba(0,0,0,0.95);
+                flex-direction: column;
+                padding: 15px;
+                box-sizing: border-box;
+                border-bottom: 1px solid #444;
+                z-index: 1000;
+            }
+            .header-tools.open { display: flex; }
+            .tool-group { width: 100%; justify-content: center; margin-bottom: 10px; }
+            #mediaSearchInput { width: 60% !important; }
+        }
+
+        /* Mobile Landscape Optimization */
+        @media (max-width: 1024px) and (orientation: landscape) {
+            .nav-tabs {
+                background: transparent !important;
+                pointer-events: none;
+                border-bottom: none !important;
+                height: 0 !important; /* Collapse height so canvas moves up */
+                overflow: visible !important;
+            }
+            .nav-tabs > * { pointer-events: auto; }
+            .mobile-header-title { display: none !important; }
+            .mobile-nav-toggle { 
+                background: rgba(0,0,0,0.8) !important; 
+                position: fixed; top: 5px; left: 5px; z-index: 1002;
+            }
+            
+            .canvas-header {
+                position: fixed;
+                top: 0;
+                left: 50px; /* Space for nav toggle */
+                right: auto;
+                width: auto;
+                background: transparent !important;
+                padding: 5px !important;
+                justify-content: flex-start !important;
+                z-index: 1001;
+            }
+            .header-controls-left {
+                background: rgba(0,0,0,0.8);
+                padding: 5px;
+                border-radius: 4px;
+            }
+            .header-tools { top: 50px; }
+            
+            #canvas-wrapper { 
+                position: fixed !important;
+                top: 0 !important; 
+                left: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                display: flex; 
+                align-items: flex-start; 
+                justify-content: flex-end;
+                padding-top: 20px;
+                padding-right: 0;
+                box-sizing: border-box;
+                overflow: hidden;
+                z-index: 0;
+                margin: 0 !important;
+            }
+            .canvas-container {
+                width: min(calc((100vw - 260px) * 0.8), calc(100vh * 1.7778 * 0.8)) !important;
+                height: min(calc(100vh * 0.8), calc((100vw - 260px) * 0.5625 * 0.8)) !important;
+                aspect-ratio: 16/9;
+            }
+            .canvas-container canvas {
+                width: 100% !important;
+                height: 100% !important;
+            }
+
+            /* Fullscreen Overrides */
+            #canvas-wrapper:fullscreen {
+                padding: 0 !important;
+                justify-content: center !important;
+                align-items: center !important;
+            }
+            #canvas-wrapper:fullscreen .canvas-container {
+                width: min(100vw, calc(100vh * 1.7778)) !important;
+                height: min(100vh, calc(100vw * 0.5625)) !important;
+            }
+        }
     </style>
 </head>
 <body>
 
     <div class="nav-tabs">
-        <div class="tab-link active" onclick="openTab(event, 'editor-tab')" data-i18n="nav_editor">🎨 Layout Editor</div>
-        <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()" data-i18n="nav_layouts">💾 Saved Layouts</div>
-        <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()" data-i18n="nav_gallery">🖼️ Gallery</div>
-        <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()" data-i18n="nav_batch">⚡ Batch Processing</div>
-        <div class="tab-link" onclick="openTab(event, 'overlay-tab')" data-i18n="nav_overlay">📏 Overlay Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'texture-tab')" data-i18n="nav_texture">🎨 Texture Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'font-tab'); loadFontManager()" data-i18n="nav_font">🔤 Font Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'icon-tab')">🎨 Icon Manager</div>
-        <div class="tab-link" onclick="openTab(event, 'settings-tab')" data-i18n="nav_settings">⚙️ Provider Settings</div>
-        <div style="margin-left: auto; padding-right: 10px; display: flex; align-items: center;">
-            <select id="languageSelect" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px;">
+        <button class="mobile-nav-toggle" onclick="toggleTopNav()">☰</button>
+        <span id="mobile-header-title" class="mobile-header-title">🎨 Layout Editor</span>
+        <div class="nav-links-container">
+            <button class="mobile-nav-close" onclick="toggleTopNav()">&times;</button>
+            <div class="tab-link active" onclick="openTab(event, 'editor-tab')" data-i18n="nav_editor">🎨 Layout Editor</div>
+            <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()" data-i18n="nav_layouts">💾 Saved Layouts</div>
+            <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()" data-i18n="nav_gallery">🖼️ Gallery</div>
+            <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()" data-i18n="nav_batch">⚡ Batch Processing</div>
+            <div class="tab-link" onclick="openTab(event, 'overlay-tab')" data-i18n="nav_overlay">📏 Overlay Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'texture-tab')" data-i18n="nav_texture">🎨 Texture Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'font-tab'); loadFontManager()" data-i18n="nav_font">🔤 Font Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'icon-tab')">🎨 Icon Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'settings-tab')" data-i18n="nav_settings">⚙️ Provider Settings</div>
+            <div style="margin-top: 20px; padding: 0 20px; display: flex; align-items: center;">
+                <select id="languageSelect" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 10px; border-radius: 4px; width: 100%;">
+                    <option value="de">🇩🇪 Deutsch</option>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="it">🇮🇹 Italiano</option>
+                    <option value="fr">🇫🇷 Français</option>
+                    <option value="pl">🇵🇱 Polski</option>
+                    <option value="cs">🇨🇿 Čeština</option>
+                    <option value="es">🇪🇸 Español</option>
+                    <option value="ro">🇷🇴 Română</option>
+                </select>
+            </div>
+        </div>
+        <div class="desktop-lang-select">
+             <select id="languageSelectDesktop" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px;">
                 <option value="de">🇩🇪 Deutsch</option>
                 <option value="en">🇺🇸 English</option>
                 <option value="it">🇮🇹 Italiano</option>
@@ -300,7 +668,7 @@
                     <button onclick="applyFontSizeToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_size_all">Apply Size to All Tags</button>
                     
                     <label data-i18n="fill_type">Fill Type</label>
-                    <div style="display:flex; gap:10px; margin-bottom:5px;">
+                    <div style="display:flex; gap:10px; margin-bottom:5px; align-items: center;">
                         <input type="radio" id="fillTypeColor" name="fillType" value="color" checked onchange="toggleTextFillType()">
                         <label for="fillTypeColor" style="margin:0; font-size:12px;" data-i18n="color">Color</label>
                         <input type="radio" id="fillTypeTexture" name="fillType" value="texture" onchange="toggleTextFillType()">
@@ -399,19 +767,23 @@
         <div class="main-view" style="display: flex; flex-direction: column; height: 100%; position: relative; overflow: hidden;">
             <div style="flex: 1; overflow-y: auto; width: 100%; display: flex; flex-direction: column; align-items: center;">
                 <div class="canvas-header" style="display:flex; justify-content:space-between; width:100%; max-width: 100%; padding: 10px 20px; box-sizing: border-box; align-items:center; flex-wrap: wrap; gap: 10px;">
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                        <div style="display:flex; gap:5px; align-items:center;">
-                            <button id="menuToggle" onclick="toggleMobileMenu()">☰</button>
-                            <div style="display:flex; gap:5px;">
-                                <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
-                                <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
-                            </div>
+                    <div class="header-controls-left">
+                        <button id="menuToggle" class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
+                        <button id="toolsToggle" class="mobile-menu-btn" onclick="toggleMobileTools()">🛠️</button>
+                        <button onclick="toggleFullscreen()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;" title="Toggle Fullscreen">⛶</button>
+                        <button onclick="toggleGrid()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏</button>
+                    </div>
+
+                    <div id="toolsDropdown" class="header-tools">
+                        <div class="tool-group">
+                            <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
+                            <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
                         </div>
-                        <div style="display:flex; align-items:center; gap:10px;">
+                        <div class="tool-group">
                             <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0; padding: 8px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);" data-i18n="shuffle_preview">🎲 <span>Shuffle Preview</span></button>
                             <span id="source-indicator" style="font-size: 11px; color: #aaa; text-shadow: 1px 1px 2px black;">Source: None</span>
                         </div>
-                        <div style="display: flex; gap: 5px;">
+                        <div class="tool-group">
                             <button id="btn-undo" onclick="undo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="undo">↩ <span>Undo</span></button>
                             <select id="historySelect" onchange="jumpToHistory(this.value)" style="padding: 0 10px; text-align: center; background: #444; color: white; border: 1px solid #555; cursor: pointer; border-radius: 4px;">
                                 <option value="" disabled selected>🕒</option>
@@ -419,12 +791,8 @@
                             <button id="btn-redo" onclick="redo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="redo">↪ <span>Redo</span></button>
                         </div>
                     </div>
-                    <div style="display:flex; gap:10px;">
-                        <button onclick="toggleFullscreen()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;" title="Toggle Fullscreen">⛶</button>
-                        <button onclick="toggleGrid()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏 Toggle Grid</button>
-                    </div>
                 </div>
-                <div id="canvas-wrapper" style="margin: auto;">
+                <div id="canvas-wrapper" style="margin: auto; position: relative; top: -38px;">
                     <canvas id="mainCanvas"></canvas>
                 </div>
             </div>
@@ -432,11 +800,15 @@
     </div>
 
     <div id="batch-tab" class="tab-content">
-        <div class="main-view" style="padding: 20px; align-items: flex-start;">
+        <div class="main-view" style="padding: 20px; height: 100%; box-sizing: border-box;">
             <div class="batch-grid" style="width: 100%; max-width: none;">
-                <div class="sidebar" style="width: 100%; height: auto; border: 1px solid #333; border-radius: 8px;">
-                    <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="batch_config" style="margin:0;">Batch Configuration</h3></div>
+                <div class="batch-sidebar" style="width: 100%; height: 100%; border: 1px solid #333; border-radius: 8px; overflow-y: auto;">
+                    <div class="batch-header" onclick="toggleBatchConfig()" style="margin-bottom: 10px;">
+                        <h3 data-i18n="batch_config" style="margin:0;">Batch Configuration</h3>
+                        <span class="batch-arrow" style="display:none;">▼</span>
+                    </div>
                     
+                    <div id="batch-config-content">
                     <label for="batchLayoutSelect" data-i18n="select_layout">Select Layout</label>
                     <select id="batchLayoutSelect"></select>
                     
@@ -531,32 +903,31 @@
 
                     <button id="btn-start-batch" onclick="startBatchProcess()" style="margin-top: 20px; background: #2e7d32;" data-i18n="start_batch">▶ Start Batch</button>
                     <button id="btn-stop-batch" onclick="stopBatchProcess()" style="margin-top: 10px; background: #c62828; display: none;" data-i18n="stop_batch">⏹ Stop</button>
+                    </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; flex-direction: column; gap: 10px; height: 100%;">
                     <div class="progress-container">
                         <div id="batchProgressBar" class="progress-bar">0%</div>
                     </div>
-                    <div id="batchLog" class="console-log">Ready to start...</div>
-                    <!-- Optional: Live Preview Image -->
-                    <div style="flex: 1; background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                        <img id="batchPreviewImg" style="max-width: 100%; max-height: 400px; opacity: 0.5;" src="">
-                    </div>
+                    <div id="batchLog" class="console-log" style="flex: 1;">Ready to start...</div>
+                </div>
+
+                <div class="batch-preview-container" style="background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 8px; height: 100%;">
+                    <img id="batchPreviewImg" style="max-width: 100%; max-height: 100%; object-fit: contain; opacity: 0.5;" src="">
                 </div>
             </div>
         </div>
     </div>
 
     <div id="layouts-tab" class="tab-content" style="flex-direction: column;">
-        <div style="padding: 10px 20px; display: flex; align-items: center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h2 style="margin:0; font-size:1.2em;" data-i18n="nav_layouts">Saved Layouts</h2></div>
-        <div class="gallery-container" id="layouts-content">
+        <div class="layouts-container" id="layouts-content">
             <p style="color:#888; text-align:center; margin-top:50px;">Loading layouts...</p>
         </div>
     </div>
 
     <div id="gallery-tab" class="tab-content" style="flex-direction: column;">
-        <div style="padding: 10px 20px; display: flex; align-items: center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h2 style="margin:0; font-size:1.2em;" data-i18n="nav_gallery">Gallery</h2></div>
-        <div class="gallery-container" id="gallery-content">
+        <div id="gallery-content" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
             <p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>
         </div>
     </div>
@@ -717,9 +1088,9 @@
     </div>
 
     <div id="preview-popup">
-        <div style="display:flex; justify-content:space-between; width:100%; max-width:1600px; margin:0 auto 20px auto; color:white; align-items:center;">
-            <h2 style="margin:0; font-size:24px;" data-i18n="generated_previews">Generated Previews</h2>
-            <span onclick="closePreviewPopup()" style="font-size:40px; cursor:pointer; line-height:1;">&times;</span>
+        <div class="preview-header">
+            <h2 data-i18n="generated_previews">Generated Previews</h2>
+            <span onclick="closePreviewPopup()">&times;</span>
         </div>
         <div id="preview-grid" style="width:100%; max-width:1600px; margin:0 auto;"></div>
     </div>
