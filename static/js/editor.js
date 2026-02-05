@@ -1786,15 +1786,9 @@ function init() {
     document.body.appendChild(refreshIndicator);
 
     window.addEventListener('touchstart', e => {
-        // Disable pull-to-refresh on canvas and scrollable containers (menus, lists, sidebars)
-        if (e.target.closest('#canvas-wrapper') || 
-            e.target.closest('.sidebar') || 
-            e.target.closest('.nav-links-container') || 
-            e.target.closest('.batch-sidebar') || 
-            e.target.closest('#preview-popup') || 
-            e.target.closest('.layouts-container') || 
-            e.target.closest('#gallery-content') ||
-            e.target.closest('#batchLog')) {
+        // Only allow pull-to-refresh from the header (.nav-tabs)
+        // And explicitly exclude the menu container inside it
+        if (!e.target.closest('.nav-tabs') || e.target.closest('.nav-links-container')) {
             touchStartY = -1; // Disable gesture tracking
             return;
         }

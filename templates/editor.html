@@ -233,6 +233,23 @@
             padding: 15px;
             box-sizing: border-box;
         }
+        .manager-panel {
+            background: #1a1a1a;
+            padding: 15px;
+            box-sizing: border-box;
+            width: 100%;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 0;
+        }
+        .settings-panel {
+            background: #1a1a1a;
+            padding: 15px;
+            box-sizing: border-box;
+            width: 100%;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
         .gallery-item img {
             width: 100%;
             height: auto;
@@ -401,7 +418,20 @@
                 overflow: visible !important;
             }
             .nav-tabs > * { pointer-events: auto; }
-            .mobile-header-title { display: none !important; }
+            .mobile-header-title { 
+                display: block !important;
+                position: fixed;
+                top: 5px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 1002;
+                background: rgba(0,0,0,0.6);
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 14px;
+                pointer-events: none;
+                max-width: 60vw;
+            }
             .mobile-nav-toggle { 
                 background: rgba(0,0,0,0.8) !important; 
                 position: fixed; top: 5px; left: 5px; z-index: 1002;
@@ -933,9 +963,9 @@
     </div>
 
     <div id="overlay-tab" class="tab-content">
-        <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
-                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="overlay_manager" style="margin:0;">Overlay Manager</h3></div>
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 data-i18n="overlay_manager" style="margin:0;">Overlay Manager</h3></div>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4 data-i18n="add_overlay">Add New Overlay Profile</h4>
                     <label data-i18n="profile_name">Profile Name</label>
@@ -955,9 +985,9 @@
     </div>
 
     <div id="texture-tab" class="tab-content">
-        <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
-                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="texture_manager" style="margin:0;">Texture Manager</h3></div>
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 data-i18n="texture_manager" style="margin:0;">Texture Manager</h3></div>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4 data-i18n="add_texture">Add New Texture</h4>
                     <label data-i18n="texture_name">Texture Name</label>
@@ -975,9 +1005,9 @@
     </div>
 
     <div id="font-tab" class="tab-content">
-        <div class="main-view" style="padding: 20px; align-items: flex-start; width: 100%;">
-            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
-                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 data-i18n="font_manager" style="margin:0;">Font Manager</h3></div>
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; width: 100%; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 data-i18n="font_manager" style="margin:0;">Font Manager</h3></div>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4 data-i18n="add_font">Add New Font (.ttf, .otf, .woff)</h4>
                     <div style="display:flex; gap:10px; align-items:center;">
@@ -992,9 +1022,9 @@
     </div>
 
     <div id="icon-tab" class="tab-content">
-        <div class="main-view" style="padding: 20px; align-items: flex-start;">
-            <div class="sidebar" style="width: 100%; max-width: none; margin: 0; border: 1px solid #333; border-radius: 8px;">
-                <div style="display:flex; align-items:center;"><button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button><h3 style="margin:0;">Custom Icon Manager</h3></div>
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 style="margin:0;">Custom Icon Manager</h3></div>
                 <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
                     <h4>Add New Icon (PNG, SVG, JPG)</h4>
                     <div style="display:flex; gap:10px; align-items:center;">
@@ -1009,13 +1039,15 @@
     </div>
 
     <div id="settings-tab" class="tab-content">
-        <div class="settings-grid" style="width: 100%; max-width: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; align-items: start;">
-            <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
-                <button onclick="saveSettings()" style="flex:1; max-width: 400px; margin: 0 auto; background-color: #4CAF50;" data-i18n="save_settings">Save Settings</button>
-            </div>
-            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
-                <h3>Jellyfin</h3>
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box; width: 100%;">
+            <div class="settings-grid" style="width: 100%; max-width: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; align-items: start;">
+                <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                    <button onclick="saveSettings()" style="width: auto; padding: 10px 20px; background-color: #4CAF50;" data-i18n="save_settings">Save Settings</button>
+                </div>
+                
+                <div class="settings-panel settings-compact-panel" id="set-group-jf">
+                    <h3 onclick="toggleGroup('set-group-jf')"><span class="group-arrow">▼</span> Jellyfin</h3>
+                    <div class="group-content">
                 <label for="set-jf-url" data-i18n="server_url">Server URL</label>
                 <input type="text" id="set-jf-url" value="{{ config.jellyfin.url }}">
                 <label for="set-jf-key" data-i18n="api_key">API Key</label>
@@ -1025,28 +1057,34 @@
                 <label for="set-jf-exclude" data-i18n="excluded_libs">Excluded Libraries (comma separated)</label>
                 <input type="text" id="set-jf-exclude" value="{{ config.jellyfin.excluded_libraries }}">
                 <button onclick="testJellyfinConnection()" style="margin-top: 10px; background-color: #1976d2; width: 100%;">Test Connection</button>
+                    </div>
             </div>
 
-            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
-                <h3>Plex</h3>
+                <div class="settings-panel settings-compact-panel" id="set-group-plex">
+                    <h3 onclick="toggleGroup('set-group-plex')"><span class="group-arrow">▼</span> Plex</h3>
+                    <div class="group-content">
                 <label for="set-plex-url" data-i18n="server_url">Server URL</label>
                 <input type="text" id="set-plex-url" value="{{ config.plex.url }}">
                 <label for="set-plex-token" data-i18n="token">Token</label>
                 <input type="password" id="set-plex-token" value="{{ config.plex.token }}">
                 <button onclick="testPlexConnection()" style="margin-top: 10px; background-color: #e5a00d; width: 100%;">Test Connection</button>
+                    </div>
             </div>
 
-            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
-                <h3>TMDB</h3>
+                <div class="settings-panel settings-compact-panel" id="set-group-tmdb">
+                    <h3 onclick="toggleGroup('set-group-tmdb')"><span class="group-arrow">▼</span> TMDB</h3>
+                    <div class="group-content">
                 <label for="set-tmdb-key" data-i18n="api_key">API Key (Bearer Token)</label>
                 <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
                 <label for="set-tmdb-lang" data-i18n="language">Language</label>
                 <input type="text" id="set-tmdb-lang" value="{{ config.tmdb.language }}">
                 <button onclick="testTmdbConnection()" style="margin-top: 10px; background-color: #01b4e4; width: 100%;">Test Connection</button>
+                    </div>
             </div>
 
-            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
-                <h3>Radarr & Sonarr</h3>
+                <div class="settings-panel settings-compact-panel" id="set-group-arr">
+                    <h3 onclick="toggleGroup('set-group-arr')"><span class="group-arrow">▼</span> Radarr & Sonarr</h3>
+                    <div class="group-content">
                 <label for="set-radarr-url">Radarr URL</label>
                 <input type="text" id="set-radarr-url" value="{{ config.radarr.url }}">
                 <label for="set-radarr-key" data-i18n="api_key">Radarr API Key</label>
@@ -1058,10 +1096,12 @@
                 <label for="set-sonarr-key" data-i18n="api_key">Sonarr API Key</label>
                 <input type="password" id="set-sonarr-key" value="{{ config.sonarr.api_key }}">
                 <button onclick="testSonarrConnection()" style="margin-top: 5px; background-color: #2196f3; width: 100%;">Test Sonarr</button>
+                    </div>
             </div>
 
-            <div class="sidebar settings-compact-panel" style="width:100%; border:1px solid #333; border-radius:8px;">
-                <h3>Other Services</h3>
+                <div class="settings-panel settings-compact-panel" id="set-group-other">
+                    <h3 onclick="toggleGroup('set-group-other')"><span class="group-arrow">▼</span> Other Services</h3>
+                    <div class="group-content">
                 <label for="set-jellyseerr-url">Jellyseerr URL</label>
                 <input type="text" id="set-jellyseerr-url" value="{{ config.jellyseerr.url }}">
                 <label for="set-jellyseerr-key" data-i18n="api_key">Jellyseerr API Key</label>
@@ -1075,6 +1115,8 @@
                 <label for="set-trakt-list">Trakt List Name</label>
                 <input type="text" id="set-trakt-list" value="{{ config.trakt.listname }}">
                 <button onclick="testTraktConnection()" style="margin-top: 5px; background-color: #ed1c24; width: 100%;">Test Trakt</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
