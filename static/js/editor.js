@@ -2141,8 +2141,8 @@ function applyCustomEffects(eff) {
 function loadBackground(url, skipRender = false) {
     return new Promise((resolve) => {
         const proxiedUrl = url.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(url)}` : url;
-        fabric.Image.fromURL(proxiedUrl, function(img) {
-            if (!img) { resolve(); return; }
+        fabric.Image.fromURL(proxiedUrl, function(img, isError) {
+            if (isError || !img || img.width === 0 || img.height === 0) { console.warn("Failed to load background:", url); resolve(); return; }
 
             // --- FIX: Enforce Fixed Canvas Resolution ---
             // We determine the target resolution based on user selection (1080p or 4K).
