@@ -524,7 +524,7 @@
             </div>
         </div>
         <div class="desktop-lang-select">
-             <select id="languageSelectDesktop" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px;">
+             <select id="languageSelectDesktop" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 0 5px; border-radius: 4px; font-size: 12px; height: 24px; margin-bottom: 3px;">
                 <option value="de">🇩🇪 Deutsch</option>
                 <option value="en">🇺🇸 English</option>
                 <option value="it">🇮🇹 Italiano</option>
@@ -909,11 +909,11 @@
                         <input type="checkbox" id="batchOverwrite" style="width:20px; height:20px; margin:0;" {% if config.general.overwrite_existing %}checked{% endif %}>
                         <label for="batchOverwrite" style="margin:0; cursor:pointer;" data-i18n="overwrite_existing">Overwrite Existing</label>
                     </div>
-                    
                     <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
-                        <input type="checkbox" id="batchSortGenre" style="width:20px; height:20px; margin:0;">
-                        <label for="batchSortGenre" style="margin:0; cursor:pointer;" data-i18n="sort_genre">Sort by Genre (Subfolders)</label>
+                        <input type="checkbox" id="batchLogoAutoFix" style="width:20px; height:20px; margin:0;" checked onchange="syncLogoAutoFix(this.checked)">
+                        <label for="batchLogoAutoFix" style="margin:0; cursor:pointer;" data-i18n="logo_auto_fix">Auto-Fix Logo Color</label>
                     </div>
+                    
                     <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
                         <input type="checkbox" id="batchDryRun" style="width:20px; height:20px; margin:0;">
                         <label for="batchDryRun" style="margin:0; cursor:pointer;" data-i18n="dry_run">Dry Run (Simulate only)</label>

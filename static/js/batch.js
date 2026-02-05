@@ -66,7 +66,7 @@ async function startBatchProcess() {
     const count = parseInt(document.getElementById('batchCount').value);
     const delay = 1500; // Fixed generous delay for stability
     const overwrite = document.getElementById('batchOverwrite').checked;
-    const sortGenre = document.getElementById('batchSortGenre').checked;
+    const sortGenre = false;
     const dryRun = document.getElementById('batchDryRun').checked;
     
     document.getElementById('btn-start-batch').style.display = 'none';

@@ -28,6 +28,8 @@ function openTab(evt, tabName) {
     if (navContainer && navContainer.classList.contains('open')) {
         navContainer.classList.remove('open');
     }
+
+    localStorage.setItem('active_tab', tabName);
 }
 
 
@@ -785,7 +787,11 @@ async function fetchMediaData(itemId = null) {
 
         if (data.logo_url) {
             assetPromises.push(new Promise(resolve => {
-                const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(data.logo_url)}`;
+                const autoFix = document.getElementById('batchLogoAutoFix') ? document.getElementById('batchLogoAutoFix').checked : true;
+                let proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(data.logo_url)}`;
+                if (!autoFix) {
+                    proxiedLogo += "&raw=true";
+                }
                 fabric.Image.fromURL(proxiedLogo, (img) => { newLogoImg = img; resolve(); }, { crossOrigin: 'anonymous' });
             }));
         }
@@ -863,6 +869,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                 switch(obj.dataTag) {
                     case 'title':
                         if (mediaData.logo_url && preloadedLogo) {
+                            const autoFix = document.getElementById('batchLogoAutoFix') ? document.getElementById('batchLogoAutoFix').checked : true;
                             // Benutze das vorgeladene Logo sofort (synchron)
                             
                             // --- START: New aggressive Smart-Resize Logic ---
@@ -902,12 +909,16 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                             
                             const newLeft = getNewLogoLeft(obj, preloadedLogo.width, scale);
 
-                            preloadedLogo.set({ left: newLeft, top: obj.top, dataTag: 'title' });
+                            preloadedLogo.set({ left: newLeft, top: obj.top, dataTag: 'title', logoAutoFix: autoFix });
                             preloadedLogo.scale(scale);
                             canvas.remove(obj); canvas.add(preloadedLogo);
                         } else if (mediaData.logo_url) {
+                            const autoFix = document.getElementById('batchLogoAutoFix') ? document.getElementById('batchLogoAutoFix').checked : true;
                             const p = new Promise(r => {
-                                const proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(mediaData.logo_url)}`;
+                                let proxiedLogo = `/api/proxy/image?url=${encodeURIComponent(mediaData.logo_url)}`;
+                                if (!autoFix) {
+                                    proxiedLogo += "&raw=true";
+                                }
                                 fabric.Image.fromURL(proxiedLogo, function(img, isError) {
                                     if (isError || !img) { canvas.remove(obj); r(); return; }
                                     
@@ -947,7 +958,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                                     
                                     const newLeft = getNewLogoLeft(obj, img.width, scale);
 
-                                    img.set({ left: newLeft, top: obj.top, dataTag: 'title' });
+                                    img.set({ left: newLeft, top: obj.top, dataTag: 'title', logoAutoFix: autoFix });
                                     img.scale(scale);
                                     canvas.remove(obj); canvas.add(img); 
                                     r();
@@ -1607,6 +1618,20 @@ function removeGrid() {
 function init() {
     closePreviewPopup(); // Explicitly hide popup on load to prevent state issues
     restoreSidebarState();
+    
+    // Restore active tab
+    const savedTab = localStorage.getItem('active_tab');
+    if (savedTab) {
+        const tabLink = document.querySelector(`.tab-link[onclick*="'${savedTab}'"]`);
+        if (tabLink) {
+            openTab({ currentTarget: tabLink }, savedTab);
+            if (savedTab === 'gallery-tab' && typeof loadGallery === 'function') loadGallery();
+            else if (savedTab === 'layouts-tab' && typeof loadLayoutsList === 'function') loadLayoutsList();
+            else if (savedTab === 'batch-tab' && typeof loadBatchLayouts === 'function') loadBatchLayouts();
+            else if (savedTab === 'font-tab' && typeof loadFontManager === 'function') loadFontManager();
+        }
+    }
+
     // Load saved resolution preference
     const savedRes = localStorage.getItem('editor_resolution');
     if (savedRes) {
@@ -2105,6 +2130,10 @@ function applyCustomEffects(eff) {
         } else {
             window.restoredOverlayId = eff.overlayId;
         }
+    }
+    if (eff.logoAutoFix !== undefined) {
+        const batchCheck = document.getElementById('batchLogoAutoFix');
+        if(batchCheck) batchCheck.checked = eff.logoAutoFix;
     }
     // updateFadeControls(); // Removed here, called after bg set or via updateFades inside callback
 }
@@ -3229,7 +3258,8 @@ function saveToLocalStorage() {
         tagAlignment: document.getElementById('tagAlignSelect').value,
         textContentAlignment: document.getElementById('textContentAlignSelect').value,
         genreLimit: document.getElementById('genreLimitSlider').value,
-        overlayId: document.getElementById('overlaySelect').value
+        overlayId: document.getElementById('overlaySelect').value,
+        logoAutoFix: document.getElementById('batchLogoAutoFix') ? document.getElementById('batchLogoAutoFix').checked : true
     };
     json.lastFetchedData = lastFetchedData;
     localStorage.setItem('autosave_layout', JSON.stringify(json));
@@ -3390,6 +3420,10 @@ function toggleLogoAutoFix() {
     if (activeObj && activeObj.type === 'image') {
         activeObj.logoAutoFix = document.getElementById('logoAutoFixToggle').checked;
         
+        // Update global preference
+        const batchCheck = document.getElementById('batchLogoAutoFix');
+        if(batchCheck) batchCheck.checked = activeObj.logoAutoFix;
+
         const currentSrc = activeObj.getSrc();
         if (currentSrc.includes('/api/proxy/image')) {
             const urlObj = new URL(currentSrc, window.location.origin);
@@ -3542,6 +3576,10 @@ function toggleMobileTools() {
     if (tools) {
         tools.classList.toggle('open');
     }
+}
+
+function syncLogoAutoFix(val) {
+    saveToLocalStorage();
 }
 
 window.onload = init;
