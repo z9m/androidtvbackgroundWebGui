@@ -11,6 +11,7 @@ import base64
 import shutil
 import re
 import uuid
+import subprocess
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
 from PIL import Image
 from urllib.parse import quote
@@ -24,6 +25,7 @@ from image_engine import ImageGenerator
 # Blueprint Setup
 gui_editor_bp = Blueprint('gui_editor', __name__)
 CONFIG_FILE = 'config.json'
+BATCH_LOGS = []
 
 # Initialize Image Generator for Proxy Processing
 image_gen = ImageGenerator()
@@ -72,7 +74,8 @@ def load_config():
         "sonarr": {"url": "", "api_key": ""},
         "jellyseerr": {"url": "", "api_key": ""},
         "trakt": {"api_key": "", "username": "", "listname": ""},
-        "editor": {"resolution": "1080"}
+        "editor": {"resolution": "1080"},
+        "cron": {"enabled": False, "start_time": "00:00", "frequency": "1"}
     }
 
     if os.path.exists(CONFIG_FILE):
@@ -414,8 +417,40 @@ def get_media_item(item_id):
 
 @gui_editor_bp.route('/api/settings', methods=['POST'])
 def update_settings():
-    save_config(request.json)
+    config_data = request.json
+    save_config(config_data)
+    
+    # Check if any job needs immediate execution
+    jobs = config_data.get('cron_jobs', [])
+    should_run = any(j.get('force_run') for j in jobs)
+    
+    if should_run:
+        # Spawn cron_runner.py in background to handle the forced job
+        # We use sys.executable to ensure we use the same python interpreter
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cron_runner.py')
+        subprocess.Popen([sys.executable, script_path])
+        
     return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/settings_full')
+def get_settings_full():
+    return jsonify(load_config())
+
+@gui_editor_bp.route('/api/cron/log', methods=['POST'])
+def receive_cron_log():
+    data = request.json
+    msg = data.get('message')
+    if msg:
+        timestamp = time.strftime("%H:%M:%S")
+        BATCH_LOGS.append(f"[{timestamp}] {msg}")
+        # Keep log size manageable
+        if len(BATCH_LOGS) > 1000:
+            BATCH_LOGS.pop(0)
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/batch/logs')
+def get_batch_logs():
+    return jsonify(BATCH_LOGS)
 
 @gui_editor_bp.route('/api/test/jellyfin', methods=['POST'])
 def test_jellyfin():

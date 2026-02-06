@@ -858,12 +858,10 @@
         <div class="main-view" style="padding: 20px; height: 100%; box-sizing: border-box;">
             <div class="batch-grid" style="width: 100%; max-width: none;">
                 <div class="batch-sidebar" style="width: 100%; height: 100%; border: 1px solid #333; border-radius: 8px; overflow-y: auto;">
-                    <div class="batch-header" onclick="toggleBatchConfig()" style="margin-bottom: 10px;">
-                        <h3 data-i18n="batch_config" style="margin:0;">Batch Configuration</h3>
-                        <span class="batch-arrow" style="display:none;">▼</span>
-                    </div>
-                    
-                    <div id="batch-config-content">
+                    <!-- BATCH CONFIGURATION GROUP -->
+                    <div class="control-group" id="group-batch-config" style="border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
+                        <h3 onclick="toggleGroup('group-batch-config')"><span class="group-arrow">▼</span> <span data-i18n="batch_config">Batch Configuration</span></h3>
+                        <div class="group-content">
                     <label for="batchLayoutSelect" data-i18n="select_layout">Select Layout</label>
                     <select id="batchLayoutSelect"></select>
                     
@@ -958,6 +956,47 @@
 
                     <button id="btn-start-batch" onclick="startBatchProcess()" style="margin-top: 20px; background: #2e7d32;" data-i18n="start_batch">▶ Start Batch</button>
                     <button id="btn-stop-batch" onclick="stopBatchProcess()" style="margin-top: 10px; background: #c62828; display: none;" data-i18n="stop_batch">⏹ Stop</button>
+                        </div>
+                    </div>
+
+                    <!-- CRON JOB SETTINGS GROUP -->
+                    <div class="control-group" id="group-batch-cron">
+                        <h3 onclick="toggleGroup('group-batch-cron')"><span class="group-arrow collapsed">▼</span> <span data-i18n="cron_settings">Server-Side Cron Jobs</span></h3>
+                        <div class="group-content collapsed">
+                            
+                            <!-- Add New Job Form -->
+                            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:4px; margin-bottom:15px;">
+                                <label style="font-size:11px; color:#aaa;">Job Name</label>
+                                <input type="text" id="cronJobName" placeholder="e.g. Daily Update" style="width:100%; margin-bottom:5px; padding:5px; background:#333; border:1px solid #555; color:white;">
+                                
+                                <label style="font-size:11px; color:#aaa;" data-i18n="select_layout">Select Layout</label>
+                                <select id="cronJobLayout" style="width:100%; margin-bottom:5px; padding:5px; background:#333; border:1px solid #555; color:white;"></select>
+
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:5px;">
+                                    <div>
+                                        <label style="font-size:11px; color:#aaa;" data-i18n="cron_start_time">Start</label>
+                                        <input type="time" id="cronJobStart" value="00:00" style="width:100%; padding:5px; background:#333; border:1px solid #555; color:white;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:#aaa;" data-i18n="cron_frequency">Freq</label>
+                                        <select id="cronJobFreq" style="width:100%; padding:5px; background:#333; border:1px solid #555; color:white;">
+                                            <option value="1">1x / Day</option>
+                                            <option value="2">2x / Day</option>
+                                            <option value="4">4x / Day</option>
+                                            <option value="24">Hourly</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="display:flex; flex-direction:column; gap:5px; margin-top:10px; align-items: flex-start;">
+                                    <label style="display:flex; align-items:center; gap:5px; font-size:11px; cursor:pointer;"><input type="checkbox" id="cronJobOverwrite" style="width:14px; height:14px; margin:0;"> <span data-i18n="overwrite_existing">Overwrite Existing</span></label>
+                                    <label style="display:flex; align-items:center; gap:5px; font-size:11px; cursor:pointer;"><input type="checkbox" id="cronJobRunNow" style="width:14px; height:14px; margin:0;"> <span>Run Immediately on Save</span></label>
+                                </div>
+                                <button onclick="addCronJob()" style="width:100%; margin-top:10px; background:#2e7d32; padding:6px; font-size:12px;">+ Save Job</button>
+                            </div>
+
+                            <!-- Saved Jobs List -->
+                            <div id="cronJobsList" style="display:flex; flex-direction:column; gap:5px;"></div>
+                        </div>
                     </div>
                 </div>
 

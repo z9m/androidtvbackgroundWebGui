@@ -108,7 +108,14 @@ const translations = {
         "logo_brightness": "Brightness",
         "logo_color": "Tint",
         "use_text_title": "Use Text Title",
-        "use_logo": "Use Logo"
+        "use_logo": "Use Logo",
+        "cron_settings": "Server-Side Cron Jobs",
+        "cron_enable": "Enable Server-Side Cron",
+        "cron_start_time": "Start Time",
+        "cron_frequency": "Frequency (per day)",
+        "freq_daily": "Once Daily",
+        "freq_twice": "Twice Daily (Every 12h)",
+        "freq_four": "4 Times Daily (Every 6h)"
     },
     "de": {
         "nav_editor": "🎨 Layout Editor",
@@ -219,7 +226,14 @@ const translations = {
         "logo_brightness": "Helligkeit",
         "logo_color": "Farbton",
         "use_text_title": "Titel-Text benutzen",
-        "use_logo": "Logo benutzen"
+        "use_logo": "Logo benutzen",
+        "cron_settings": "Serverseitige Cron Jobs",
+        "cron_enable": "Server-Cron aktivieren",
+        "cron_start_time": "Startzeit",
+        "cron_frequency": "Häufigkeit (pro Tag)",
+        "freq_daily": "Einmal täglich",
+        "freq_twice": "Zweimal täglich (alle 12h)",
+        "freq_four": "Viermal täglich (alle 6h)"
     },
     "it": {
         "nav_editor": "🎨 Editor Layout",

@@ -147,6 +147,15 @@ function saveSidebarState(id, isCollapsed) {
     localStorage.setItem('sidebar_groups', JSON.stringify(states));
 }
 
+function toggleBatchGroup(id) {
+    const group = document.getElementById(id);
+    if (!group) return;
+    const content = group.querySelector('.group-content');
+    const arrow = group.querySelector('.group-arrow');
+    if (content) content.classList.toggle('collapsed');
+    if (arrow) arrow.classList.toggle('collapsed');
+}
+
 function restoreSidebarState() {
     const states = JSON.parse(localStorage.getItem('sidebar_groups') || '{}');
     Object.keys(states).forEach(id => {
@@ -2169,6 +2178,7 @@ function init() {
     loadFonts();
     loadCustomIcons();
     updateFadeControls();
+    loadCronJobs(); // Load jobs on init
     
     // Set initial mobile title
     const activeLink = document.querySelector('.tab-link.active');
@@ -4007,6 +4017,160 @@ function toggleMobileTools() {
 
 function syncLogoAutoFix(val) {
     saveToLocalStorage();
+}
+
+// --- CRON JOB MANAGEMENT ---
+let currentCronJobs = [];
+
+async function loadCronJobs() {
+    // We fetch the full settings to get the cron_jobs list
+    // Since there isn't a dedicated GET endpoint for just cron jobs in the provided python code,
+    // we assume they are part of the config loaded via template or we can fetch them if we add an endpoint.
+    // For now, let's assume we can get them via a new fetch or they are passed in `config` object in HTML.
+    // BUT, since I cannot modify the python GET routes easily without seeing them all, 
+    // I will rely on the fact that `saveSettings` posts the whole config.
+    // To properly load them dynamically, we should probably add a small endpoint or just reload the page.
+    // However, to make it dynamic:
+    // Let's assume we add a small helper in python or just use the existing config object if available globally.
+    // Actually, let's just use the `config` object rendered in the template if possible, 
+    // but for dynamic updates (add/delete), we need to fetch.
+    // Let's implement a simple fetch from a hypothetical endpoint or just re-use the page load data for now.
+    // Wait, I can't add a GET endpoint in python easily in this diff format if I don't see the file.
+    // I will assume `config` is available in global scope from the template (it usually is in Flask templates if assigned to window).
+    // If not, I will add a fetch to `gui_editor.py` in the next step.
+    // For now, let's implement the UI logic assuming `currentCronJobs` is populated.
+}
+
+// Actually, let's add the logic to `gui_editor.py` to return settings if needed, 
+// but `saveSettings` sends everything.
+// Let's implement `addCronJob` which reads the current batch settings.
+
+let logPollInterval = null;
+
+function startLogPolling() {
+    if (logPollInterval) clearInterval(logPollInterval);
+    const logDiv = document.getElementById('batchLog');
+    if (logDiv) logDiv.innerHTML = "Waiting for server logs...";
+    
+    logPollInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/api/batch/logs');
+            const logs = await res.json();
+            if (logs && logs.length > 0 && logDiv) {
+                logDiv.innerHTML = logs.join('<br>');
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+        } catch(e) { console.error(e); }
+    }, 2000);
+}
+
+async function addCronJob() {
+    const name = document.getElementById('cronJobName').value || "Untitled Job";
+    const start = document.getElementById('cronJobStart').value;
+    const freq = document.getElementById('cronJobFreq').value;
+    const overwrite = document.getElementById('cronJobOverwrite').checked;
+    const runNow = document.getElementById('cronJobRunNow').checked;
+    
+    const layout = document.getElementById('cronJobLayout').value;
+    const mode = document.getElementById('batchMode').value;
+    const filterMode = document.getElementById('batchFilterMode').value;
+    
+    const newJob = {
+        id: Date.now().toString(), // Simple ID
+        name: name,
+        enabled: true,
+        start_time: start,
+        frequency: freq,
+        overwrite: overwrite,
+        force_run: runNow,
+        layout_name: layout,
+        source_mode: mode,
+        filter_mode: filterMode,
+        // Capture other filter settings if needed
+        created_at: new Date().toISOString()
+    };
+
+    // Get current config, append job, save
+    // We need to fetch current config first to not overwrite other stuff
+    // Since we don't have a GET /api/settings, we might rely on the server handling the merge or we need to add GET.
+    // I will add a GET /api/settings endpoint to gui_editor.py to make this robust.
+    
+    const r = await fetch('/api/settings_full'); // I will add this endpoint
+    const config = await r.json();
+    
+    if (!config.cron_jobs) config.cron_jobs = [];
+    config.cron_jobs.push(newJob);
+    
+    await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
+    
+    alert("Cron Job Saved!" + (runNow ? " (Running in background...)" : ""));
+    
+    if (runNow) {
+        startLogPolling();
+    }
+    renderCronJobs(config.cron_jobs);
+}
+
+async function deleteCronJob(id) {
+    if(!confirm("Delete this job?")) return;
+    const r = await fetch('/api/settings_full');
+    const config = await r.json();
+    config.cron_jobs = config.cron_jobs.filter(j => j.id !== id);
+    await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
+    renderCronJobs(config.cron_jobs);
+}
+
+function renderCronJobs(jobs) {
+    const list = document.getElementById('cronJobsList');
+    list.innerHTML = '';
+    if (!jobs || jobs.length === 0) {
+        list.innerHTML = '<div style="color:#888; font-size:11px; padding:5px;">No active jobs.</div>';
+        return;
+    }
+    
+    jobs.forEach(job => {
+        const item = document.createElement('div');
+        item.style.cssText = "background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border:1px solid #444; display:flex; justify-content:space-between; align-items:center;";
+        item.innerHTML = `
+            <div>
+                <div style="font-weight:bold; font-size:12px; color:#fff;">${job.name}</div>
+                <div style="font-size:10px; color:#aaa;">${job.layout_name} • ${job.start_time} • ${job.frequency}x/day</div>
+                <div style="font-size:10px; color:#888;">${job.overwrite ? 'Overwrite: On' : 'Overwrite: Off'}</div>
+            </div>
+            <button onclick="deleteCronJob('${job.id}')" style="background:#c62828; border:none; color:white; padding:4px 8px; border-radius:3px; cursor:pointer; font-size:10px;">Del</button>
+        `;
+        list.appendChild(item);
+    });
+}
+
+// Initial load wrapper
+async function loadCronJobs() {
+    try {
+        const r = await fetch('/api/settings_full');
+        if(r.ok) {
+            const config = await r.json();
+            renderCronJobs(config.cron_jobs);
+        }
+        await loadCronLayoutOptions();
+    } catch(e) { console.log("Could not load cron jobs"); }
+}
+
+async function loadCronLayoutOptions() {
+    const select = document.getElementById('cronJobLayout');
+    if (!select) return;
+    try {
+        const resp = await fetch('/api/layouts/list');
+        const layouts = await resp.json();
+        select.innerHTML = '';
+        layouts.forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = l;
+            opt.innerText = l;
+            select.appendChild(opt);
+        });
+        const current = document.getElementById('layoutName').value;
+        if (layouts.includes(current)) select.value = current;
+    } catch(e) { console.error("Error loading cron layouts", e); }
 }
 
 window.onload = init;
