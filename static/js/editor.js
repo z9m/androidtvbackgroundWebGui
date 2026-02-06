@@ -100,10 +100,12 @@ let fades = { left: null, right: null, top: null, bottom: null, corner: null };
 let resizeRaf = null, lastFetchedData = null, layoutDebounceTimer = null;
 let preferredLogoWidth = null;
 let overlayProfiles = [];
+let overlayCanvasFabric = null;
+let currentEditingOverlayId = null;
+let activeBlockedAreas = []; // Active blocked areas for layout
 let textureProfiles = [];
 let gridEnabled = false, movingObjects = [], snapLines = { v: [], h: [] }, guideLines = [], isBatchRunning = false;
 const gridSize = 50;
-const screenMargin = 50;
 const BASE_WIDTH = 1920;
 const BASE_HEIGHT = 1080;
 
@@ -838,17 +840,20 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
         // Helper to calculate smart positioning for the new logo
         const getNewLogoLeft = (oldObj, newWidth, newScale) => {
             const align = document.getElementById('tagAlignSelect').value;
+            const marginLeft = parseInt(document.getElementById('marginLeftInput').value) || 50;
+            const marginRight = parseInt(document.getElementById('marginRightInput').value) || 50;
+            
             const cW = canvas.width;
             const oldW = oldObj.getScaledWidth();
             
             let boundsL = oldObj.left;
             let boundsR = oldObj.left + oldW;
 
-            const isStickyLeft = Math.abs(boundsL - screenMargin) < 20;
-            const isStickyRight = Math.abs(boundsR - (cW - screenMargin)) < 20;
+            const isStickyLeft = Math.abs(boundsL - marginLeft) < 20;
+            const isStickyRight = Math.abs(boundsR - (cW - marginRight)) < 20;
 
-            if (isStickyLeft) return screenMargin;
-            if (isStickyRight) return (cW - screenMargin) - (newWidth * newScale);
+            if (isStickyLeft) return marginLeft;
+            if (isStickyRight) return (cW - marginRight) - (newWidth * newScale);
 
             // Not sticky: preserve alignment anchor based on mode
             if (align === 'center') {
@@ -1375,6 +1380,22 @@ function groupElementsByRow(elements, threshold = 30) {
     return rows;
 }
 
+function checkCollision(obj, blockedAreas, scaleFactor = 1) {
+    if (!blockedAreas || blockedAreas.length === 0) return false;
+    const b = obj.getBoundingRect();
+    return blockedAreas.some(area => {
+        const aLeft = area.left * scaleFactor;
+        const aTop = area.top * scaleFactor;
+        const aWidth = area.width * scaleFactor;
+        const aHeight = area.height * scaleFactor;
+
+        return (b.left < aLeft + aWidth &&
+                b.left + b.width > aLeft &&
+                b.top < aTop + aHeight &&
+                b.top + b.height > aTop);
+    });
+}
+
 function updateVerticalLayout(skipRender = false) {
     if (!canvas) return;
 
@@ -1393,6 +1414,14 @@ function updateVerticalLayout(skipRender = false) {
         const hPadding = 20; // Horizontal spacing between tags
         const rowThreshold = 30; // How close elements must be to be considered in the same row
         
+        const marginTop = parseInt(document.getElementById('marginTopInput').value) || 50;
+        const marginBottom = parseInt(document.getElementById('marginBottomInput').value) || 50;
+        const marginLeft = parseInt(document.getElementById('marginLeftInput').value) || 50;
+        const marginRight = parseInt(document.getElementById('marginRightInput').value) || 50;
+        
+        const currentRes = document.getElementById('resSelect') ? document.getElementById('resSelect').value : '1080';
+        const scaleFactor = (currentRes === '2160') ? 2 : 1;
+
         canvas.renderAll(); // Ensure all dimensions (especially i-text) are calculated correctly
         
         const anchor = canvas.getObjects().find(o => o.dataTag === 'title');
@@ -1416,15 +1445,159 @@ function updateVerticalLayout(skipRender = false) {
     });
 
     // Ensure anchor (Logo/Title) respects screen margin
-    if (anchor.left < screenMargin) anchor.set('left', screenMargin);
-    if (anchor.left + anchor.getScaledWidth() > canvas.width - screenMargin) {
-        anchor.set('left', Math.max(screenMargin, canvas.width - screenMargin - anchor.getScaledWidth()));
+    if (anchor.left < marginLeft) anchor.set('left', marginLeft);
+    if (anchor.left + anchor.getScaledWidth() > canvas.width - marginRight) {
+        anchor.set('left', Math.max(marginLeft, canvas.width - marginRight - anchor.getScaledWidth()));
     }
     
     // Vertical constraint for anchor (Top & Bottom)
-    if (anchor.top < screenMargin) anchor.set('top', screenMargin);
-    if (anchor.top + anchor.getScaledHeight() > canvas.height - screenMargin) {
-        anchor.set('top', Math.max(screenMargin, canvas.height - screenMargin - anchor.getScaledHeight()));
+    if (anchor.top < marginTop) anchor.set('top', marginTop);
+    if (anchor.top + anchor.getScaledHeight() > canvas.height - marginBottom) {
+        anchor.set('top', Math.max(marginTop, canvas.height - marginBottom - anchor.getScaledHeight()));
+    }
+    anchor.setCoords();
+
+    // 2.5. Auto-Scale Anchor to fit in vertical gaps between blocked areas
+    if (activeBlockedAreas.length > 0) {
+        const anchorCenterY = anchor.top + (anchor.getScaledHeight() / 2);
+        const anchorLeft = anchor.left;
+        const anchorRight = anchor.left + anchor.getScaledWidth();
+        
+        // Define vertical boundaries (obstacles) based on current X position
+        const obstacles = [];
+        
+        // Margins
+        obstacles.push({ top: -Infinity, bottom: marginTop });
+        obstacles.push({ top: canvas.height - marginBottom, bottom: Infinity });
+        
+        // Blocked Areas that intersect horizontally
+        activeBlockedAreas.forEach(area => {
+            const aLeft = area.left * scaleFactor;
+            const aWidth = area.width * scaleFactor;
+            const aRight = aLeft + aWidth;
+            
+            // Check horizontal intersection
+            if (aLeft < anchorRight && aRight > anchorLeft) {
+                    const aTop = area.top * scaleFactor;
+                    const aHeight = area.height * scaleFactor;
+                    obstacles.push({ top: aTop, bottom: aTop + aHeight });
+            }
+        });
+        
+        // Sort and merge
+        obstacles.sort((a, b) => a.top - b.top);
+        const merged = [];
+        if (obstacles.length > 0) {
+            let curr = obstacles[0];
+            for (let i = 1; i < obstacles.length; i++) {
+                if (obstacles[i].top < curr.bottom) {
+                    curr.bottom = Math.max(curr.bottom, obstacles[i].bottom);
+                } else {
+                    merged.push(curr);
+                    curr = obstacles[i];
+                }
+            }
+            merged.push(curr);
+        }
+        
+        // Find gaps
+        const gaps = [];
+        for (let i = 0; i < merged.length - 1; i++) {
+            const top = merged[i].bottom;
+            const bottom = merged[i+1].top;
+            if (bottom > top) {
+                gaps.push({ top, bottom, height: bottom - top });
+            }
+        }
+        
+        // Find relevant gap (closest to center)
+        let bestGap = gaps.find(g => anchorCenterY >= g.top && anchorCenterY <= g.bottom);
+        
+        if (!bestGap && gaps.length > 0) {
+            bestGap = gaps.reduce((prev, curr) => {
+                const prevDist = Math.min(Math.abs(anchorCenterY - prev.top), Math.abs(anchorCenterY - prev.bottom));
+                const currDist = Math.min(Math.abs(anchorCenterY - curr.top), Math.abs(anchorCenterY - curr.bottom));
+                return (currDist < prevDist) ? curr : prev;
+            });
+        }
+        
+        if (bestGap) {
+            const currentH = anchor.getScaledHeight();
+            const maxH = Math.max(20, bestGap.height - 10); // Max available height in gap (with padding)
+            
+            let targetH = currentH;
+            
+            // Try to restore to preferred size if available
+            if (preferredLogoWidth && anchor.type === 'image') {
+                const aspect = anchor.width / anchor.height;
+                targetH = preferredLogoWidth / aspect;
+            }
+            
+            // Constrain target height to available gap
+            const finalH = Math.min(targetH, maxH);
+            
+            // Apply if different (with small tolerance to avoid jitter)
+            if (Math.abs(finalH - currentH) > 1) {
+                const oldLeft = anchor.left;
+                const oldWidth = anchor.getScaledWidth();
+                const oldRight = oldLeft + oldWidth;
+                const oldCenterX = oldLeft + (oldWidth / 2);
+
+                anchor.scaleToHeight(finalH);
+                const newWidth = anchor.getScaledWidth();
+                
+                if (alignment === 'right') {
+                    anchor.set('left', oldRight - newWidth);
+                } else if (alignment === 'left') {
+                    anchor.set('left', oldLeft);
+                } else {
+                    // Center
+                    anchor.set('left', oldCenterX - (newWidth / 2));
+                }
+
+                // Center in gap
+                anchor.set('top', bestGap.top + (bestGap.height - finalH) / 2);
+                anchor.setCoords();
+            }
+        }
+    }
+
+    // 3. Anchor Blocked Area Constraints (Push out of blocked areas)
+    let safety = 0;
+    while (checkCollision(anchor, activeBlockedAreas, scaleFactor) && safety < 10) {
+        const b = anchor.getBoundingRect();
+        const area = activeBlockedAreas.find(a => {
+            const aLeft = a.left * scaleFactor;
+            const aTop = a.top * scaleFactor;
+            const aWidth = a.width * scaleFactor;
+            const aHeight = a.height * scaleFactor;
+            return (b.left < aLeft + aWidth && b.left + b.width > aLeft &&
+                    b.top < aTop + aHeight && b.top + b.height > aTop);
+        });
+
+        if (area) {
+            const aLeft = area.left * scaleFactor;
+            const aTop = area.top * scaleFactor;
+            const aWidth = area.width * scaleFactor;
+            const aHeight = area.height * scaleFactor;
+
+            // Calculate overlaps
+            const overL = (b.left + b.width) - aLeft;
+            const overR = (aLeft + aWidth) - b.left;
+            const overT = (b.top + b.height) - aTop;
+            const overB = (aTop + aHeight) - b.top;
+            
+            // Find minimum push direction to exit the area
+            const min = Math.min(overL, overR, overT, overB);
+            
+            if (min === overL) anchor.left -= overL;
+            else if (min === overR) anchor.left += overR;
+            else if (min === overT) anchor.top -= overT;
+            else if (min === overB) anchor.top += overB;
+            
+            anchor.setCoords();
+        }
+        safety++;
     }
     anchor.setCoords();
 
@@ -1465,14 +1638,14 @@ function updateVerticalLayout(skipRender = false) {
 
         if (alignment === 'center') {
             const idealStart = anchor.left + (anchorW - maxRowWidth) / 2;
-            if (idealStart < screenMargin) shift = screenMargin - idealStart;
-            else if (idealStart + maxRowWidth > canvas.width - screenMargin) shift = (canvas.width - screenMargin - maxRowWidth) - idealStart;
+            if (idealStart < marginLeft) shift = marginLeft - idealStart;
+            else if (idealStart + maxRowWidth > canvas.width - marginRight) shift = (canvas.width - marginRight - maxRowWidth) - idealStart;
         } else if (alignment === 'right') {
             const idealStart = (anchor.left + anchorW) - maxRowWidth;
-            if (idealStart < screenMargin) shift = screenMargin - idealStart;
+            if (idealStart < marginLeft) shift = marginLeft - idealStart;
         } else { // left
             const idealStart = anchor.left;
-            if (idealStart + maxRowWidth > canvas.width - screenMargin) shift = (canvas.width - screenMargin - maxRowWidth) - idealStart;
+            if (idealStart + maxRowWidth > canvas.width - marginRight) shift = (canvas.width - marginRight - maxRowWidth) - idealStart;
         }
 
         if (shift !== 0) { anchor.set('left', anchor.left + shift); anchor.setCoords(); }
@@ -1527,9 +1700,9 @@ function updateVerticalLayout(skipRender = false) {
         }
 
         // Ensure tags don't go off-screen (apply margins)
-        if (current_x < screenMargin) current_x = screenMargin;
-        if (current_x + totalRowWidth > canvas.width - screenMargin) {
-            current_x = Math.max(screenMargin, canvas.width - screenMargin - totalRowWidth);
+        if (current_x < marginLeft) current_x = marginLeft;
+        if (current_x + totalRowWidth > canvas.width - marginRight) {
+            current_x = Math.max(marginLeft, canvas.width - marginRight - totalRowWidth);
         }
 
         const maxRowHeight = Math.max(...row.map(el => el.visible ? el.getScaledHeight() + ((el.padding||0)*2) : 0));
@@ -1539,6 +1712,25 @@ function updateVerticalLayout(skipRender = false) {
             const pad = el.padding || 0;
             el.set({ top: current_y + pad, left: current_x + pad });
             el.setCoords(); // Update coordinates for accurate width calculation
+            
+            // Collision Detection with Blocked Areas
+            // If collision, push right until clear OR until limit reached
+            const startX = current_x;
+            let isColliding = checkCollision(el, activeBlockedAreas, scaleFactor);
+            
+            while (isColliding && current_x < canvas.width - marginRight) {
+                current_x += 10;
+                el.set({ left: current_x + pad });
+                el.setCoords();
+                isColliding = checkCollision(el, activeBlockedAreas, scaleFactor);
+            }
+            // If still colliding (e.g. full width bar), reset X to preserve alignment and let vertical shift handle it
+            if (isColliding) {
+                current_x = startX;
+                el.set({ left: current_x + pad });
+                el.setCoords();
+            }
+
             if (el.visible) {
                 current_x += el.getScaledWidth() + (pad * 2) + hPadding;
             } else {
@@ -1546,6 +1738,20 @@ function updateVerticalLayout(skipRender = false) {
                 current_x += 0.1;
             }
         });
+
+        // Check for right overflow and shift back if needed (prevent disappearing)
+        const lastEl = row[row.length - 1];
+        if (lastEl && lastEl.visible) {
+            const rightEdge = lastEl.left + lastEl.getScaledWidth();
+            const maxRight = canvas.width - marginRight;
+            if (rightEdge > maxRight) {
+                const overflow = rightEdge - maxRight;
+                row.forEach(el => {
+                    el.left -= overflow;
+                    el.setCoords();
+                });
+            }
+        }
         
         if (maxRowHeight > 0) {
             current_y += maxRowHeight + padding;
@@ -1554,16 +1760,89 @@ function updateVerticalLayout(skipRender = false) {
 
     // Check for bottom overflow and shift up if necessary
     const contentBottom = current_y - padding;
-    const maxBottom = canvas.height - screenMargin;
+    const maxBottom = canvas.height - marginBottom;
+
+    // NEW: Check collision with blocked areas for all placed elements to trigger vertical shift
+    let maxBlockedShift = 0;
+    const allElements = [anchor];
+    rows.forEach(row => row.forEach(el => { if(el.visible) allElements.push(el); }));
+
+    allElements.forEach(el => {
+        const b = el.getBoundingRect();
+        activeBlockedAreas.forEach(area => {
+            const aLeft = area.left * scaleFactor;
+            const aTop = area.top * scaleFactor;
+            const aWidth = area.width * scaleFactor;
+            const aHeight = area.height * scaleFactor;
+            
+            if (b.left < aLeft + aWidth && b.left + b.width > aLeft &&
+                b.top < aTop + aHeight && b.top + b.height > aTop) {
+                const overlap = (b.top + b.height) - aTop;
+                if (overlap > 0 && overlap > maxBlockedShift) maxBlockedShift = overlap;
+            }
+        });
+    });
+
+    const marginShift = Math.max(0, contentBottom - maxBottom);
+    const totalShift = Math.max(marginShift, maxBlockedShift);
     
-    if (contentBottom > maxBottom) {
-        const shift = contentBottom - maxBottom;
-        const maxShift = anchor.top - screenMargin;
-        const actualShift = Math.min(shift, maxShift);
+    if (totalShift > 0) {
+        // Calculate available space above considering margins AND blocked areas
+        let limitTop = marginTop;
         
-        if (actualShift > 0) {
-            anchor.set('top', anchor.top - actualShift);
-            rows.forEach(row => row.forEach(el => el.set('top', el.top - actualShift)));
+        const anchorLeft = anchor.left;
+        const anchorRight = anchor.left + anchor.getScaledWidth();
+
+        activeBlockedAreas.forEach(area => {
+            const aLeft = area.left * scaleFactor;
+            const aWidth = area.width * scaleFactor;
+            const aRight = aLeft + aWidth;
+            const aTop = area.top * scaleFactor;
+            const aHeight = area.height * scaleFactor;
+            const aBottom = aTop + aHeight;
+
+            // Check horizontal intersection with anchor
+            if (aLeft < anchorRight && aRight > anchorLeft) {
+                // If this area is above the anchor (with slight tolerance)
+                if (aBottom <= anchor.top + 5) { 
+                    if (aBottom > limitTop) limitTop = aBottom;
+                }
+            }
+        });
+
+        const maxSafeShiftUp = Math.max(0, anchor.top - limitTop);
+        
+        if (totalShift > maxSafeShiftUp) {
+            // Need to shrink because we can't shift up enough
+            const deficit = totalShift - maxSafeShiftUp;
+            const currentHeight = anchor.getScaledHeight();
+            const newHeight = Math.max(20, currentHeight - deficit); // Min height 20px
+
+            // Capture old state for alignment preservation
+            const oldLeft = anchor.left;
+            const oldWidth = anchor.getScaledWidth();
+            const oldRight = oldLeft + oldWidth;
+            const oldCenterX = oldLeft + (oldWidth / 2);
+            
+            // Apply shrink and move to limit
+            anchor.scaleToHeight(newHeight);
+            const newWidth = anchor.getScaledWidth();
+
+            // Restore horizontal alignment
+            if (alignment === 'right') {
+                anchor.set('left', oldRight - newWidth);
+            } else if (alignment === 'center') {
+                anchor.set('left', oldCenterX - (newWidth / 2));
+            }
+            // 'left' is default (anchor.left stays oldLeft)
+
+            anchor.set('top', limitTop);
+            // Move rows up by the full required amount to clear bottom obstacle
+            rows.forEach(row => row.forEach(el => el.set('top', el.top - totalShift)));
+        } else {
+            // Standard shift (enough space above)
+            anchor.set('top', anchor.top - totalShift);
+            rows.forEach(row => row.forEach(el => el.set('top', el.top - totalShift)));
         }
     }
 
@@ -1738,6 +2017,10 @@ function init() {
                 }
             }
         }
+        
+        // Live layout update for dynamic resizing feedback while dragging
+        if (layoutDebounceTimer) clearTimeout(layoutDebounceTimer);
+        layoutDebounceTimer = setTimeout(() => updateVerticalLayout(), 10);
     });
     
     canvas.on('mouse:up', () => {
@@ -1963,7 +2246,13 @@ function saveHistory(force = false) {
         tagAlignment: document.getElementById('tagAlignSelect').value,
         textContentAlignment: document.getElementById('textContentAlignSelect').value,
         genreLimit: document.getElementById('genreLimitSlider').value,
-        overlayId: document.getElementById('overlaySelect').value
+        overlayId: document.getElementById('overlaySelect').value,
+        margins: {
+            top: document.getElementById('marginTopInput').value,
+            bottom: document.getElementById('marginBottomInput').value,
+            left: document.getElementById('marginLeftInput').value,
+            right: document.getElementById('marginRightInput').value
+        }
     };
     json.lastFetchedData = lastFetchedData;
 
@@ -2134,6 +2423,12 @@ function applyCustomEffects(eff) {
     if (eff.logoAutoFix !== undefined) {
         const batchCheck = document.getElementById('batchLogoAutoFix');
         if(batchCheck) batchCheck.checked = eff.logoAutoFix;
+    }
+    if(eff.margins) {
+        document.getElementById('marginTopInput').value = eff.margins.top || 50;
+        document.getElementById('marginBottomInput').value = eff.margins.bottom || 50;
+        document.getElementById('marginLeftInput').value = eff.margins.left || 50;
+        document.getElementById('marginRightInput').value = eff.margins.right || 50;
     }
     // updateFadeControls(); // Removed here, called after bg set or via updateFades inside callback
 }
@@ -2404,6 +2699,20 @@ async function loadOverlayProfiles() {
         const resp = await fetch('/api/overlays/list');
         overlayProfiles = await resp.json();
         
+        // Merge local margins (since backend might not store them yet)
+        const localMargins = JSON.parse(localStorage.getItem('overlay_margins_map') || '{}');
+        overlayProfiles.forEach(p => {
+            if (localMargins[p.id]) {
+                // Migration: If legacy format (array of presets), take the first one's areas
+                if (Array.isArray(localMargins[p.id]) && localMargins[p.id].length > 0 && localMargins[p.id][0].areas) {
+                    p.blocked_areas = localMargins[p.id][0].areas;
+                } else {
+                    // Assume it's the new format (direct array of areas) or empty
+                    p.blocked_areas = Array.isArray(localMargins[p.id]) ? localMargins[p.id] : [];
+                }
+            }
+        });
+        
         // Populate Dropdown
         const sel = document.getElementById('overlaySelect');
         if (sel) {
@@ -2434,7 +2743,10 @@ async function loadOverlayProfiles() {
                     <td style="padding:5px;">${p.name}</td>
                     <td style="padding:5px;">${p.file_1080 ? '✅' : '❌'}</td>
                     <td style="padding:5px;">${p.file_4k ? '✅' : '❌'}</td>
-                    <td style="padding:5px;"><button onclick="deleteOverlay('${p.id}')" style="background:#c62828; padding:4px 8px; font-size:12px; border:none; color:white; cursor:pointer;">Delete</button></td>
+                    <td style="padding:5px;">
+                        <button onclick="openOverlayMarginEditor('${p.id}')" style="background:#1976d2; padding:4px 8px; font-size:12px; border:none; color:white; cursor:pointer; margin-right:5px;">Edit Margins</button>
+                        <button onclick="deleteOverlay('${p.id}')" style="background:#c62828; padding:4px 8px; font-size:12px; border:none; color:white; cursor:pointer;">Delete</button>
+                    </td>
                 </tr>`;
             });
             html += '</table>';
@@ -2485,6 +2797,111 @@ async function deleteOverlay(id) {
     }
 }
 
+function initOverlayCanvas() {
+    if (overlayCanvasFabric) return;
+    // Initialize with 1920x1080 logic
+    overlayCanvasFabric = new fabric.Canvas('overlayCanvas', { width: 1920, height: 1080, backgroundColor: '#000000' });
+    
+    // CSS scaling for the container
+    const canvasEl = document.getElementById('overlayCanvas');
+    canvasEl.style.width = '100%';
+    canvasEl.style.height = '100%';
+}
+
+function openOverlayMarginEditor(id) {
+    const profile = overlayProfiles.find(p => p.id === id);
+    if (!profile) return;
+    
+    currentEditingOverlayId = id;
+    document.getElementById('overlayMarginEditor').style.display = 'block';
+    initOverlayCanvas();
+    overlayCanvasFabric.clear();
+    overlayCanvasFabric.setBackgroundColor('#000000', overlayCanvasFabric.renderAll.bind(overlayCanvasFabric));
+
+    // Load Overlay Image
+    const file = profile.file_1080 || profile.file_4k;
+    if (file) {
+        const url = `/api/overlays/image/${file}`;
+        fabric.Image.fromURL(url, img => {
+            img.set({
+                left: 0, top: 0,
+                selectable: false, evented: false,
+                opacity: 0.5,
+                scaleX: 1920 / img.width,
+                scaleY: 1080 / img.height
+            });
+            overlayCanvasFabric.add(img);
+            overlayCanvasFabric.sendToBack(img);
+        });
+    }
+
+    loadBlockedAreasToCanvas(profile.blocked_areas || []);
+}
+
+function loadBlockedAreasToCanvas(areas) {
+    // Clear existing boxes
+    const existing = overlayCanvasFabric.getObjects().filter(o => o.dataTag === 'blocked_area');
+    existing.forEach(o => overlayCanvasFabric.remove(o));
+
+    areas.forEach(area => {
+        const rectObj = new fabric.Rect({
+            left: area.left,
+            top: area.top,
+            width: area.width,
+            height: area.height,
+            fill: 'rgba(255, 0, 0, 0.3)',
+            stroke: 'red',
+            strokeWidth: 2,
+            cornerColor: 'white',
+            cornerSize: 20,
+            transparentCorners: false,
+            dataTag: 'blocked_area'
+        });
+        overlayCanvasFabric.add(rectObj);
+    });
+    overlayCanvasFabric.requestRenderAll();
+}
+
+function addBlockedRect() {
+    const rectObj = new fabric.Rect({
+        left: 100, top: 100, width: 200, height: 100,
+        fill: 'rgba(255, 0, 0, 0.3)', stroke: 'red', strokeWidth: 2,
+        cornerColor: 'white', cornerSize: 20, transparentCorners: false,
+        dataTag: 'blocked_area'
+    });
+    overlayCanvasFabric.add(rectObj);
+    overlayCanvasFabric.setActiveObject(rectObj);
+}
+
+function closeOverlayMarginEditor() {
+    document.getElementById('overlayMarginEditor').style.display = 'none';
+    currentEditingOverlayId = null;
+}
+
+function saveOverlayMargins() {
+    if (!currentEditingOverlayId || !overlayCanvasFabric) return;
+    
+    const rects = overlayCanvasFabric.getObjects().filter(o => o.dataTag === 'blocked_area');
+    const areas = rects.map(r => ({
+        left: Math.round(r.left),
+        top: Math.round(r.top),
+        width: Math.round(r.getScaledWidth()),
+        height: Math.round(r.getScaledHeight())
+    }));
+    
+    // Save to LocalStorage (simulating backend persistence)
+    const map = JSON.parse(localStorage.getItem('overlay_margins_map') || '{}');
+    map[currentEditingOverlayId] = areas;
+    localStorage.setItem('overlay_margins_map', JSON.stringify(map));
+    
+    // Update in-memory profile
+    const profile = overlayProfiles.find(p => p.id === currentEditingOverlayId);
+    if (profile) profile.blocked_areas = areas;
+    
+    alert("Blocked areas saved!");
+    closeOverlayMarginEditor();
+}
+
 function enforceLayering() {
     if (!canvas) return;
     const grids = canvas.getObjects().filter(o => o.dataTag === 'grid_line');
@@ -2504,10 +2921,24 @@ function updateOverlay() {
     const existing = canvas.getObjects().find(o => o.dataTag === 'guide_overlay');
     if (existing) canvas.remove(existing);
     
-    if (!overlayId) { canvas.requestRenderAll(); return; }
+    activeBlockedAreas = [];
+
+    if (!overlayId) { 
+        // Reset margins to default
+        document.getElementById('marginTopInput').value = 20;
+        document.getElementById('marginBottomInput').value = 20;
+        document.getElementById('marginLeftInput').value = 20;
+        document.getElementById('marginRightInput').value = 20;
+        updateVerticalLayout(); // Reset layout when overlay is removed
+        canvas.requestRenderAll(); 
+        return; 
+    }
     
     const profile = overlayProfiles.find(p => p.id === overlayId);
     if (!profile) return;
+    
+    activeBlockedAreas = profile.blocked_areas || [];
+    updateVerticalLayout();
     
     const is4K = canvas.width > 2000;
     let file = is4K ? profile.file_4k : profile.file_1080;
@@ -2970,7 +3401,13 @@ async function saveLayout() {
         tagAlignment: document.getElementById('tagAlignSelect').value,
         textContentAlignment: document.getElementById('textContentAlignSelect').value,
         genreLimit: document.getElementById('genreLimitSlider').value,
-        overlayId: document.getElementById('overlaySelect').value
+        overlayId: document.getElementById('overlaySelect').value,
+        margins: {
+            top: document.getElementById('marginTopInput').value,
+            bottom: document.getElementById('marginBottomInput').value,
+            left: document.getElementById('marginLeftInput').value,
+            right: document.getElementById('marginRightInput').value
+        }
     };
 
     // Generate Preview Thumbnail (smaller size)
@@ -3243,6 +3680,12 @@ function saveToLocalStorage() {
         textContentAlignment: document.getElementById('textContentAlignSelect').value,
         genreLimit: document.getElementById('genreLimitSlider').value,
         overlayId: document.getElementById('overlaySelect').value,
+        margins: {
+            top: document.getElementById('marginTopInput').value,
+            bottom: document.getElementById('marginBottomInput').value,
+            left: document.getElementById('marginLeftInput').value,
+            right: document.getElementById('marginRightInput').value
+        },
         logoAutoFix: document.getElementById('batchLogoAutoFix') ? document.getElementById('batchLogoAutoFix').checked : true
     };
     json.lastFetchedData = lastFetchedData;
