@@ -2,18 +2,17 @@ import os
 import sys
 import json
 import requests
-import time
 import subprocess
 import tempfile
-import logging
+import base64
+from urllib.parse import quote
 
-# Pfad zum eigenen Modulordner
+# Path to own module folder
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from gui_editor import load_config
 
 # Config
 API_URL = "http://127.0.0.1:5000/api/save_image"
-STATUS_URL = "http://127.0.0.1:5000/api/cron/update"
 LOG_URL = "http://127.0.0.1:5000/api/cron/log"
 STOP_SIGNAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cron_stop.signal')
 
@@ -24,149 +23,147 @@ def log(msg):
     except:
         pass
 
-def fetch_library_items(config):
-    """Holt neue Filme von Jellyfin"""
+def run_node_renderer(layout_path, metadata):
+    # 1. Prepare Data - DIRECT PASS-THROUGH
+    # We simply pass the Jellyfin URLs directly to Node.js.
+    # Node.js will fetch them internally.
+    
+    payload = {
+        "layout_file": layout_path,
+        "metadata": metadata,
+        "assets": {
+            # Pass the raw URL including the api_key
+            "backdrop_url": metadata.get('backdrop_url'),
+            "logo_url": metadata.get('logo_url')
+        }
+    }
+    
+    # 2. Write Payload to temp file
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False)
+        payload_path = f.name
+
+    # Prepare Output paths
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as f:
+        output_image_path = f.name
+    f.close()
+    
+    output_json_path = output_image_path + ".json"
+
+    # 3. Execute Node
+    image_b64 = None
+    final_json = None
+    
+    try:
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'render_task.js')
+        
+        # Run Node
+        cmd = ['node', script_path, payload_path, output_image_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
+        
+        if "SUCCESS" in result.stdout:
+            # Read Resulting Image
+            with open(output_image_path, 'rb') as img_f:
+                file_b64 = base64.b64encode(img_f.read()).decode('utf-8')
+                image_b64 = f"data:image/jpeg;base64,{file_b64}"
+            
+            # Read Resulting JSON
+            if os.path.exists(output_json_path):
+                with open(output_json_path, 'r', encoding='utf-8') as json_f:
+                    final_json = json.load(json_f)
+        else:
+            log(f"Node Error: {result.stderr}")
+            # log(f"Node Output: {result.stdout}")
+
+    except Exception as e:
+        log(f"Render Execution Error: {e}")
+    
+    finally:
+        # Cleanup
+        for p in [payload_path, output_image_path, output_json_path]:
+            if p and os.path.exists(p):
+                try: os.remove(p)
+                except: pass
+
+    return image_b64, final_json
+
+def fetch_items_and_process():
+    log("Batch Job Started (Direct URL Mode)")
+    config = load_config()
+    
+    layout_dir = os.path.join(os.path.dirname(__file__), 'layouts')
+    if not os.path.exists(layout_dir): return
+    layout_files = [f for f in os.listdir(layout_dir) if f.endswith('.json')]
+    if not layout_files:
+        log("No layouts found!")
+        return
+    
+    selected_layout_name = layout_files[0].replace('.json', '')
+    layout_full_path = os.path.join(layout_dir, layout_files[0])
+    log(f"Using Layout: {selected_layout_name}")
+
     jf = config.get('jellyfin', {})
-    if not jf.get('url') or not jf.get('api_key'):
-        log("Jellyfin not configured.")
-        return []
+    if not jf.get('url'): return
 
     headers = {"X-Emby-Token": jf['api_key']}
     base_url = jf['url'].rstrip('/')
-    user_id = jf['user_id']
-    
-    # Query: Neueste Filme, inkl. Overview & Genres
-    url = f"{base_url}/Users/{user_id}/Items?IncludeItemTypes=Movie&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=20&Fields=Overview,Genres,OfficialRating,CommunityRating,ProviderIds,ProductionYear,RunTimeTicks"
+    url = f"{base_url}/Users/{jf['user_id']}/Items?IncludeItemTypes=Movie&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=10&Fields=Overview,Genres,OfficialRating,CommunityRating,ProviderIds,ProductionYear,RunTimeTicks,OriginalTitle,Tags,Studios,InheritedParentalRatingValue,ImageTags"
     
     try:
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            return r.json().get('Items', [])
-        else:
-            log(f"Jellyfin Error: {r.status_code}")
-            return []
+        req = requests.get(url, headers=headers)
+        items = req.json().get('Items', [])
     except Exception as e:
-        log(f"Connection Error: {e}")
-        return []
-
-def render_with_node(layout_data, metadata):
-    """Ruft Node.js auf, um das Bild zu bauen"""
-    
-    # Temporäre Dateien für Node
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f_layout:
-        json.dump(layout_data, f_layout)
-        layout_path = f_layout.name
-
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f_meta:
-        json.dump(metadata, f_meta)
-        meta_path = f_meta.name
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as f_out:
-        output_path = f_out.name
-    f_out.close() # Wichtig: Schließen, damit Node darauf zugreifen kann
-
-    try:
-        # Pfad zu render_task.js
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'render_task.js')
-        
-        # Node Kommando: node render_task.js layout.json meta.json out.jpg
-        cmd = ['node', script_path, layout_path, meta_path, output_path]
-        
-        # Ausführen
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if "SUCCESS" in result.stdout:
-            # Bild einlesen und base64 codieren
-            with open(output_path, 'rb') as f:
-                image_data = f.read()
-            import base64
-            b64_str = base64.b64encode(image_data).decode('utf-8')
-            return f"data:image/jpeg;base64,{b64_str}"
-        else:
-            log(f"Node Log: {result.stderr}") # Fehler ausgeben
-            return None
-
-    except Exception as e:
-        log(f"Render Exception: {e}")
-        return None
-    finally:
-        # Temp-Dateien löschen
-        try:
-            if os.path.exists(layout_path): os.remove(layout_path)
-            if os.path.exists(meta_path): os.remove(meta_path)
-            if os.path.exists(output_path): os.remove(output_path)
-        except: pass
-
-def run_batch():
-    log("Batch started (Node.js Engine).")
-    config = load_config()
-    
-    # 1. Layout suchen
-    layout_dir = os.path.join(os.path.dirname(__file__), 'layouts')
-    if not os.path.exists(layout_dir):
-        log("No layouts folder found.")
+        log(f"Jellyfin Error: {e}")
         return
 
-    layout_files = [f for f in os.listdir(layout_dir) if f.endswith('.json')]
-    if not layout_files:
-        log("No layouts found! Please save a layout in the editor first.")
-        return
+    log(f"Processing {len(items)} items...")
 
-    # Nimm das erste Layout (Du kannst das später erweitern)
-    selected_layout = layout_files[0]
-    layout_path = os.path.join(layout_dir, selected_layout)
-    
-    with open(layout_path, 'r') as f:
-        layout_data = json.load(f)
-
-    log(f"Using Layout: {selected_layout}")
-
-    # 2. Filme holen
-    items = fetch_library_items(config)
-    log(f"Found {len(items)} items.")
-
-    processed = 0
     for item in items:
-        if os.path.exists(STOP_SIGNAL_FILE):
-            log("Stopped by user.")
-            break
+        if os.path.exists(STOP_SIGNAL_FILE): break
+        
+        safe_title = "".join(c for c in item.get('Name', '') if c.isalnum() or c in " ._-").strip()
+        filename = f"{safe_title} - {item.get('ProductionYear')}.jpg"
+        
+        ticks = item.get('RunTimeTicks', 0)
+        minutes = (ticks // 600000000) if ticks else 0
+        h, m = divmod(minutes, 60)
+        runtime = f"{h}h {m}min" if h > 0 else f"{m}min"
 
-        # Metadaten vorbereiten
         meta = {
-            'title': item.get('Name'),
-            'year': item.get('ProductionYear'),
-            'overview': item.get('Overview'),
-            'rating': item.get('CommunityRating'),
-            'genres': ", ".join(item.get('Genres', [])),
-            # Token anhängen für Zugriff
-            'backdrop_url': f"{config['jellyfin']['url']}/Items/{item['Id']}/Images/Backdrop?api_key={config['jellyfin']['api_key']}",
-            'logo_url': f"{config['jellyfin']['url']}/Items/{item['Id']}/Images/Logo?api_key={config['jellyfin']['api_key']}"
+            "title": item.get('Name'),
+            "year": item.get('ProductionYear'),
+            "overview": item.get('Overview'),
+            "rating": item.get('CommunityRating'),
+            "officialRating": item.get('OfficialRating'),
+            "genres": ", ".join(item.get('Genres', [])),
+            "runtime": runtime,
+            "backdrop_url": f"{base_url}/Items/{item['Id']}/Images/Backdrop?api_key={jf['api_key']}",
+            "logo_url": f"{base_url}/Items/{item['Id']}/Images/Logo?api_key={jf['api_key']}" if 'Logo' in item.get('ImageTags', {}) else None,
+            "action_url": f"jellyfin://items/{item['Id']}",
+            "provider_ids": item.get('ProviderIds', {})
         }
 
-        log(f"Processing: {meta['title']}...")
+        log(f"Rendering: {meta['title']}")
+        img_b64, json_data = run_node_renderer(layout_full_path, meta)
         
-        # 3. Rendern lassen!
-        image_b64 = render_with_node(layout_data, meta)
-
-        if image_b64:
-            # 4. Speichern via API
+        if img_b64 and json_data:
             payload = {
-                "image": image_b64,
-                "layout_name": selected_layout.replace('.json', ''),
+                "image": img_b64,
+                "layout_name": selected_layout_name,
                 "metadata": meta,
-                "overwrite_filename": f"{item['Name']} ({item.get('ProductionYear')})",
+                "canvas_json": json_data,
+                "overwrite_filename": filename,
                 "target_type": "gallery"
             }
             try:
                 requests.post(API_URL, json=payload)
-                processed += 1
             except Exception as e:
                 log(f"Upload failed: {e}")
         else:
             log("Rendering failed.")
 
-    log(f"Finished. {processed} images created.")
     if os.path.exists(STOP_SIGNAL_FILE): os.remove(STOP_SIGNAL_FILE)
+    log("Batch Finished.")
 
 if __name__ == "__main__":
-    run_batch()
+    fetch_items_and_process()
