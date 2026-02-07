@@ -1,0 +1,21 @@
+{
+  "name": "TV Background Editor (Dev)",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "../docker-compose.dev.yml"
+  ],
+  "service": "tv-background",
+  "workspaceFolder": "/app",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "googlecloudtools.cloudcode",
+        "google.geminicodeassist",
+        "wholroyd.jinja"
+      ]
+    }
+  },
+  "postCreateCommand": "pip3 install -r requirements.txt"
+}
