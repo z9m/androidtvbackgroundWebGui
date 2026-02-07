@@ -58,12 +58,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
       # Automatically remove old, untagged images from Docker Hub to save storage space.
-      # This runs after every push to ensure the repository remains clean.
+      # This helps keeping the repository size small by removing orphaned layers.
       - name: Delete untagged images from Docker Hub
-        uses: lucasalt/docker-hub-tag-cleanup@v1
+        uses: peter-evans/dockerhub-clean-untagged@v3
         with:
-          hub_user: ${{ secrets.DOCKER_USERNAME }}
-          hub_password: ${{ secrets.DOCKER_PASSWORD }}
-          target_repo: butch708/tv-background-suite
-          keep_last: 0 
-          delete_untagged: true
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: butch708/tv-background-suite
