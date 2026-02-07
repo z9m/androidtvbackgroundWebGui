@@ -14,40 +14,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the source code from the repository
+      # Checkout the source code from GitHub
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Set up QEMU for multi-platform support (required for arm64 builds)
+      # Set up QEMU for multi-platform support (e.g., arm64)
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # Set up Docker Buildx for advanced build capabilities and caching
+      # Set up Docker Buildx for advanced build features
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Authenticate with Docker Hub using secrets stored in the repository
+      # Log in to Docker Hub using repository secrets
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Extract metadata to define tags and labels based on the Git branch/tag
+      # Extract metadata (tags/labels) based on the current branch or tag
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: butch708/tv-background-suite
           tags: |
-            # Tag as 'dev' when pushing to the dev branch
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
-            # Tag as 'latest' when pushing to the main branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            # Use the git tag name for versioned releases (e.g., v1.0.0)
             type=ref,event=tag
 
-      # Build the Docker image and push it to Docker Hub for multiple architectures
+      # Build the Docker image and push it to Docker Hub
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -57,11 +54,28 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
 
-      # Automatically remove old, untagged images from Docker Hub to save storage space.
-      # This helps keeping the repository size small by removing orphaned layers.
-      - name: Delete untagged images from Docker Hub
-        uses: peter-evans/dockerhub-clean-untagged@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: butch708/tv-background-suite
+      # Cleanup: Delete all untagged images (orphaned digests) from Docker Hub.
+      # This follows the NUbots approach but is self-contained in this YAML.
+      # It fetches a JWT token and deletes any tag that has no name.
+      - name: Docker Hub Cleanup
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOCKER_REPO: butch708/tv-background-suite
+        run: |
+          # Request a JWT token for the Docker Hub API
+          TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username": "'${DOCKER_USERNAME}'", "password": "'${DOCKER_PASSWORD}'"}' https://hub.docker.com/v2/users/login/ | jq -r .token)
+          
+          # Fetch all tags/digests and filter for those that are untagged (name is null)
+          # We use the digest as the identifier for deletion
+          UNTAGGED_DIGESTS=$(curl -s -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${DOCKER_REPO}/tags/?page_size=100" | jq -r '.results[] | select(.name == null or .name == "") | .digest')
+          
+          if [ -z "$UNTAGGED_DIGESTS" ] || [ "$UNTAGGED_DIGESTS" == "null" ]; then
+            echo "No untagged images found. Repository is clean."
+          else
+            for DIGEST in $UNTAGGED_DIGESTS; do
+              echo "Deleting orphaned digest: $DIGEST"
+              curl -s -H "Authorization: JWT ${TOKEN}" -X DELETE "https://hub.docker.com/v2/repositories/${DOCKER_REPO}/tags/${DIGEST}/"
+            done
+            echo "Cleanup successfully finished."
+          fi
