@@ -3399,6 +3399,13 @@ async function saveLayout() {
         });
     }
 
+    // Convert absolute URLs to relative
+    layout.objects.forEach(obj => {
+        if (obj.type === 'image' && obj.src && obj.src.startsWith(window.location.origin)) {
+            obj.src = obj.src.replace(window.location.origin, '');
+        }
+    });
+
     layout.custom_effects = {
         bgColor: document.getElementById('bgColor').value,
         bgBrightness: document.getElementById('bgBrightness').value,
