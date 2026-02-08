@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <title>TV Background Suite</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alice&family=Andika&family=Arvo:wght@400;700&family=Barrio&family=Bungee+Spice&family=Codystar&family=Creepster&family=Diplomata+SC&family=Ewert&family=Fascinate+Inline&family=Faster+One&family=Fira+Sans:wght@300;400;700&family=Flavors&family=Fredericka+the+Great&family=Honk&family=IBM+Plex+Sans:wght@300;400;700&family=Inter:wght@300;400;700&family=Jost:wght@300;400;700&family=Lacquer&family=Lato:wght@300;400;700&family=Manrope:wght@300;400;700&family=Merriweather:wght@300;400;700&family=Metal+Mania&family=Modak&family=Monoton&family=Montserrat:wght@300;400;700&family=Mulish:wght@300;400;700&family=Nabla&family=Nosifer&family=Nunito:wght@300;400;700&family=Open+Sans:wght@300;400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@300;400;700&family=Rubik+Beastly&family=Rubik+Vinyl&family=Shojumaru&family=Silkscreen&family=Space+Grotesk:wght@300;400;700&family=Special+Elite&family=Titillium+Web:wght@300;400;700&family=Urbanist:wght@300;400;700&family=Zilla+Slab+Highlight&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
+    <link rel="stylesheet" href="{{ url_for('gui_editor.dynamic_fonts_css') }}">
+    <style>
+        .group-content {
+            overflow: hidden;
+        }
+        .group-content.collapsed {
+            display: none;
+        }
+        .control-group h3 {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+        }
+        .group-arrow {
+            display: inline-block;
+            width: 20px;
+            margin-right: 5px;
+            transition: transform 0.2s;
+            text-align: center;
+        }
+        .group-arrow.collapsed {
+            transform: rotate(-90deg);
+        }
+        /* Font Manager Accordion Styles */
+        #fontList {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            align-items: start;
+        }
+        @media (max-width: 1200px) { #fontList { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { #fontList { grid-template-columns: 1fr; } }
+
+        .font-family-header {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        .font-family-header:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .font-family-wrapper {
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+        .font-family-content {
+            display: none;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid #444;
+        }
+        .font-family-content.active {
+            display: block;
+        }
+        .font-file-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 15px;
+            border-bottom: 1px solid #333;
+        }
+        .font-file-row:last-child {
+            border-bottom: none;
+        }
+        /* Compact Settings & Mobile Menu */
+        .settings-compact-panel {
+            padding: 10px 15px !important;
+        }
+        .settings-compact-panel h3 {
+            margin-top: 5px;
+            margin-bottom: 5px;
+            font-size: 1.1em;
+        }
+        .settings-compact-panel label {
+            margin-bottom: 0;
+            font-size: 0.85em;
+            color: #ccc;
+            display: block;
+        }
+        .settings-compact-panel input[type="text"],
+        .settings-compact-panel input[type="password"] {
+            margin-bottom: 2px;
+            padding: 2px 8px;
+            height: 26px;
+            font-size: 0.9em;
+        }
+        .settings-compact-panel button {
+            margin-top: 2px;
+            padding: 6px;
+            font-size: 0.9em;
+        }
+        .mobile-menu-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0 10px 0 0;
+        }
+        @media (max-width: 1024px) { .mobile-menu-btn { display: inline-block; } }
+
+        /* Preview Popup Styles */
+        #preview-popup {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            flex-direction: column;
+        }
+        #preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        #preview-grid img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            border: 1px solid #444;
+        }
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1600px;
+            margin: 0 auto 20px auto;
+            color: white;
+        }
+        .preview-header h2 { margin: 0; font-size: 24px; }
+        .preview-header span { font-size: 40px; cursor: pointer; line-height: 1; }
+        @media (max-width: 768px) {
+            #preview-popup { padding: 10px; }
+            .preview-header h2 { font-size: 18px; }
+            .preview-header span { font-size: 30px; }
+        }
+
+        /* Gallery & Saved Layouts Grid */
+        .gallery-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 5px;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .gallery-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 4px;
+        }
+        
+        /* Gallery Specific Styles */
+        .sub-nav-tabs {
+            display: flex;
+            flex-shrink: 0;
+            background: rgba(0,0,0,0.2);
+            border-bottom: 1px solid #444;
+            padding: 5px 20px 0 20px;
+        }
+        .sub-tab-link {
+            padding: 10px 15px;
+            cursor: pointer;
+            color: #aaa;
+            border-bottom: 3px solid transparent;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .sub-tab-link:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.05);
+        }
+        .sub-tab-link.active {
+            color: #fff;
+            border-bottom-color: #00796b;
+        }
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 5px;
+            padding: 10px;
+            overflow-y: auto;
+            flex: 1;
+            align-content: start;
+        }
+        .gallery-item {
+            position: relative;
+            border: 1px solid #333;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+        }
+        .mobile-header-title {
+            display: none;
+            font-size: 18px;
+            margin-left: 15px;
+            color: white;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        @media (max-width: 768px) {
+            .mobile-header-title { display: block; }
+        }
+        .batch-sidebar {
+            background: #1a1a1a;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        .manager-panel {
+            background: #1a1a1a;
+            padding: 15px;
+            box-sizing: border-box;
+            width: 100%;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 0;
+        }
+        .settings-panel {
+            background: #1a1a1a;
+            padding: 15px;
+            box-sizing: border-box;
+            width: 100%;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+        .gallery-item img {
+            width: 100%;
+            height: auto;
+            display: block;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            cursor: pointer;
+        }
+        .gallery-item .caption {
+            padding: 4px;
+            font-size: 12px;
+            color: #ccc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background: rgba(0,0,0,0.5);
+        }
+
+        /* Saved Layouts List Styles */
+        .layouts-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .layouts-container > div {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 2px;
+        }
+        .layouts-container img {
+            width: 9%;
+            height: auto;
+            max-width: 100%;
+            border-radius: 4px;
+            margin-right: 0.2%;
+            margin-top: 2px;
+            display: inline-block;
+            vertical-align: top;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .layout-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+        }
+
+        /* Fix for radio buttons size on desktop */
+        @media (min-width: 769px) {
+            input[name="fillType"] {
+                width: 13px;
+                height: 13px;
+            }
+        }
+
+        /* Batch Processing Tab Layout */
+        .batch-grid {
+            display: grid;
+            grid-template-columns: 350px 350px 1fr;
+            gap: 20px;
+            align-items: stretch;
+            height: 100%;
+        }
+        #batchLog {
+            background-color: #000;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            text-shadow: 0 0 2px #003300;
+            border: 1px solid #333;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+        @media (max-width: 1280px) {
+            .batch-grid {
+                grid-template-columns: 250px 1fr;
+                grid-template-rows: auto 1fr;
+            }
+            .batch-sidebar {
+                grid-column: 1;
+                grid-row: 1;
+                height: auto !important;
+                overflow-y: visible !important;
+            }
+            .batch-grid > div:nth-child(2) {
+                grid-column: 1;
+                grid-row: 2;
+            }
+            .batch-preview-container {
+                grid-column: 2;
+                grid-row: 1 / span 2;
+                height: 100% !important;
+            }
+            .batch-header {
+                cursor: pointer;
+                background: rgba(255,255,255,0.05);
+                padding: 10px;
+                border-radius: 4px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .batch-arrow { display: block !important; transition: transform 0.3s; }
+            .batch-header.active .batch-arrow { transform: rotate(180deg); }
+            
+            #batch-config-content {
+                display: none;
+                padding-top: 10px;
+            }
+            #batch-config-content.active {
+                display: block;
+            }
+        }
+        @media (max-width: 768px) {
+            .batch-grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto 1fr;
+            }
+            .batch-sidebar, .batch-grid > div:nth-child(2), .batch-preview-container {
+                grid-column: auto;
+                grid-row: auto;
+            }
+        }
+        
+        /* Mobile Tools Menu Styles */
+        .canvas-header { position: relative; }
+        .header-controls-left { display: flex; align-items: center; gap: 10px; }
+        .header-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .tool-group { display: flex; align-items: center; gap: 5px; }
+        #toolsToggle { display: none; }
+        
+        @media (max-width: 1024px) {
+            #toolsToggle { display: inline-block; }
+            .header-tools {
+                display: none;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                width: 100%;
+                background: rgba(0,0,0,0.95);
+                flex-direction: column;
+                padding: 15px;
+                box-sizing: border-box;
+                border-bottom: 1px solid #444;
+                z-index: 1000;
+            }
+            .header-tools.open { display: flex; }
+            .tool-group { width: 100%; justify-content: center; margin-bottom: 10px; }
+            #mediaSearchInput { width: 60% !important; }
+        }
+
+        /* Mobile Landscape Optimization */
+        @media (max-width: 1024px) and (orientation: landscape) {
+            .nav-tabs {
+                background: transparent !important;
+                pointer-events: none;
+                border-bottom: none !important;
+                height: 0 !important; /* Collapse height so canvas moves up */
+                overflow: visible !important;
+            }
+            .nav-tabs > * { pointer-events: auto; }
+            .mobile-header-title { 
+                display: block !important;
+                position: fixed;
+                top: 5px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 1002;
+                background: rgba(0,0,0,0.6);
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 14px;
+                pointer-events: none;
+                max-width: 60vw;
+            }
+            .mobile-nav-toggle { 
+                background: rgba(0,0,0,0.8) !important; 
+                position: fixed; top: 5px; left: 5px; z-index: 1002;
+            }
+            
+            .canvas-header {
+                position: fixed;
+                top: 0;
+                left: 50px; /* Space for nav toggle */
+                right: auto;
+                width: auto;
+                background: transparent !important;
+                padding: 5px !important;
+                justify-content: flex-start !important;
+                z-index: 1001;
+            }
+            .header-controls-left {
+                background: rgba(0,0,0,0.8);
+                padding: 5px;
+                border-radius: 4px;
+            }
+            .header-tools { top: 50px; }
+            
+            #canvas-wrapper { 
+                position: fixed !important;
+                top: 0 !important; 
+                left: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                display: flex; 
+                align-items: flex-start; 
+                justify-content: flex-end;
+                padding-top: 20px;
+                padding-right: 0;
+                box-sizing: border-box;
+                overflow: hidden;
+                z-index: 0;
+                margin: 0 !important;
+            }
+            .canvas-container {
+                width: min(calc((100vw - 260px) * 0.8), calc(100vh * 1.7778 * 0.8)) !important;
+                height: min(calc(100vh * 0.8), calc((100vw - 260px) * 0.5625 * 0.8)) !important;
+                aspect-ratio: 16/9;
+            }
+            .canvas-container canvas {
+                width: 100% !important;
+                height: 100% !important;
+            }
+
+            /* Fullscreen Overrides */
+            #canvas-wrapper:fullscreen {
+                padding: 0 !important;
+                justify-content: center !important;
+                align-items: center !important;
+            }
+            #canvas-wrapper:fullscreen .canvas-container {
+                width: min(100vw, calc(100vh * 1.7778)) !important;
+                height: min(100vh, calc(100vw * 0.5625)) !important;
+            }
+        }
+        
+        #mobileOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1001;
+        }
+        body.mobile-menu-open #mobileOverlay {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="nav-tabs">
+        <button class="mobile-nav-toggle" onclick="toggleTopNav()">☰</button>
+        <span id="mobile-header-title" class="mobile-header-title">🎨 Layout Editor</span>
+        <div class="nav-links-container">
+            <button class="mobile-nav-close" onclick="toggleTopNav()">&times;</button>
+            <div class="tab-link active" onclick="openTab(event, 'editor-tab')" data-i18n="nav_editor">🎨 Layout Editor</div>
+            <div class="tab-link" onclick="openTab(event, 'layouts-tab'); loadLayoutsList()" data-i18n="nav_layouts">💾 Saved Layouts</div>
+            <div class="tab-link" onclick="openTab(event, 'gallery-tab'); loadGallery()" data-i18n="nav_gallery">🖼️ Gallery</div>
+            <div class="tab-link" onclick="openTab(event, 'batch-tab'); loadBatchLayouts()" data-i18n="nav_batch">⚡ Batch Processing</div>
+            <div class="tab-link" onclick="openTab(event, 'overlay-tab')" data-i18n="nav_overlay">📏 Overlay Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'texture-tab')" data-i18n="nav_texture">🎨 Texture Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'font-tab'); loadFontManager()" data-i18n="nav_font">🔤 Font Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'icon-tab')">🎨 Icon Manager</div>
+            <div class="tab-link" onclick="openTab(event, 'settings-tab')" data-i18n="nav_settings">⚙️ Provider Settings</div>
+            <div style="margin-top: 20px; padding: 0 20px; display: flex; align-items: center;">
+                <select id="languageSelect" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 10px; border-radius: 4px; width: 100%;">
+                    <option value="de">🇩🇪 Deutsch</option>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="it">🇮🇹 Italiano</option>
+                    <option value="fr">🇫🇷 Français</option>
+                    <option value="pl">🇵🇱 Polski</option>
+                    <option value="cs">🇨🇿 Čeština</option>
+                    <option value="es">🇪🇸 Español</option>
+                    <option value="ro">🇷🇴 Română</option>
+                </select>
+            </div>
+        </div>
+        <div class="desktop-lang-select">
+             <select id="languageSelectDesktop" onchange="changeLanguage(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 0 5px; border-radius: 4px; font-size: 12px; height: 24px; margin-bottom: 3px;">
+                <option value="de">🇩🇪 Deutsch</option>
+                <option value="en">🇺🇸 English</option>
+                <option value="it">🇮🇹 Italiano</option>
+                <option value="fr">🇫🇷 Français</option>
+                <option value="pl">🇵🇱 Polski</option>
+                <option value="cs">🇨🇿 Čeština</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="ro">🇷🇴 Română</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="mobileOverlay" onclick="toggleMobileMenu()"></div>
+
+    <div id="editor-tab" class="tab-content active">
+        <div class="sidebar">
+            <button id="closeSidebarBtn" onclick="toggleMobileMenu()">×</button>
+            <div class="control-group" id="group-layout">
+                <h3 onclick="toggleGroup('group-layout')"><span class="group-arrow collapsed">▼</span> <span data-i18n="layout_mgmt">Layout Management</span></h3>
+                <div class="group-content collapsed">
+                    <label data-i18n="tag_align">Tag Alignment</label>
+                    <select id="tagAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
+                        <option value="left">Left</option>
+                        <option value="center" selected>Center</option>
+                        <option value="right">Right</option>
+                    </select>
+                    <label data-i18n="text_align_content">Text Content Alignment</label>
+                    <select id="textContentAlignSelect" onchange="updateVerticalLayout(); saveToLocalStorage()">
+                        <option value="left" selected>Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                        <option value="justify">Justify</option>
+                    </select>
+                    <div id="layerControlContainer" style="display:none; gap:5px; margin-top:10px;">
+                        <button onclick="moveLayer('up')" style="flex:1; font-size:11px; padding:4px;">⬆ Bring Forward</button>
+                        <button onclick="moveLayer('down')" style="flex:1; font-size:11px; padding:4px;">⬇ Send Backward</button>
+                    </div>
+                    <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                            <label style="font-size:12px; font-weight:bold; margin:0;" data-i18n="safe_zones">Global Margins & Blocked Areas</label>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                            <div><label style="font-size:10px;">Top</label><input type="number" id="marginTopInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
+                            <div><label style="font-size:10px;">Bottom</label><input type="number" id="marginBottomInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
+                            <div><label style="font-size:10px;">Left</label><input type="number" id="marginLeftInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
+                            <div><label style="font-size:10px;">Right</label><input type="number" id="marginRightInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group" id="group-logos">
+                <h3 onclick="toggleGroup('group-logos')"><span class="group-arrow collapsed">▼</span> <span data-i18n="logos_icons">Logos & Icons</span></h3>
+                <div class="group-content collapsed">
+                    <div id="customLogosSidebar" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;"></div>
+                    <div id="icon-properties" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;" title="Uncheck to enable manual positioning (Drag freely)">
+                            <input type="checkbox" id="snapToggleIcon" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping('icon')">
+                            <label for="snapToggleIcon" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="auto_layout_snap">Auto-Layout & Snapping</label>
+                            <button id="resetSnapIcon" onclick="resetSnap('icon')" style="display:none; margin-left:auto; font-size:9px; padding:2px 6px; background:#4a4a4a; border:none; color:white; cursor:pointer; border-radius:3px;" data-i18n="reset">Reset</button>
+                        </div>
+                        <label for="iconSizeInput" data-i18n="icon_size">Icon Size</label>
+                        <input type="number" id="iconSizeInput" min="10" max="500" oninput="updateIconSize()">
+                        <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                            <input type="checkbox" id="matchHeightToggle" onchange="toggleMatchHeight()" style="width:20px; height:20px; margin:0;">
+                            <label for="matchHeightToggle" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="match_height">Match Height to Neighbor</label>
+                        </div>
+                    </div>
+                    <div id="logoSettings" style="display:none; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <input type="checkbox" id="logoAutoFixToggle" onchange="toggleLogoAutoFix()" style="width:20px; height:20px; margin:0;">
+                            <label for="logoAutoFixToggle" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="logo_auto_fix">Auto-Fix Color</label>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <div style="display:flex; justify-content:space-between;">
+                                <label data-i18n="logo_brightness" style="font-size:11px; margin:0;">Brightness</label>
+                                <span id="logoBrightnessVal" style="font-size:11px;">0%</span>
+                            </div>
+                            <input type="range" id="logoBrightnessInput" min="-100" max="100" value="0" oninput="updateLogoBrightness()" style="margin-top:2px;">
+                        </div>
+                        <div style="display:flex; align-items:center; justify-content:space-between;">
+                            <label data-i18n="logo_color" style="font-size:11px; margin:0;">Tint</label>
+                            <div style="display:flex; align-items:center; gap:5px;">
+                                <input type="color" id="logoColorInput" oninput="updateLogoColor()" value="#ffffff" style="height:30px; width:40px;">
+                                <button onclick="resetLogoColor()" style="font-size:9px; padding:2px 6px; background:#4a4a4a; border:none; color:white; cursor:pointer; border-radius:3px;" data-i18n="reset">Reset</button>
+                            </div>
+                        </div>
+                        <button onclick="toggleTitleType()" style="width:100%; margin-top:10px; background:#4a4a4a; font-size:11px; padding:5px;" data-i18n="use_text_title">Use Text Title</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group" id="group-metadata">
+                <h3 onclick="toggleGroup('group-metadata')"><span class="group-arrow collapsed">▼</span> <span data-i18n="metadata_tags">Metadata Tags</span></h3>
+                <div class="group-content collapsed">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <button onclick="addMetadataTag('title', 'TITLE / LOGO')">Title/Logo</button>
+                        <button onclick="addMetadataTag('year', '2024')">Year</button>
+                        <button onclick="addMetadataTag('rating', 'IMDb: 8.5')">Rating (Text)</button>
+                        <button onclick="addMetadataTag('rating_star', '8.5')">Rating (Star)</button>
+                        <button onclick="addMetadataTag('rating_val', '8.5')">Rating (Value)</button>
+                        <button onclick="addMetadataTag('runtime', '2h 15m')">Runtime</button>
+                        <button onclick="addMetadataTag('genres', 'Action, Sci-Fi')">Genres</button>
+                        <button onclick="addMetadataTag('overview', 'Movie description...')">Overview</button>
+                        <button onclick="addMetadataTag('provider_source', 'Now available on...')">Provider Info</button>
+                        <button onclick="addMetadataTag('certification', 'FSK 16')">Age Rating (Image)</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group" id="group-canvas">
+                <h3 onclick="toggleGroup('group-canvas')"><span class="group-arrow collapsed">▼</span> <span data-i18n="canvas_settings">Canvas</span></h3>
+                <div class="group-content collapsed">
+                    <label for="resSelect" data-i18n="resolution">Resolution</label>
+                    <select id="resSelect" onchange="changeResolution()">
+                        <option value="1080">1080p (Full HD)</option>
+                        <option value="2160">2160p (4K)</option>
+                    </select>
+                    <label for="overlaySelect" data-i18n="guide_overlay">Guide Overlay</label>
+                    <select id="overlaySelect" onchange="updateOverlay()">
+                        <option value="">None</option>
+                    </select>
+                    <label data-i18n="bg_color">Background Color</label>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="color" id="bgColor" oninput="updateBgColor()" value="#000000" style="height:35px; width:60px;">
+                        <button onclick="autoDetectBgColor(true)" style="margin-top:0; font-size: 11px;" data-i18n="auto_detect">✨ Auto-Detect</button>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                        <label style="font-size:10px; margin:0;" data-i18n="brightness">Brightness</label>
+                        <span id="brightVal" style="font-size:10px;">20%</span>
+                    </div>
+                    <input type="range" id="bgBrightness" min="0" max="100" value="20" oninput="adjustAutoBrightness()" style="margin-top:2px;">
+                    <button onclick="mirrorBackground()" style="margin-top: 10px; background-color: #4a4a4a;" data-i18n="mirror_bg">↔️ Mirror Background</button>
+                </div>
+            </div>
+
+            <div class="control-group" id="group-effects">
+                <h3 onclick="toggleGroup('group-effects')"><span class="group-arrow collapsed">▼</span> <span data-i18n="bg_effects">Background Effects</span></h3>
+                <div class="group-content collapsed">
+                    <label data-i18n="effect_type">Effect Type</label>
+                    <select id="fadeEffect" onchange="updateFadeControls()">
+                        <option value="custom">Custom Linear Fade</option>
+                        <option value="bottom-left">Corner Fade: Bottom-Left</option>
+                        <option value="bottom-right">Corner Fade: Bottom-Right</option>
+                        <option value="top-left">Corner Fade: Top-Left</option>
+                        <option value="top-right">Corner Fade: Top-Right</option>
+                        <option value="vignette">Vignette Fade (Centered)</option>
+                    </select>
+                    <div id="ctrl-fade-radius" style="display:none;">
+                        <label for="fadeRadius" data-i18n="corner_radius">Corner Radius</label>
+                        <input type="range" id="fadeRadius" min="0" max="3000" value="1000" oninput="updateFades()">
+                    </div>
+                    <div id="ctrl-fade-left"><label for="fadeLeft">Left</label><input type="range" id="fadeLeft" min="0" max="3000" value="580" oninput="updateFades()"></div>
+                    <div id="ctrl-fade-right"><label for="fadeRight">Right</label><input type="range" id="fadeRight" min="0" max="3000" value="0" oninput="updateFades()"></div>
+                    <div id="ctrl-fade-top"><label for="fadeTop">Top</label><input type="range" id="fadeTop" min="0" max="2000" value="0" oninput="updateFades()"></div>
+                    <div id="ctrl-fade-bottom"><label for="fadeBottom">Bottom</label><input type="range" id="fadeBottom" min="0" max="2000" value="320" oninput="updateFades()"></div>
+                </div>
+            </div>
+
+            <div class="control-group" id="group-text" style="display:none;">
+                <h3 onclick="toggleGroup('group-text')"><span class="group-arrow collapsed">▼</span> <span data-i18n="text_props">Text Properties</span></h3>
+                <div class="group-content collapsed">
+                    <button id="btn-use-logo" onclick="toggleTitleType()" style="display:none; width:100%; margin-bottom:10px; background:#4a4a4a; font-size:11px; padding:5px;" data-i18n="use_logo">Use Logo</button>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;" title="Uncheck to enable manual positioning (Drag freely)">
+                        <input type="checkbox" id="snapToggleText" checked style="width:20px; height:20px; margin:0;" onchange="toggleObjectSnapping('text')">
+                        <label for="snapToggleText" style="margin:0; cursor:pointer; font-size:12px;" data-i18n="auto_layout_snap">Auto-Layout & Snapping</label>
+                        <button id="resetSnapText" onclick="resetSnap('text')" style="display:none; margin-left:auto; font-size:9px; padding:2px 6px; background:#4a4a4a; border:none; color:white; cursor:pointer; border-radius:3px;" data-i18n="reset">Reset</button>
+                    </div>
+                    <label for="fontSizeInput" data-i18n="font_size">Font Size</label>
+                    <input type="number" id="fontSizeInput" min="10" max="200" oninput="updateSelectedFontSize()">
+                    <label for="fontFamilySelect" data-i18n="font_family">Font Family</label>
+                    <select id="fontFamilySelect" onchange="updateSelectedFontFamily()" class="form-control">
+                        {% for family in data.font_families %}
+                        <option value="{{ family }}" style="font-family: '{{ family }}';">{{ family }}</option>
+                        {% endfor %}
+                    </select>
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        <button id="btn-bold" onclick="toggleBold()" style="flex:1; font-weight:bold;" title="Bold">B</button>
+                        <button id="btn-italic" onclick="toggleItalic()" style="flex:1; font-style:italic;" title="Italic">I</button>
+                    </div>
+                    <button onclick="applyFontToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_font_all">Apply Font & Color to All Tags</button>
+                    <button onclick="applyFontSizeToAll()" style="margin-top: 5px; font-size: 11px; background-color: #4a4a4a;" data-i18n="apply_size_all">Apply Size to All Tags</button>
+                    
+                    <label data-i18n="fill_type">Fill Type</label>
+                    <div style="display:flex; gap:10px; margin-bottom:5px; align-items: center;">
+                        <input type="radio" id="fillTypeColor" name="fillType" value="color" checked onchange="toggleTextFillType()">
+                        <label for="fillTypeColor" style="margin:0; font-size:12px;" data-i18n="color">Color</label>
+                        <input type="radio" id="fillTypeTexture" name="fillType" value="texture" onchange="toggleTextFillType()">
+                        <label for="fillTypeTexture" style="margin:0; font-size:12px;" data-i18n="texture">Texture</label>
+                    </div>
+                    <div id="fillColorContainer">
+                        <label for="fontColorInput" data-i18n="text_color">Text Color</label>
+                        <input type="color" id="fontColorInput" oninput="updateSelectedColor()" style="height:35px;">
+                    </div>
+                    <div id="fillTextureContainer" style="display:none;">
+                        <label for="textureSelect" data-i18n="select_texture">Select Texture</label>
+                        <select id="textureSelect" onchange="applyTextureToSelection()" style="width:100%; padding:5px;"><option value="">None</option></select>
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            <label style="font-size:10px; margin:0;" data-i18n="pattern_scale">Pattern Scale</label>
+                            <span id="textureScaleVal" style="font-size:10px;">1x</span>
+                        </div>
+                        <input type="range" id="textureScale" min="0.1" max="3" step="0.1" value="1" oninput="updateTextureScale()" style="margin-top:2px;">
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            <label style="font-size:10px; margin:0;" data-i18n="pattern_rotation">Pattern Rotation</label>
+                            <span id="textureRotationVal" style="font-size:10px;">0°</span>
+                        </div>
+                        <input type="range" id="textureRotation" min="0" max="360" step="1" value="0" oninput="updateTextureRotation()" style="margin-top:2px;">
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            <label style="font-size:10px; margin:0;" data-i18n="opacity">Opacity</label>
+                            <span id="textureOpacityVal" style="font-size:10px;">100%</span>
+                        </div>
+                        <input type="range" id="textureOpacity" min="0" max="100" value="100" oninput="updateTextureOpacity()" style="margin-top:2px;">
+                        <button onclick="resetTextureSettings()" style="margin-top: 10px; font-size: 11px; background-color: #4a4a4a; width: 100%;" data-i18n="reset_texture">Reset Texture Settings</button>
+                    </div>
+
+                    <div id="textAlignControl" style="display:none; margin-top:10px;">
+                        <label style="margin-bottom:5px;" data-i18n="text_align">Text Alignment</label>
+                        <div style="display:flex; gap:5px;">
+                            <button onclick="setTextAlignment('left')" style="flex:1;">Left</button>
+                            <button onclick="setTextAlignment('center')" style="flex:1;">Center</button>
+                            <button onclick="setTextAlignment('right')" style="flex:1;">Right</button>
+                        </div>
+                    </div>
+                    <div id="textBackgroundControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+                            <input type="checkbox" id="textBgEnable" onchange="toggleTextBackground()" style="width:20px; height:20px; margin:0;">
+                            <label for="textBgEnable" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="bg_box">Background Box</label>
+                        </div>
+                        <div id="textBgSettings" style="display:none;">
+                            <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+                                <input type="checkbox" id="textBgAuto" onchange="updateTextBackgroundSettings()" style="width:20px; height:20px; margin:0;">
+                                <label for="textBgAuto" style="margin:0; cursor:pointer; font-size:11px;" data-i18n="auto_color">Auto-Color (Match BG)</label>
+                            </div>
+                            <label for="textBgColor" data-i18n="box_color">Box Color</label>
+                            <input type="color" id="textBgColor" oninput="updateTextBackgroundSettings()" style="height:35px;">
+                            <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                                <label style="font-size:10px; margin:0;" data-i18n="opacity">Opacity</label>
+                                <span id="textBgOpacityVal" style="font-size:10px;">50%</span>
+                            </div>
+                            <input type="range" id="textBgOpacity" min="0" max="100" value="50" oninput="updateTextBackgroundSettings()" style="margin-top:2px;">
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <label style="font-size:12px; font-weight:bold;" data-i18n="text_outline">Text Outline</label>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <input type="color" id="textStrokeColor" oninput="updateTextStroke()" style="height:30px; width:40px;">
+                            <input type="number" id="textStrokeWidth" min="0" max="10" step="0.1" value="0" oninput="updateTextStroke()" style="width:60px;">
+                            <span style="font-size:10px;">px</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <label style="font-size:12px; font-weight:bold;" data-i18n="drop_shadow">Drop Shadow</label>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                            <div><label style="font-size:10px;" data-i18n="color">Color</label><input type="color" id="shadowColor" oninput="updateTextShadow()" style="height:30px; width:100%;"></div>
+                            <div><label style="font-size:10px;" data-i18n="blur">Blur</label><input type="number" id="shadowBlur" min="0" max="50" value="0" oninput="updateTextShadow()" style="width:100%;"></div>
+                            <div><label style="font-size:10px;" data-i18n="offset_x">Offset X</label><input type="number" id="shadowOffsetX" min="-50" max="50" value="0" oninput="updateTextShadow()" style="width:100%;"></div>
+                            <div><label style="font-size:10px;" data-i18n="offset_y">Offset Y</label><input type="number" id="shadowOffsetY" min="-50" max="50" value="0" oninput="updateTextShadow()" style="width:100%;"></div>
+                        </div>
+                        <button onclick="resetTextShadow()" style="margin-top:5px; font-size:11px; background:#4a4a4a; width:100%;" data-i18n="reset_shadow">Reset Shadow</button>
+                    </div>
+                    <div id="genreLimitControl" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div style="display:flex; justify-content:space-between;"><label for="genreLimitSlider" style="font-size:11px; margin:0;" data-i18n="genre_limit">Genre Limit</label><span id="genreLimitVal" style="font-size:11px;">Max</span></div>
+                        <input type="range" id="genreLimitSlider" min="1" max="6" value="6" oninput="updateGenreLimit()" style="margin-top:2px;">
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:auto">
+                <div id="layoutNameContainer">
+                    <label data-i18n="layout_name">Layout Name</label>
+                    <input type="text" id="layoutName" placeholder="e.g. Dark Mode Minimal" value="Default" style="margin-bottom: 10px;">
+                </div>
+                <button id="btn-save-layout" onclick="saveLayout()" style="background: #00796b; margin-bottom: 10px;" data-i18n="save_layout">💾 Save Layout</button>
+                <button id="btn-save-changes" onclick="saveEditedImage()" style="background: #d32f2f; margin-bottom: 10px; display: none;" data-i18n="save_changes">💾 Save Changes</button>
+                <button class="btn-export" onclick="saveImage()" data-i18n="export_jpg">💾 Export JPG (Download)</button>
+                <button id="btn-save-gallery" onclick="saveToGallery()" style="background: #e65100; margin-top: 10px;" data-i18n="save_gallery">📂 Save to Gallery</button>
+                <button onclick="resetLayout()" style="background: #d32f2f; margin-top: 10px;" data-i18n="reset_layout">⚠️ Reset Layout</button>
+            </div>
+        </div>
+
+        <div class="main-view" style="display: flex; flex-direction: column; height: 100%; position: relative; overflow: hidden;">
+            <div style="flex: 1; overflow-y: auto; width: 100%; display: flex; flex-direction: column; align-items: center;">
+                <div class="canvas-header" style="display:flex; justify-content:space-between; width:100%; max-width: 100%; padding: 10px 20px; box-sizing: border-box; align-items:center; flex-wrap: wrap; gap: 10px;">
+                    <div class="header-controls-left">
+                        <button id="menuToggle" class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
+                        <button id="toolsToggle" class="mobile-menu-btn" onclick="toggleMobileTools()">🛠️</button>
+                        <button onclick="toggleFullscreen()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;" title="Toggle Fullscreen">⛶</button>
+                        <button onclick="toggleGrid()" style="width:auto; background-color: #4a4a4a; padding: 8px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: none; border-radius: 4px; color: white; cursor: pointer;">📏</button>
+                    </div>
+
+                    <div id="toolsDropdown" class="header-tools">
+                        <div class="tool-group">
+                            <input type="text" id="mediaSearchInput" placeholder="Search title..." style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; width: 200px;" onkeydown="if(event.key==='Enter') searchMedia()" data-i18n="search_placeholder">
+                            <button onclick="searchMedia()" style="width:auto; padding: 8px 12px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: pointer; color: white;">🔍</button>
+                        </div>
+                        <div class="tool-group">
+                            <button id="btn-shuffle" onclick="fetchRandomPreview()" style="background: #1565c0; padding: 8px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);" data-i18n="shuffle_preview">🎲 <span>Shuffle Preview</span></button>
+                            <span id="source-indicator" style="font-size: 11px; color: #aaa; text-shadow: 1px 1px 2px black;">Source: None</span>
+                        </div>
+                        <div class="tool-group">
+                            <button id="btn-undo" onclick="undo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="undo">↩ <span>Undo</span></button>
+                            <select id="historySelect" onchange="jumpToHistory(this.value)" style="padding: 0 10px; text-align: center; background: #444; color: white; border: 1px solid #555; cursor: pointer; border-radius: 4px;">
+                                <option value="" disabled selected>🕒</option>
+                            </select>
+                            <button id="btn-redo" onclick="redo()" style="background: #555; opacity: 0.5; cursor: default; padding: 8px 15px; border: none; border-radius: 4px; color: white;" disabled data-i18n="redo">↪ <span>Redo</span></button>
+                        </div>
+                    </div>
+                </div>
+                <div id="canvas-wrapper" style="margin: auto; position: relative; top: -38px;">
+                    <canvas id="mainCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="batch-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px; height: 100%; box-sizing: border-box;">
+            <div class="batch-grid" style="width: 100%; max-width: none;">
+                <div class="batch-sidebar" style="width: 100%; height: 100%; border: 1px solid #333; border-radius: 8px; overflow-y: auto;">
+                    <!-- BATCH CONFIGURATION GROUP -->
+                    <div class="control-group" id="group-batch-config" style="border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
+                        <h3 onclick="toggleGroup('group-batch-config')"><span class="group-arrow">▼</span> <span data-i18n="batch_config">Batch Configuration</span></h3>
+                        <div class="group-content">
+                    <label for="batchLayoutSelect" data-i18n="select_layout">Select Layout</label>
+                    <select id="batchLayoutSelect"></select>
+                    
+                    <label for="batchMode" data-i18n="source_mode">Source Mode</label>
+                    <select id="batchMode" onchange="toggleBatchInputs()">
+                        <option value="random">Random Selection</option>
+                        <option value="library">Full Library (Jellyfin)</option>
+                    </select>
+
+                    <div id="batchFilterSettings" style="display:none; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <label for="batchFilterMode" data-i18n="filter_strategy">Filter Strategy</label>
+                        <select id="batchFilterMode" onchange="toggleBatchInputs()">
+                            <option value="all">None (All Items A-Z)</option>
+                            <option value="recent">Recently Added</option>
+                            <option value="year">By Year</option>
+                            <option value="genre">By Genre</option>
+                            <option value="rating">By Minimum Rating</option>
+                            <option value="official_rating">By Age Rating</option>
+                            <option value="custom">Custom (Advanced)</option>
+                        </select>
+
+                        <div id="filterInputYear" style="display:none;">
+                            <label>Year</label>
+                            <input type="number" id="batchFilterYear" placeholder="e.g. 2024" value="2024">
+                        </div>
+                        <div id="filterInputGenre" style="display:none;">
+                            <label>Genre</label>
+                            <input type="text" id="batchFilterGenre" placeholder="e.g. Action">
+                        </div>
+                        <div id="filterInputRating" style="display:none;">
+                            <label>Min Rating (0-10)</label>
+                            <input type="number" id="batchFilterRating" value="7.0" step="0.1" min="0" max="10">
+                        </div>
+                        <div id="filterInputOfficialRating" style="display:none;">
+                            <label>Age Rating (e.g. FSK 16, PG-13)</label>
+                            <input type="text" id="batchFilterOfficialRating" placeholder="e.g. FSK 16">
+                        </div>
+                        <div id="filterInputCustom" style="display:none;">
+                            <div style="display:flex; gap:10px; margin-bottom:5px;">
+                                <div style="flex:1;">
+                                    <label>Min Year</label>
+                                    <input type="number" id="batchFilterMinYear" placeholder="e.g. 2015">
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Max Year</label>
+                                    <input type="number" id="batchFilterMaxYear" placeholder="e.g. 2025">
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <div style="flex:1;">
+                                    <label>Min Rating</label>
+                                    <input type="number" id="batchFilterMinRating" step="0.1" min="0" max="10" placeholder="e.g. 6.0">
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Genre</label>
+                                    <input type="text" id="batchFilterCustomGenre" placeholder="e.g. Action">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="batchRandomSettings">
+                        <label for="batchCount" data-i18n="num_images">Number of Images</label>
+                        <input type="number" id="batchCount" value="10" min="1" max="10000">
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                        <input type="checkbox" id="batchOverwrite" style="width:20px; height:20px; margin:0;" {% if config.general.overwrite_existing %}checked{% endif %}>
+                        <label for="batchOverwrite" style="margin:0; cursor:pointer;" data-i18n="overwrite_existing">Overwrite Existing</label>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+                        <input type="checkbox" id="batchLogoAutoFix" style="width:20px; height:20px; margin:0;" checked onchange="syncLogoAutoFix(this.checked)">
+                        <label for="batchLogoAutoFix" style="margin:0; cursor:pointer;" data-i18n="logo_auto_fix">Auto-Fix Logo Color</label>
+                    </div>
+                    
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+                        <input type="checkbox" id="batchDryRun" style="width:20px; height:20px; margin:0;">
+                        <label for="batchDryRun" style="margin:0; cursor:pointer;" data-i18n="dry_run">Dry Run (Simulate only)</label>
+                    </div>
+
+                    <div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+                        <h4 style="margin:0 0 10px 0; font-size:12px; color:#888; text-transform:uppercase;" data-i18n="automation">Automation</h4>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <input type="checkbox" id="batchAutoRun" style="width:20px; height:20px; margin:0;" onchange="toggleBatchInputs()">
+                            <label for="batchAutoRun" style="margin:0; cursor:pointer;" data-i18n="enable_autorun">Enable Auto-Run (Loop)</label>
+                        </div>
+                        <div id="autoRunSettings" style="display:none; margin-top:5px;">
+                            <label for="batchInterval" data-i18n="interval_min">Interval (Minutes)</label>
+                            <input type="number" id="batchInterval" value="60" min="1">
+                        </div>
+                    </div>
+
+                    <button id="btn-start-batch" onclick="startBatchProcess()" style="margin-top: 20px; background: #2e7d32;" data-i18n="start_batch">▶ Start Batch</button>
+                    <button id="btn-stop-batch" onclick="stopBatchProcess()" style="margin-top: 10px; background: #c62828; display: none;" data-i18n="stop_batch">⏹ Stop</button>
+                        </div>
+                    </div>
+
+                    <!-- CRON JOB SETTINGS GROUP -->
+                    <div class="control-group" id="group-batch-cron">
+                        <h3 onclick="toggleGroup('group-batch-cron')"><span class="group-arrow collapsed">▼</span> <span data-i18n="cron_settings">Server-Side Cron Jobs</span></h3>
+                        <div class="group-content collapsed">
+                            
+                            <!-- Add New Job Form -->
+                            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:4px; margin-bottom:15px;">
+                                <label style="font-size:11px; color:#aaa;">Job Name</label>
+                                <input type="text" id="cronJobName" placeholder="e.g. Daily Update" style="width:100%; margin-bottom:5px; padding:5px; background:#333; border:1px solid #555; color:white;">
+                                
+                                <label style="font-size:11px; color:#aaa;" data-i18n="select_layout">Select Layout</label>
+                                <select id="cronJobLayout" style="width:100%; margin-bottom:5px; padding:5px; background:#333; border:1px solid #555; color:white;"></select>
+
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:5px;">
+                                    <div>
+                                        <label style="font-size:11px; color:#aaa;" data-i18n="cron_start_time">Start</label>
+                                        <input type="time" id="cronJobStart" value="00:00" style="width:100%; padding:5px; background:#333; border:1px solid #555; color:white;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:#aaa;" data-i18n="cron_frequency">Freq</label>
+                                        <select id="cronJobFreq" style="width:100%; padding:5px; background:#333; border:1px solid #555; color:white;">
+                                            <option value="1">1x / Day</option>
+                                            <option value="2">2x / Day</option>
+                                            <option value="4">4x / Day</option>
+                                            <option value="24">Hourly</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="display:flex; flex-direction:column; gap:5px; margin-top:10px; align-items: flex-start;">
+                                    <label style="display:flex; align-items:center; gap:5px; font-size:11px; cursor:pointer;"><input type="checkbox" id="cronJobOverwrite" style="width:14px; height:14px; margin:0;"> <span data-i18n="overwrite_existing">Overwrite Existing</span></label>
+                                    <label style="display:flex; align-items:center; gap:5px; font-size:11px; cursor:pointer;"><input type="checkbox" id="cronJobRunNow" style="width:14px; height:14px; margin:0;"> <span>Run Immediately on Save</span></label>
+                                </div>
+                                <button onclick="addCronJob()" style="width:100%; margin-top:10px; background:#2e7d32; padding:6px; font-size:12px;">+ Save Job</button>
+                            </div>
+
+                            <!-- Saved Jobs List -->
+                            <div id="cronJobsList" style="display:flex; flex-direction:column; gap:5px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; height: 100%;">
+                    <div class="progress-container">
+                        <div id="batchProgressBar" class="progress-bar">0%</div>
+                    </div>
+                    <div id="batchLog" class="console-log" style="flex: 1;">Ready to start...</div>
+                </div>
+
+                <div class="batch-preview-container" style="background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 8px; height: 100%;">
+                    <img id="batchPreviewImg" style="max-width: 100%; max-height: 100%; object-fit: contain; opacity: 0.5;" src="">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="layouts-tab" class="tab-content" style="flex-direction: column;">
+        <div class="layouts-container" id="layouts-content">
+            <p style="color:#888; text-align:center; margin-top:50px;">Loading layouts...</p>
+        </div>
+    </div>
+
+    <div id="gallery-tab" class="tab-content" style="flex-direction: column;">
+        <div id="gallery-content" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+            <p style="color:#888; text-align:center; margin-top:50px;">Loading images...</p>
+        </div>
+    </div>
+
+    <div id="overlay-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 data-i18n="overlay_manager" style="margin:0;">Overlay Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
+                    <h4 data-i18n="add_overlay">Add New Overlay Profile</h4>
+                    <label data-i18n="profile_name">Profile Name</label>
+                    <input type="text" id="newOverlayName" placeholder="e.g. Google TV">
+                    <label data-i18n="img_1080">1080p Image (Optional)</label>
+                    <input type="file" id="newOverlay1080" accept="image/*">
+                    <label data-i18n="img_4k">4K Image (Optional)</label>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newOverlay4K" accept="image/*" style="flex:1;">
+                        <button onclick="addOverlay()" style="background-color: #4CAF50; width:auto; margin-top:0;" data-i18n="save_profile">Save Profile</button>
+                    </div>
+                </div>
+                <h4 data-i18n="existing_profiles">Existing Profiles</h4>
+                <div id="overlayList"></div>
+                
+                <div id="overlayMarginEditor" style="display:none; margin-top:20px; border-top:1px solid #333; padding-top:20px;">
+                    <h4>Edit Blocked Areas</h4>
+                    <p style="font-size:12px; color:#aaa;">Draw red boxes over areas where text should NOT appear (e.g. status bar, tiles).</p>
+                    <div style="position:relative; width:100%; max-width:800px; aspect-ratio:16/9; margin-bottom:10px; border:1px solid #444; background: black;">
+                        <canvas id="overlayCanvas"></canvas>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="addBlockedRect()" style="background:#4a4a4a; width:auto;">+ Add Box</button>
+                        <button onclick="saveOverlayMargins()" style="background:#4CAF50; width:auto;">Save Areas</button>
+                        <button onclick="closeOverlayMarginEditor()" style="background:#c62828; width:auto;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="texture-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 data-i18n="texture_manager" style="margin:0;">Texture Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
+                    <h4 data-i18n="add_texture">Add New Texture</h4>
+                    <label data-i18n="texture_name">Texture Name</label>
+                    <input type="text" id="newTextureName" placeholder="e.g. Gold Foil">
+                    <label data-i18n="img_file">Image File</label>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newTextureFile" accept="image/*" style="flex:1;">
+                        <button onclick="addTexture()" style="background-color: #4CAF50; width:auto; margin-top:0;" data-i18n="save_texture">Save Texture</button>
+                    </div>
+                </div>
+                <h4 data-i18n="existing_textures">Existing Textures</h4>
+                <div id="textureList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="font-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; width: 100%; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 data-i18n="font_manager" style="margin:0;">Font Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
+                    <h4 data-i18n="add_font">Add New Font (.ttf, .otf, .woff)</h4>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newFontFile" accept=".ttf,.otf,.woff,.woff2" style="flex:1;">
+                        <button onclick="addFont()" style="background-color: #4CAF50; width:auto;" data-i18n="upload_font">Upload Font</button>
+                    </div>
+                </div>
+                <h4 data-i18n="installed_fonts">Installed Custom Fonts</h4>
+                <div id="fontList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="icon-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box;">
+            <div class="manager-panel">
+                <div style="display:flex; align-items:center;"><h3 style="margin:0;">Custom Icon Manager</h3></div>
+                <div class="control-group" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px; max-width: 600px;">
+                    <h4>Add New Icon (PNG, SVG, JPG)</h4>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="file" id="newIconFile" accept=".png,.svg,.jpg,.jpeg" style="flex:1;">
+                        <button onclick="addCustomIcon()" style="background-color: #4CAF50; width:auto; margin-top:0;">Upload Icon</button>
+                    </div>
+                </div>
+                <h4>Uploaded Icons</h4>
+                <div id="customIconList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-tab" class="tab-content">
+        <div class="main-view" style="padding: 20px 20px 60px 20px; align-items: flex-start; overflow-y: auto; height: 100%; box-sizing: border-box; width: 100%;">
+            <div class="settings-grid" style="width: 100%; max-width: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; align-items: start;">
+                <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                    <button onclick="saveSettings()" style="width: auto; padding: 10px 20px; background-color: #4CAF50;" data-i18n="save_settings">Save Settings</button>
+                </div>
+                
+                <div class="settings-panel settings-compact-panel" id="set-group-jf">
+                    <h3 onclick="toggleGroup('set-group-jf')"><span class="group-arrow">▼</span> Jellyfin</h3>
+                    <div class="group-content">
+                <label for="set-jf-url" data-i18n="server_url">Server URL</label>
+                <input type="text" id="set-jf-url" value="{{ config.jellyfin.url }}">
+                <label for="set-jf-key" data-i18n="api_key">API Key</label>
+                <input type="password" id="set-jf-key" value="{{ config.jellyfin.api_key }}">
+                <label for="set-jf-user" data-i18n="user_id">User ID</label>
+                <input type="text" id="set-jf-user" value="{{ config.jellyfin.user_id }}">
+                <label for="set-jf-exclude" data-i18n="excluded_libs">Excluded Libraries (comma separated)</label>
+                <input type="text" id="set-jf-exclude" value="{{ config.jellyfin.excluded_libraries }}">
+                <button onclick="testJellyfinConnection()" style="margin-top: 10px; background-color: #1976d2; width: 100%;">Test Connection</button>
+                    </div>
+            </div>
+
+                <div class="settings-panel settings-compact-panel" id="set-group-plex">
+                    <h3 onclick="toggleGroup('set-group-plex')"><span class="group-arrow">▼</span> Plex</h3>
+                    <div class="group-content">
+                <label for="set-plex-url" data-i18n="server_url">Server URL</label>
+                <input type="text" id="set-plex-url" value="{{ config.plex.url }}">
+                <label for="set-plex-token" data-i18n="token">Token</label>
+                <input type="password" id="set-plex-token" value="{{ config.plex.token }}">
+                <button onclick="testPlexConnection()" style="margin-top: 10px; background-color: #e5a00d; width: 100%;">Test Connection</button>
+                    </div>
+            </div>
+
+                <div class="settings-panel settings-compact-panel" id="set-group-tmdb">
+                    <h3 onclick="toggleGroup('set-group-tmdb')"><span class="group-arrow">▼</span> TMDB</h3>
+                    <div class="group-content">
+                <label for="set-tmdb-key" data-i18n="api_key">API Key (Bearer Token)</label>
+                <input type="password" id="set-tmdb-key" value="{{ config.tmdb.api_key }}">
+                <label for="set-tmdb-lang" data-i18n="language">Language</label>
+                <input type="text" id="set-tmdb-lang" value="{{ config.tmdb.language }}">
+                <button onclick="testTmdbConnection()" style="margin-top: 10px; background-color: #01b4e4; width: 100%;">Test Connection</button>
+                    </div>
+            </div>
+
+                <div class="settings-panel settings-compact-panel" id="set-group-arr">
+                    <h3 onclick="toggleGroup('set-group-arr')"><span class="group-arrow">▼</span> Radarr & Sonarr</h3>
+                    <div class="group-content">
+                <label for="set-radarr-url">Radarr URL</label>
+                <input type="text" id="set-radarr-url" value="{{ config.radarr.url }}">
+                <label for="set-radarr-key" data-i18n="api_key">Radarr API Key</label>
+                <input type="password" id="set-radarr-key" value="{{ config.radarr.api_key }}">
+                <button onclick="testRadarrConnection()" style="margin-top: 5px; margin-bottom: 15px; background-color: #ffc107; color: black; width: 100%;">Test Radarr</button>
+                <hr style="border-color:#333; margin:15px 0;">
+                <label for="set-sonarr-url">Sonarr URL</label>
+                <input type="text" id="set-sonarr-url" value="{{ config.sonarr.url }}">
+                <label for="set-sonarr-key" data-i18n="api_key">Sonarr API Key</label>
+                <input type="password" id="set-sonarr-key" value="{{ config.sonarr.api_key }}">
+                <button onclick="testSonarrConnection()" style="margin-top: 5px; background-color: #2196f3; width: 100%;">Test Sonarr</button>
+                    </div>
+            </div>
+
+                <div class="settings-panel settings-compact-panel" id="set-group-other">
+                    <h3 onclick="toggleGroup('set-group-other')"><span class="group-arrow">▼</span> Other Services</h3>
+                    <div class="group-content">
+                <label for="set-jellyseerr-url">Jellyseerr URL</label>
+                <input type="text" id="set-jellyseerr-url" value="{{ config.jellyseerr.url }}">
+                <label for="set-jellyseerr-key" data-i18n="api_key">Jellyseerr API Key</label>
+                <input type="password" id="set-jellyseerr-key" value="{{ config.jellyseerr.api_key }}">
+                <button onclick="testJellyseerrConnection()" style="margin-top: 5px; margin-bottom: 15px; background-color: #9c27b0; width: 100%;">Test Jellyseerr</button>
+                <hr style="border-color:#333; margin:15px 0;">
+                <label for="set-trakt-key">Trakt Client ID</label>
+                <input type="password" id="set-trakt-key" value="{{ config.trakt.api_key }}">
+                <label for="set-trakt-user">Trakt Username</label>
+                <input type="text" id="set-trakt-user" value="{{ config.trakt.username }}">
+                <label for="set-trakt-list">Trakt List Name</label>
+                <input type="text" id="set-trakt-list" value="{{ config.trakt.listname }}">
+                <button onclick="testTraktConnection()" style="margin-top: 5px; background-color: #ed1c24; width: 100%;">Test Trakt</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="lightbox" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; justify-content:center; align-items:center;">
+        <span onclick="closeLightbox()" style="position:absolute; top:20px; right:35px; color:#fff; font-size:40px; cursor:pointer; user-select:none;">&times;</span>
+        <img id="lightbox-img" style="max-width:90%; max-height:90%; object-fit:contain;">
+        <span onclick="changeLightboxImage(-1)" style="position:absolute; top:50%; left:20px; color:#fff; font-size:40px; cursor:pointer; transform:translateY(-50%); user-select:none;">&#10094;</span>
+        <span onclick="changeLightboxImage(1)" style="position:absolute; top:50%; right:20px; color:#fff; font-size:40px; cursor:pointer; transform:translateY(-50%); user-select:none;">&#10095;</span>
+        <button id="lightbox-edit-btn" style="position:absolute; bottom:20px; right:20px; width:auto; padding:10px 20px; font-size:16px; background:#d32f2f; color:white; border:none; cursor:pointer; z-index:1001; border-radius:4px;">✏️ Edit</button>
+    </div>
+
+    <div id="preview-popup">
+        <div class="preview-header">
+            <h2 data-i18n="generated_previews">Generated Previews</h2>
+            <span onclick="closePreviewPopup()">&times;</span>
+        </div>
+        <div id="preview-grid" style="width:100%; max-width:1600px; margin:0 auto;"></div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-left">
+            <span id="statusMessage">Ready</span>
+        </div>
+        <div class="status-right" style="display:flex; align-items:center;">
+            <a href="https://hub.docker.com/repository/docker/butch708/tv-background-suite/tags" target="_blank" id="versionDisplay" data-installed="{{ data.version }}">v{{ data.version }}</a>
+            <a href="https://github.com/z9m/projectivy-tvbgsuite-plugin" target="_blank" title="Get the Projectivy Launcher Plugin">🧩 Projectivy Plugin</a>
+            <a href="https://github.com/z9m/androidtvbackgroundWebGui/issues" target="_blank">🐛 Report Bug</a>
+            <a href="https://github.com/z9m/androidtvbackgroundWebGui" target="_blank" style="color: #e6c07b;" title="Please star the project on GitHub!">
+                <svg height="12" width="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"></path></svg>
+                Star on GitHub
+            </a>
+        </div>
+    </div>
+
+    <script>
+        window.initialBackdropUrl = "{{ data.backdrop_url }}";
+    </script>
+    <script src="{{ url_for('static', filename='js/gallery.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/batch.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script>
+        function testJellyfinConnection() {
+            const url = document.getElementById('set-jf-url').value;
+            const key = document.getElementById('set-jf-key').value;
+            
+            fetch('/api/test/jellyfin', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            })
+            .then(r => r.json())
+            .then(data => {
+                alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message);
+            })
+            .catch(e => alert("❌ Network Error: Check Docker Logs"));
+        }
+
+        function testPlexConnection() {
+            const url = document.getElementById('set-plex-url').value;
+            const token = document.getElementById('set-plex-token').value;
+            fetch('/api/test/plex', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, token: token})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testTmdbConnection() {
+            const key = document.getElementById('set-tmdb-key').value;
+            fetch('/api/test/tmdb', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testRadarrConnection() {
+            const url = document.getElementById('set-radarr-url').value;
+            const key = document.getElementById('set-radarr-key').value;
+            fetch('/api/test/radarr', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testSonarrConnection() {
+            const url = document.getElementById('set-sonarr-url').value;
+            const key = document.getElementById('set-sonarr-key').value;
+            fetch('/api/test/sonarr', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testJellyseerrConnection() {
+            const url = document.getElementById('set-jellyseerr-url').value;
+            const key = document.getElementById('set-jellyseerr-key').value;
+            fetch('/api/test/jellyseerr', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, api_key: key})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        function testTraktConnection() {
+            const key = document.getElementById('set-trakt-key').value;
+            const user = document.getElementById('set-trakt-user').value;
+            fetch('/api/test/trakt', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({client_id: key, username: user})
+            }).then(r => r.json()).then(data => alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message))
+            .catch(e => alert("❌ Network Error"));
+        }
+
+        // --- Font Style Controls (Bold/Italic) ---
+        function toggleBold() {
+            if (typeof canvas === 'undefined') return;
+            var activeObj = canvas.getActiveObject();
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'text' || activeObj.type === 'textbox')) {
+                activeObj.set('fontWeight', activeObj.fontWeight === 'bold' ? 'normal' : 'bold');
+                canvas.requestRenderAll();
+                updateFontControls();
+            }
+        }
+
+        function toggleItalic() {
+            if (typeof canvas === 'undefined') return;
+            var activeObj = canvas.getActiveObject();
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'text' || activeObj.type === 'textbox')) {
+                activeObj.set('fontStyle', activeObj.fontStyle === 'italic' ? 'normal' : 'italic');
+                canvas.requestRenderAll();
+                updateFontControls();
+            }
+        }
+
+        function updateFontControls() {
+            if (typeof canvas === 'undefined') return;
+            var activeObj = canvas.getActiveObject();
+            var btnBold = document.getElementById('btn-bold');
+            var btnItalic = document.getElementById('btn-italic');
+            var fontSelect = document.getElementById('fontFamilySelect');
+            
+            if (activeObj && (activeObj.type === 'i-text' || activeObj.type === 'text' || activeObj.type === 'textbox')) {
+                btnBold.style.backgroundColor = activeObj.fontWeight === 'bold' ? '#e6e6e6' : '';
+                btnBold.style.color = activeObj.fontWeight === 'bold' ? '#000' : '';
+                
+                btnItalic.style.backgroundColor = activeObj.fontStyle === 'italic' ? '#e6e6e6' : '';
+                btnItalic.style.color = activeObj.fontStyle === 'italic' ? '#000' : '';
+                
+                if(activeObj.fontFamily) {
+                    fontSelect.value = activeObj.fontFamily;
+                }
+            } else {
+                btnBold.style.backgroundColor = '';
+                btnBold.style.color = '';
+                btnItalic.style.backgroundColor = '';
+                btnItalic.style.color = '';
+            }
+        }
+
+        // Hook into canvas events once loaded
+        window.addEventListener('load', function() {
+            if (typeof canvas !== 'undefined') {
+                canvas.on('selection:created', updateFontControls);
+                canvas.on('selection:updated', updateFontControls);
+                canvas.on('selection:cleared', updateFontControls);
+            }
+        });
+
+        // --- Font Manager Logic ---
+        function loadFontManager() {
+            fetch('/api/fonts/grouped')
+                .then(r => r.json())
+                .then(data => {
+                    const container = document.getElementById('fontList');
+                    container.innerHTML = '';
+                    
+                    if (Object.keys(data).length === 0) {
+                        container.innerHTML = '<p style="padding:15px; color:#888;">No custom fonts installed.</p>';
+                        return;
+                    }
+
+                    for (const [family, files] of Object.entries(data)) {
+                        // Wrapper for Grid Item
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'font-family-wrapper';
+
+                        // Header
+                        const header = document.createElement('div');
+                        header.className = 'font-family-header';
+                        header.innerHTML = `
+                            <div style="flex:1; display:flex; align-items:center; justify-content:space-between;">
+                                <span style="font-family:'${family}'; font-size:1.1em;">${family}</span> 
+                                <span class="arrow" style="font-size:0.8em; opacity:0.7; margin-right:10px;">${files.length} variants ▼</span>
+                            </div>
+                            <button onclick="event.stopPropagation(); deleteFontFamily('${family}')" style="background: #c62828; padding: 4px 8px; font-size: 11px; width:auto; border:none; color:white; cursor:pointer; border-radius:3px;">Delete Family</button>
+                        `;
+                        header.onclick = function(e) {
+                            if (e.target.tagName === 'BUTTON') return;
+                            this.nextElementSibling.classList.toggle('active');
+                            const arrow = this.querySelector('.arrow');
+                            if (this.nextElementSibling.classList.contains('active')) {
+                                arrow.innerHTML = `${files.length} variants ▲`;
+                            } else {
+                                arrow.innerHTML = `${files.length} variants ▼`;
+                            }
+                        };
+                        
+                        // Content (Files)
+                        const content = document.createElement('div');
+                        content.className = 'font-family-content';
+                        
+                        files.forEach(file => {
+                            const row = document.createElement('div');
+                            row.className = 'font-file-row';
+                            
+                            // Determine readable weight/style
+                            let details = [];
+                            if (file.weight !== '400' && file.weight !== 'normal') details.push('Weight: ' + file.weight);
+                            if (file.style !== 'normal') details.push(file.style);
+                            const detailStr = details.length > 0 ? `(${details.join(', ')})` : '(Regular)';
+
+                            row.innerHTML = `
+                                <div style="display:flex; flex-direction:column;">
+                                    <span style="font-family: '${family}'; font-weight: ${file.weight}; font-style: ${file.style}; font-size: 16px;">
+                                        The quick brown fox jumps over the lazy dog
+                                    </span>
+                                    <span style="font-size: 11px; color: #aaa; margin-top:2px;">${file.src} ${detailStr}</span>
+                                </div>
+                                <button onclick="deleteFont('${file.src}')" style="background: #c62828; padding: 5px 10px; font-size: 11px; width:auto;">Delete</button>
+                            `;
+                            content.appendChild(row);
+                        });
+                        
+                        wrapper.appendChild(header);
+                        wrapper.appendChild(content);
+                        container.appendChild(wrapper);
+                    }
+                });
+        }
+
+        function addFont() {
+            const fileInput = document.getElementById('newFontFile');
+            if (!fileInput.files.length) return alert("Please select a file");
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            fetch('/api/fonts/add', {method: 'POST', body: formData})
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    fileInput.value = '';
+                    loadFontManager();
+                } else alert("Error: " + data.message);
+            });
+        }
+
+        function deleteFont(filename) {
+            if(!confirm("Delete " + filename + "?")) return;
+            fetch('/api/fonts/delete/' + filename, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') loadFontManager();
+                else alert("Error: " + data.message);
+            });
+        }
+
+        async function deleteFontFamily(family) {
+            if(!confirm(`Delete entire font family "${family}"? This will remove all associated font files.`)) return;
+            
+            try {
+                const r = await fetch('/api/fonts/grouped');
+                const data = await r.json();
+                const files = data[family];
+                
+                if (!files || files.length === 0) {
+                    alert("Family not found or empty.");
+                    return;
+                }
+                
+                let errors = [];
+                for (const file of files) {
+                    const res = await fetch('/api/fonts/delete/' + encodeURIComponent(file.src), {method: 'POST'});
+                    const resData = await res.json();
+                    if (resData.status !== 'success') {
+                        errors.push(`${file.src}: ${resData.message}`);
+                    }
+                }
+                
+                if (errors.length > 0) {
+                    alert("Some files could not be deleted:\n" + errors.join("\n"));
+                }
+                
+                loadFontManager();
+            } catch (e) {
+                console.error(e);
+                alert("Error deleting family.");
+            }
+        }
+    </script>
+</body>
+</html>

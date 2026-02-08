@@ -1,0 +1,9 @@
+{
+  "title": "Test Erfolg!",
+  "year": 2024,
+  "overview": "Wenn du diesen Text auf dem Bild lesen kannst, funktioniert deine Node.js Render-Maschine perfekt!",
+  "rating": "9.9",
+  "genres": "Test, Node, JS",
+  "backdrop_url": "",
+  "logo_url": ""
+}

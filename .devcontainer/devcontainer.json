@@ -1,0 +1,28 @@
+{
+  "name": "TV Background Editor",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "../docker-compose.dev.yml"
+  ],
+  "service": "tv-background",
+  "workspaceFolder": "/app",
+  "shutdownAction": "stopCompose",
+  // We specify the security context for better compatibility with NAS
+  "overrideCommand": true,
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "googlecloudtools.cloudcode",
+        "google.geminicodeassist",
+        "wholroyd.jinja",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "postCreateCommand": "pip3 install -r requirements.txt && git config --global --add safe.directory /app"
+}

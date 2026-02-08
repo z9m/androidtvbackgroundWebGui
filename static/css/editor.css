@@ -1,0 +1,338 @@
+:root {
+    --primary: #2e7d32;
+    --bg: #0a0a0a;
+    --panel: #181818;
+    --text: #eee;
+    --sidebar-w: 320px;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* --- Base Layout & Components --- */
+.nav-tabs {
+    display: flex;
+    background: #000;
+    padding: 0 20px;
+    border-bottom: 1px solid #333;
+    min-height: 50px;
+    height: auto;
+    flex-shrink: 0;
+    align-items: center;
+    position: relative;
+    z-index: 1000;
+}
+
+.nav-links-container {
+    display: flex;
+    align-items: center;
+}
+
+.tab-link {
+    padding: 15px 25px;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.tab-link.active {
+    border-bottom-color: var(--primary);
+    background: var(--panel);
+}
+
+.tab-content { display: none; flex: 1; overflow: hidden; }
+.tab-content.active { display: flex; }
+
+.sidebar {
+    width: var(--sidebar-w);
+    background: var(--panel);
+    border-right: 1px solid #333;
+    padding: 20px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.main-view {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    background: #111;
+    position: relative;
+    overflow: auto;
+}
+
+#canvas-wrapper {
+    width: 100%;
+    max-width: 1200px;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border: 2px solid #333;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+    margin: auto;
+}
+
+.canvas-container, canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* --- UI Controls --- */
+input, select, button {
+    padding: 12px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #222;
+    color: white;
+    width: 100%;
+    margin-top: 5px;
+    box-sizing: border-box;
+    min-height: 44px; /* Touch target size */
+}
+
+button {
+    background: var(--primary);
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover { filter: brightness(1.2); }
+button:disabled, button:disabled:hover { background: #555; cursor: not-allowed; opacity: 0.7; filter: none; }
+
+
+/* --- Mobile Navigation --- */
+.mobile-nav-toggle,
+.mobile-nav-close,
+#closeSidebarBtn,
+#menuToggle {
+    display: none;
+}
+.desktop-lang-select { margin-left: auto; }
+#languageSelect { display: none; } /* Hide mobile language select by default */
+
+
+/* --- Status Bar --- */
+.status-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 28px;
+    background-color: #1a1a1a;
+    border-top: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 15px;
+    font-size: 11px;
+    color: #888;
+    z-index: 9999;
+    box-sizing: border-box;
+}
+.status-bar a { color: #999; text-decoration: none; margin-left: 15px; }
+.status-bar a:hover { color: #fff; }
+
+
+/* =========================================== */
+/* === RESPONSIVE DESIGN (MOBILE & TABLET) === */
+/* =========================================== */
+
+@media (max-width: 992px) {
+    /* --- 1. Top Navigation to Hamburger Menu --- */
+    .mobile-nav-toggle {
+        display: block;
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 28px;
+        cursor: pointer;
+        padding: 0;
+        width: 44px;
+        height: 44px;
+        position: absolute;
+        left: 10px;
+        top: 3px;
+    }
+
+    .mobile-nav-close {
+        display: block;
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 48px;
+        cursor: pointer;
+        width: 44px;
+        height: 44px;
+        line-height: 44px;
+        padding: 0;
+        z-index: 1000; /* Ensure it's on top */
+    }
+
+    .nav-tabs {
+        justify-content: center; /* Center the title/logo area */
+    }
+
+    .nav-links-container {
+        display: none; /* Hide nav links by default */
+        flex-direction: column;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(10, 10, 10, 0.98);
+        backdrop-filter: blur(5px);
+        z-index: 999;
+        padding-top: 60px;
+        overflow-y: auto;
+    }
+
+    .nav-links-container.open {
+        display: flex; /* Show when open */
+    }
+
+    .tab-link {
+        padding: 20px 25px; /* Larger tap targets */
+        font-size: 1.2em;
+        border-bottom: 1px solid #333;
+        text-align: center;
+    }
+
+    .tab-link.active {
+        border-bottom-color: var(--primary);
+        background: #000;
+    }
+    
+    .desktop-lang-select { display: none; } /* Hide desktop language selector */
+    #languageSelect { display: block; } /* Show mobile language selector */
+
+
+    /* --- 2. Sidebar to Off-Canvas Drawer --- */
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 2005;
+        height: 100%;
+        width: 300px;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+        padding-top: 50px !important;
+    }
+
+    #mobileOverlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 2000;
+    }
+
+    body.mobile-menu-open .sidebar {
+        transform: translateX(0);
+    }
+    body.mobile-menu-open #mobileOverlay {
+        display: block;
+    }
+
+    #closeSidebarBtn {
+        display: block;
+        position: absolute;
+        top: 5px;
+        right: 10px;
+        background: transparent;
+        border: none;
+        font-size: 36px;
+        color: #fff;
+        cursor: pointer;
+        z-index: 2010;
+        width: 44px;
+        height: 44px;
+        line-height: 44px;
+        text-align: center;
+    }
+
+    /* --- 3. Main View & Canvas Adjustments --- */
+    .main-view {
+        padding: 10px !important;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    #canvas-wrapper {
+        width: 100%;
+        max-width: 100%; /* Prevent overflow */
+        margin: auto;
+        border: 1px solid #333;
+    }
+
+    .canvas-header {
+        flex-wrap: wrap;
+        padding: 5px !important;
+        gap: 8px !important;
+    }
+
+    /* Make search and buttons more compact */
+    #mediaSearchInput { width: 150px !important; }
+    .canvas-header button span { display: none; } /* Hide text in buttons */
+    .canvas-header button { padding: 12px 15px !important; } /* Maintain height */
+    
+    #menuToggle { 
+        display: block;
+        width: 44px;
+        height: 44px;
+        padding: 0 !important;
+        font-size: 24px;
+    }
+
+    /* --- 4. General Usability --- */
+    /* Enlarge touch targets for sidebar controls */
+    .sidebar .control-group {
+        padding-bottom: 20px;
+    }
+    .sidebar button, .sidebar select {
+        padding: 12px;
+        min-height: 44px;
+    }
+     .sidebar input[type="number"], .sidebar input[type="text"] {
+        padding: 12px;
+        min-height: 44px;
+     }
+
+    /* Hide unnecessary elements on mobile */
+    #source-indicator { display: none; }
+}
+
+/* Other existing styles - truncated for brevity but kept in mind */
+#settings-tab { padding: 20px; overflow-y: auto; flex-direction: column; align-items: center;}
+.settings-grid { display: grid; grid-template-columns: 1fr; gap: 15px; width: 100%; }
+.gallery-container { padding: 0; width: 100%; overflow-y: auto; display: flex; flex-direction: column; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 15px; }
+.gallery-item { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 4px; border: 1px solid #333; cursor: pointer; }
+.gallery-item:hover { transform: scale(1.02); z-index: 10; border-color: var(--primary); }
+.gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+.gallery-item .caption { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; padding: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.console-log { height: 150px; }
+.batch-grid { grid-template-columns: 1fr; }
