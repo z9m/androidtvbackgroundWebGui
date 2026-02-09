@@ -2264,6 +2264,16 @@ function saveHistory(force = false) {
             right: document.getElementById('marginRightInput').value
         }
     };
+    
+    // Save blocked areas to JSON so render_task.js can use them
+    const overlayId = document.getElementById('overlaySelect').value;
+    if (overlayId) {
+        const profile = overlayProfiles.find(p => p.id === overlayId);
+        if (profile && profile.blocked_areas) {
+            json.custom_effects.blocked_areas = profile.blocked_areas;
+        }
+    }
+
     json.lastFetchedData = lastFetchedData;
 
     const stateStr = JSON.stringify(json);
@@ -2888,7 +2898,7 @@ function closeOverlayMarginEditor() {
     currentEditingOverlayId = null;
 }
 
-function saveOverlayMargins() {
+async function saveOverlayMargins() {
     if (!currentEditingOverlayId || !overlayCanvasFabric) return;
     
     const rects = overlayCanvasFabric.getObjects().filter(o => o.dataTag === 'blocked_area');
@@ -2908,6 +2918,16 @@ function saveOverlayMargins() {
     const profile = overlayProfiles.find(p => p.id === currentEditingOverlayId);
     if (profile) profile.blocked_areas = areas;
     
+    // --- NEW: Save to Server (overlays.json) so Cron Job sees it globally ---
+    try {
+        await fetch('/api/overlays/update_margins', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: currentEditingOverlayId, blocked_areas: areas })
+        });
+    } catch(e) { console.error("Failed to save margins to server", e); }
+    // -----------------------------------------------------------------------
+
     alert("Blocked areas saved!");
     closeOverlayMarginEditor();
 }
@@ -3426,6 +3446,15 @@ async function saveLayout() {
             right: document.getElementById('marginRightInput').value
         }
     };
+
+    // Save blocked areas to JSON so render_task.js can use them
+    const overlayId = document.getElementById('overlaySelect').value;
+    if (overlayId) {
+        const profile = overlayProfiles.find(p => p.id === overlayId);
+        if (profile && profile.blocked_areas) {
+            layout.custom_effects.blocked_areas = profile.blocked_areas;
+        }
+    }
 
     // Generate Preview Thumbnail (smaller size)
     const previewData = canvas.toDataURL({ format: 'jpeg', quality: 0.8, multiplier: 0.5 });
@@ -4054,6 +4083,16 @@ async function loadCronJobs() {
 
 let logPollInterval = null;
 
+async function clearServerLogs() {
+    try {
+        await fetch('/api/batch/logs/clear', { method: 'POST' });
+        const logDiv = document.getElementById('batchLog');
+        if (logDiv) logDiv.innerHTML = '';
+    } catch (e) {
+        console.error("Failed to clear logs", e);
+    }
+}
+
 function startLogPolling() {
     if (logPollInterval) clearInterval(logPollInterval);
     const logDiv = document.getElementById('batchLog');
@@ -4067,6 +4106,21 @@ function startLogPolling() {
                 logDiv.innerHTML = logs.join('<br>');
                 logDiv.scrollTop = logDiv.scrollHeight;
             }
+            
+            // Poll for latest image
+            try {
+                const imgRes = await fetch('/api/batch/preview/latest_image');
+                if (imgRes.ok) {
+                    const blob = await imgRes.blob();
+                    const url = URL.createObjectURL(blob);
+                    const img = document.getElementById('batchPreviewImg');
+                    if (img) {
+                        if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+                        img.src = url;
+                        img.style.opacity = '1';
+                    }
+                }
+            } catch(err) { /* ignore image fetch errors */ }
         } catch(e) { console.error(e); }
     }, 2000);
 }

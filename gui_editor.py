@@ -12,6 +12,7 @@ import shutil
 import re
 import uuid
 import subprocess
+from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
 from PIL import Image
 from urllib.parse import quote
@@ -26,6 +27,9 @@ from image_engine import ImageGenerator
 gui_editor_bp = Blueprint('gui_editor', __name__)
 CONFIG_FILE = 'config.json'
 BATCH_LOGS = []
+
+# Global to track latest image for preview
+LATEST_GENERATED_IMAGE = None
 
 # Initialize Image Generator for Proxy Processing
 image_gen = ImageGenerator()
@@ -66,7 +70,7 @@ if not os.path.exists(CUSTOM_ICONS_DIR):
 # --- CONFIGURATION LOGIC ---
 def load_config():
     defaults = {
-        "general": {"overwrite_existing": False},
+        "general": {"overwrite_existing": False, "timezone_offset": 1},
         "jellyfin": {"url": "", "api_key": "", "user_id": "", "excluded_libraries": ""},
         "plex": {"url": "", "token": ""},
         "tmdb": {"api_key": "", "language": "de-DE"},
@@ -441,11 +445,23 @@ def receive_cron_log():
     data = request.json
     msg = data.get('message')
     if msg:
-        timestamp = time.strftime("%H:%M:%S")
+        try:
+            config = load_config()
+            offset = int(config.get('general', {}).get('timezone_offset', 1))
+            now = datetime.utcnow() + timedelta(hours=offset)
+            timestamp = now.strftime("%H:%M:%S")
+        except:
+            timestamp = time.strftime("%H:%M:%S")
         BATCH_LOGS.append(f"[{timestamp}] {msg}")
         # Keep log size manageable
         if len(BATCH_LOGS) > 1000:
             BATCH_LOGS.pop(0)
+    return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/batch/logs/clear', methods=['POST'])
+def clear_batch_logs():
+    global BATCH_LOGS
+    BATCH_LOGS = []
     return jsonify({"status": "success"})
 
 @gui_editor_bp.route('/api/batch/logs')
@@ -650,6 +666,37 @@ def delete_overlay(overlay_id):
 @gui_editor_bp.route('/api/overlays/image/<path:filename>')
 def get_overlay_image(filename):
     return send_from_directory(OVERLAYS_DIR, filename)
+
+@gui_editor_bp.route('/api/overlays/update_margins', methods=['POST'])
+def update_overlay_margins():
+    data = request.json
+    overlay_id = data.get('id')
+    blocked_areas = data.get('blocked_areas')
+    
+    if not overlay_id:
+        return jsonify({"status": "error", "message": "ID required"}), 400
+
+    overlays = []
+    if os.path.exists(OVERLAYS_JSON):
+        with open(OVERLAYS_JSON, 'r') as f:
+            try: 
+                data = json.load(f)
+                if isinstance(data, list): overlays = data
+            except: pass
+    
+    updated = False
+    for o in overlays:
+        if o['id'] == overlay_id:
+            o['blocked_areas'] = blocked_areas
+            updated = True
+            break
+    
+    if updated:
+        with open(OVERLAYS_JSON, 'w') as f:
+            json.dump(overlays, f, indent=4)
+        return jsonify({"status": "success"})
+    
+    return jsonify({"status": "error", "message": "Overlay not found"}), 404
 
 @gui_editor_bp.route('/api/textures/list')
 def list_textures():
@@ -1154,6 +1201,7 @@ def delete_all_gallery_images():
 
 @gui_editor_bp.route('/api/save_image', methods=['POST'])
 def save_editor_image():
+    global LATEST_GENERATED_IMAGE
     data = request.json
     image_data = data.get('image')
     metadata = data.get('metadata', {})
@@ -1234,6 +1282,9 @@ def save_editor_image():
         json_path = os.path.splitext(filepath)[0] + ".json"
         with open(json_path, "w") as f:
             json.dump(final_json_data, f)
+
+        # Update global variable for preview
+        LATEST_GENERATED_IMAGE = filepath
 
         return jsonify({"status": "success", "filename": filename})
     except Exception as e:
@@ -1347,6 +1398,13 @@ def get_gallery_image(folder, filename):
         return "Invalid folder", 400
          
     return send_from_directory(os.path.join(base_path, folder), filename)
+
+@gui_editor_bp.route('/api/batch/preview/latest_image')
+def get_latest_batch_image():
+    global LATEST_GENERATED_IMAGE
+    if LATEST_GENERATED_IMAGE and os.path.exists(LATEST_GENERATED_IMAGE):
+        return send_file(LATEST_GENERATED_IMAGE)
+    return "", 404
 
 if __name__ == '__main__':
     from flask import Flask

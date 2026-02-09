@@ -1,0 +1,17 @@
+env
+*_backgrounds/*
+*.tff
+node_modules/
+
+# Sensitive configuration
+config.json
+
+# Python environment
+__pycache__/
+*.pyc
+venv/
+.env
+
+# OS specific files
+.DS_Store
+Thumbs.db

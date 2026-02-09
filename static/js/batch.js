@@ -183,6 +183,36 @@ async function startBatchProcess() {
 
         const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
         
+        // Inject custom_effects so the saved JSON contains overlay info & blocked areas
+        json.custom_effects = {
+            bgColor: document.getElementById('bgColor').value,
+            bgBrightness: document.getElementById('bgBrightness').value,
+            fadeEffect: document.getElementById('fadeEffect').value,
+            fadeRadius: document.getElementById('fadeRadius').value,
+            fadeLeft: document.getElementById('fadeLeft').value,
+            fadeRight: document.getElementById('fadeRight').value,
+            fadeTop: document.getElementById('fadeTop').value,
+            fadeBottom: document.getElementById('fadeBottom').value,
+            tagAlignment: document.getElementById('tagAlignSelect').value,
+            textContentAlignment: document.getElementById('textContentAlignSelect').value,
+            genreLimit: document.getElementById('genreLimitSlider').value,
+            overlayId: document.getElementById('overlaySelect').value,
+            margins: {
+                top: document.getElementById('marginTopInput').value,
+                bottom: document.getElementById('marginBottomInput').value,
+                left: document.getElementById('marginLeftInput').value,
+                right: document.getElementById('marginRightInput').value
+            },
+            logoAutoFix: document.getElementById('batchLogoAutoFix') ? document.getElementById('batchLogoAutoFix').checked : true
+        };
+
+        if (json.custom_effects.overlayId && typeof overlayProfiles !== 'undefined') {
+            const profile = overlayProfiles.find(p => p.id === json.custom_effects.overlayId);
+            if (profile && profile.blocked_areas) {
+                json.custom_effects.blocked_areas = profile.blocked_areas;
+            }
+        }
+        
         let metadata = {};
         if (typeof extractMetadata === 'function' && lastFetchedData) {
             metadata = extractMetadata(lastFetchedData);

@@ -64,20 +64,26 @@ def run_node_renderer(layout_path, metadata):
         cmd = ['node', script_path, payload_path, output_image_path]
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
         
-        if "SUCCESS" in result.stdout:
+        # Check result
+        if result.returncode == 0 and "SUCCESS" in result.stdout:
             # Read Resulting Image
-            with open(output_image_path, 'rb') as img_f:
-                file_b64 = base64.b64encode(img_f.read()).decode('utf-8')
-                image_b64 = f"data:image/jpeg;base64,{file_b64}"
+            if os.path.exists(output_image_path):
+                with open(output_image_path, 'rb') as img_f:
+                    file_b64 = base64.b64encode(img_f.read()).decode('utf-8')
+                    image_b64 = f"data:image/jpeg;base64,{file_b64}"
             
-            # Read Resulting JSON
             if os.path.exists(output_json_path):
                 with open(output_json_path, 'r', encoding='utf-8') as json_f:
                     final_json = json.load(json_f)
         else:
-            log(f"Node Error: {result.stderr}")
-            # log(f"Node Output: {result.stdout}")
+            # THIS IS THE IMPORTANT PART:
+            log(f"--- NODE.JS CRASH REPORT ---")
+            log(f"Exit Code: {result.returncode}")
+            log(f"STDOUT: {result.stdout.strip()}")
+            log(f"STDERR: {result.stderr.strip()}")
+            log(f"----------------------------")
 
+            
     except Exception as e:
         log(f"Render Execution Error: {e}")
     

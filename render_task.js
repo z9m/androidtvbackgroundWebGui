@@ -12,53 +12,47 @@ const outputPath = process.argv[3];
 
 if (!payloadPath || !outputPath) process.exit(1);
 
+// --- ERROR HANDLERS ---
+process.on('unhandledRejection', (reason, p) => {
+    console.error('FATAL: Unhandled Rejection at:', p, 'reason:', reason);
+    process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+    console.error('FATAL: Uncaught Exception:', err);
+    process.exit(1);
+});
+
 // --- FONTS ---
 const fontsDir = path.join(__dirname, 'fonts');
 
 if (fs.existsSync(fontsDir)) {
     const files = fs.readdirSync(fontsDir);
-    console.log(`[DEBUG] Scanning fonts directory: ${fontsDir}`);
-
+    // Silent font registration
     files.forEach(file => {
         const ext = path.extname(file).toLowerCase();
         if (ext === '.ttf' || ext === '.otf') {
-            // Fix: node-canvas on Windows sometimes dislikes backslashes.
-            // On Linux/Docker this .replace() is a no-op (does nothing) and is safe.
             const fullPath = path.join(fontsDir, file).replace(/\\/g, '/');
-            
             try {
                 let familyName = path.basename(file, ext).split('-')[0].replace(/[^a-zA-Z0-9]/g, '');
                 if (!familyName) familyName = "CustomFont";
-
                 canvasModule.registerFont(fullPath, { family: familyName });
-                console.log(`[DEBUG] Font registered: "${familyName}" from file: ${file}`);
             } catch (fontErr) {
-                console.warn(`[WARNING] Skipped font ${file}: ${fontErr.message}`);
+                // Silent catch
             }
         }
     });
-} else {
-    console.warn(`[WARNING] Fonts directory NOT found at: ${fontsDir}`);
 }
 
-// --- HELPERS (From editor.js) ---
+// --- HELPERS ---
 
 function fitTextToContainer(canvas, textbox) {
     if (!canvas || !textbox) return;
     const textSource = textbox.fullMediaText || textbox.text || "";
     
-    // Reset to full text
     textbox.set('text', textSource);
-    // fabric in Node might need extra help recalculating dimensions
-    // textbox.initDimensions(); // Not always available or identical in all versions, checking...
-    
-    // In node-canvas fabric, we rely on property updates
-    
-    const limit = (textbox.fixedHeight || textbox.height) - 5;
     
     // Helper to check height
     const getHeight = () => {
-        // Force recalc
         if (typeof textbox.initDimensions === 'function') {
             textbox.initDimensions();
         } else if (typeof textbox._initDimensions === 'function') {
@@ -67,10 +61,11 @@ function fitTextToContainer(canvas, textbox) {
         return textbox.height * textbox.scaleY;
     };
 
+    const limit = (textbox.fixedHeight || textbox.height) - 5;
+
     if (getHeight() > limit) {
         let words = textSource.split(' ');
         
-        // Optimization: Jump start if way too big
         if (getHeight() > limit * 1.5) {
             const ratio = limit / getHeight();
             words = words.slice(0, Math.floor(words.length * ratio));
@@ -137,24 +132,20 @@ function checkCollision(obj, blockedAreas, scaleFactor = 1) {
 
 function createFadeRect(mainBg, type, size, bgColor) {
     const b = 2;
-    // mainBg properties need to be accessed safely
     const wImg = mainBg.width * mainBg.scaleX;
     const hImg = mainBg.height * mainBg.scaleY;
     
-    // Calculate bgLeft/bgTop considering origin
     let bgLeft = mainBg.left;
     let bgTop = mainBg.top;
     if (mainBg.originX === 'center') bgLeft -= wImg / 2;
     if (mainBg.originY === 'center') bgTop -= hImg / 2;
 
     let w, h, x, y, c;
-    // Calculate dimensions first
     if (type === 'left') { w = parseInt(size) + b; h = hImg + b*2; x = bgLeft - b; y = bgTop - b; }
     else if (type === 'right') { w = parseInt(size) + b; h = hImg + b*2; x = bgLeft + wImg - size; y = bgTop - b; }
     else if (type === 'top') { w = wImg + b*2; h = parseInt(size) + b; x = bgLeft - b; y = bgTop - b; }
     else if (type === 'bottom') { w = wImg + b*2; h = parseInt(size) + b; x = bgLeft - b; y = bgTop + hImg - size; }
 
-    // Use PERCENTAGE coordinates to match editor.js/batch.json structure exactly
     if (type === 'left') c = { x1: 0, y1: 0, x2: 1, y2: 0 };
     else if (type === 'right') c = { x1: 1, y1: 0, x2: 0, y2: 0 };
     else if (type === 'top') c = { x1: 0, y1: 0, x2: 0, y2: 1 };
@@ -233,6 +224,16 @@ function addVignette(canvas, mainBg, radius, bgColor) {
     rect.moveTo(canvas.getObjects().indexOf(mainBg) + 1);
 }
 
+// Helper to reset logo to original state (prevents wandering/shrinking persistence)
+function resetAnchorState(anchor, originalState) {
+    if (!anchor || !originalState) return;
+    anchor.scaleX = originalState.scaleX;
+    anchor.scaleY = originalState.scaleY;
+    anchor.left = originalState.left;
+    anchor.top = originalState.top;
+    anchor.setCoords();
+}
+
 function updateVerticalLayout(canvas, settings, activeBlockedAreas = []) {
     if (!canvas) return;
     
@@ -250,7 +251,11 @@ function updateVerticalLayout(canvas, settings, activeBlockedAreas = []) {
     const anchor = canvas.getObjects().find(o => o.dataTag === 'title');
     if (!anchor) return;
 
-    // Alignment
+    // Reset anchor to original layout state if available (prevents wandering)
+    if (anchor._originalState) {
+        resetAnchorState(anchor, anchor._originalState);
+    }
+
     const alignment = settings.tagAlignment || 'left';
 
     // Ensure anchor (Logo/Title) respects screen margin
@@ -265,6 +270,95 @@ function updateVerticalLayout(canvas, settings, activeBlockedAreas = []) {
         anchor.set('top', Math.max(marginTop, canvas.height - marginBottom - (anchor.height * anchor.scaleY)));
     }
     anchor.setCoords();
+
+    // 2.5. Auto-Scale Anchor to fit in vertical gaps between blocked areas
+    if (activeBlockedAreas.length > 0) {
+        const anchorH = anchor.height * anchor.scaleY;
+        const anchorCenterY = anchor.top + (anchorH / 2);
+        const anchorLeft = anchor.left;
+        const anchorRight = anchor.left + (anchor.width * anchor.scaleX);
+        
+        const obstacles = [];
+        obstacles.push({ top: -Infinity, bottom: marginTop });
+        obstacles.push({ top: canvas.height - marginBottom, bottom: Infinity });
+        
+        activeBlockedAreas.forEach(area => {
+            const aLeft = area.left * scaleFactor;
+            const aWidth = area.width * scaleFactor;
+            const aRight = aLeft + aWidth;
+            
+            if (aLeft < anchorRight && aRight > anchorLeft) {
+                const aTop = area.top * scaleFactor;
+                const aHeight = area.height * scaleFactor;
+                obstacles.push({ top: aTop, bottom: aTop + aHeight });
+            }
+        });
+        
+        obstacles.sort((a, b) => a.top - b.top);
+        const merged = [];
+        if (obstacles.length > 0) {
+            let curr = obstacles[0];
+            for (let i = 1; i < obstacles.length; i++) {
+                if (obstacles[i].top < curr.bottom) {
+                    curr.bottom = Math.max(curr.bottom, obstacles[i].bottom);
+                } else {
+                    merged.push(curr);
+                    curr = obstacles[i];
+                }
+            }
+            merged.push(curr);
+        }
+        
+        const gaps = [];
+        for (let i = 0; i < merged.length - 1; i++) {
+            const top = merged[i].bottom;
+            const bottom = merged[i+1].top;
+            if (bottom > top) {
+                gaps.push({ top, bottom, height: bottom - top });
+            }
+        }
+        
+        let bestGap = gaps.find(g => anchorCenterY >= g.top && anchorCenterY <= g.bottom);
+        
+        if (!bestGap && gaps.length > 0) {
+            bestGap = gaps.reduce((prev, curr) => {
+                const prevDist = Math.min(Math.abs(anchorCenterY - prev.top), Math.abs(anchorCenterY - prev.bottom));
+                const currDist = Math.min(Math.abs(anchorCenterY - curr.top), Math.abs(anchorCenterY - curr.bottom));
+                return (currDist < prevDist) ? curr : prev;
+            });
+        }
+        
+        if (bestGap) {
+            const currentH = anchor.height * anchor.scaleY;
+            const maxH = Math.max(20, bestGap.height - 10);
+            
+            let targetH = currentH;
+            // In render task, we assume current size is preferred size as it comes from saved layout
+            
+            const finalH = Math.min(targetH, maxH);
+            
+            if (Math.abs(finalH - currentH) > 1) {
+                const oldLeft = anchor.left;
+                const oldWidth = anchor.width * anchor.scaleX;
+                const oldRight = oldLeft + oldWidth;
+                const oldCenterX = oldLeft + (oldWidth / 2);
+
+                anchor.scaleToHeight(finalH);
+                const newWidth = anchor.width * anchor.scaleX;
+                
+                if (alignment === 'right') {
+                    anchor.set('left', oldRight - newWidth);
+                } else if (alignment === 'left') {
+                    anchor.set('left', oldLeft);
+                } else {
+                    anchor.set('left', oldCenterX - (newWidth / 2));
+                }
+
+                anchor.set('top', bestGap.top + (bestGap.height - finalH) / 2);
+                anchor.setCoords();
+            }
+        }
+    }
 
     // Anchor Blocked Area Constraints (Push out of blocked areas)
     let safety = 0;
@@ -353,9 +447,6 @@ function updateVerticalLayout(canvas, settings, activeBlockedAreas = []) {
     const anchorWidth = anchor.width * anchor.scaleX;
 
     rows.forEach(row => {
-        // Auto-resize icons (simplified for node)
-        // ... (Skipping complex matchHeight logic for now, keeping basic layout)
-
         row.sort((a, b) => a.left - b.left);
         
         let totalRowWidth = 0;
@@ -432,25 +523,102 @@ function updateVerticalLayout(canvas, settings, activeBlockedAreas = []) {
         }
     });
 
-    // Vertical shift logic if colliding with bottom or blocked areas
-    // ... (Simplified: just ensuring it stays within bounds)
+    // Check for bottom overflow and shift up if necessary
+    const contentBottom = current_y - padding;
+    const maxBottom = canvas.height - marginBottom;
+
+    // Check collision with blocked areas for all placed elements to trigger vertical shift
+    let maxBlockedShift = 0;
+    const allElements = [anchor];
+    rows.forEach(row => row.forEach(el => { if(el.visible) allElements.push(el); }));
+
+    // Ensure coords are fresh for collision detection
+    allElements.forEach(el => {
+        el.setCoords();
+        const b = el.getBoundingRect();
+        activeBlockedAreas.forEach(area => {
+            const aLeft = area.left * scaleFactor;
+            const aTop = area.top * scaleFactor;
+            const aWidth = area.width * scaleFactor;
+            const aHeight = area.height * scaleFactor;
+            
+            if (b.left < aLeft + aWidth && b.left + b.width > aLeft &&
+                b.top < aTop + aHeight && b.top + b.height > aTop) {
+                const overlap = (b.top + b.height) - aTop;
+                if (overlap > 0 && overlap > maxBlockedShift) maxBlockedShift = overlap;
+            }
+        });
+    });
+
+    const marginShift = Math.max(0, contentBottom - maxBottom);
+    const totalShift = Math.max(marginShift, maxBlockedShift);
+    
+    if (totalShift > 0) {
+        // Calculate available space above considering margins AND blocked areas
+        let limitTop = marginTop;
+        
+        const anchorLeft = anchor.left;
+        const anchorRight = anchor.left + (anchor.width * anchor.scaleX);
+
+        activeBlockedAreas.forEach(area => {
+            const aLeft = area.left * scaleFactor;
+            const aWidth = area.width * scaleFactor;
+            const aRight = aLeft + aWidth;
+            const aTop = area.top * scaleFactor;
+            const aHeight = area.height * scaleFactor;
+            const aBottom = aTop + aHeight;
+
+            // Check horizontal intersection with anchor
+            if (aLeft < anchorRight && aRight > anchorLeft) {
+                if (aBottom <= anchor.top + 5) { 
+                    if (aBottom > limitTop) limitTop = aBottom;
+                }
+            }
+        });
+
+        const maxSafeShiftUp = Math.max(0, anchor.top - limitTop);
+        
+        if (totalShift > maxSafeShiftUp) {
+            // Need to shrink because we can't shift up enough
+            const deficit = totalShift - maxSafeShiftUp;
+            const currentHeight = anchor.height * anchor.scaleY;
+            const newHeight = Math.max(20, currentHeight - deficit);
+
+            const oldLeft = anchor.left;
+            const oldWidth = anchor.width * anchor.scaleX;
+            const oldRight = oldLeft + oldWidth;
+            const oldCenterX = oldLeft + (oldWidth / 2);
+            
+            anchor.scaleToHeight(newHeight);
+            const newWidth = anchor.width * anchor.scaleX;
+
+            if (alignment === 'right') {
+                anchor.set('left', oldRight - newWidth);
+            } else if (alignment === 'center') {
+                anchor.set('left', oldCenterX - (newWidth / 2));
+            }
+
+            anchor.set('top', limitTop);
+            rows.forEach(row => row.forEach(el => el.set('top', el.top - totalShift)));
+        } else {
+            anchor.set('top', anchor.top - totalShift);
+            rows.forEach(row => row.forEach(el => el.set('top', el.top - totalShift)));
+        }
+    }
 }
 
 function applyCustomEffects(canvas, settings, mainBg) {
     if (!settings || !mainBg) return;
     
     const bgColor = settings.bgColor || "#000000";
-    canvas.backgroundColor = bgColor; // Set canvas background for JSON output
+    canvas.backgroundColor = bgColor;
 
     const type = settings.fadeEffect || 'none';
-    
-    // Check if we have active fade settings before wiping existing ones
     const hasFadeSettings = (type !== 'none' && type !== 'custom') || 
                             (type === 'custom' && (settings.fadeLeft || settings.fadeRight || settings.fadeTop || settings.fadeBottom));
 
     if (!hasFadeSettings) return;
 
-    // Remove existing
     canvas.getObjects().filter(o => o.dataTag === 'fade_effect').forEach(o => canvas.remove(o));
 
     const addLinear = (side) => {
@@ -501,16 +669,43 @@ function applyCustomEffects(canvas, settings, mainBg) {
         const meta = payload.metadata;
         const assets = payload.assets;
 
+        // FIX: Pre-process Layout to handle relative URLs (Node.js doesn't support them)
+        const API_BASE = "http://127.0.0.1:5000"; 
+        
+        const fixUrl = (obj) => {
+            if (obj.src && obj.src.startsWith('/')) {
+                obj.src = API_BASE + obj.src;
+            }
+        };
+
+        if (layoutJson.objects) {
+            layoutJson.objects.forEach(obj => {
+                fixUrl(obj);
+                if (obj.type === 'group' && obj.objects) {
+                    obj.objects.forEach(sub => fixUrl(sub));
+                }
+            });
+        }
+
         const baseWidth = (layoutJson.width && layoutJson.width > 3000) ? 3840 : 1920;
         const baseHeight = (baseWidth === 3840) ? 2160 : 1080;
         const canvas = new fabric.StaticCanvas(null, { width: baseWidth, height: baseHeight });
 
-        await new Promise(resolve => canvas.loadFromJSON(layoutJson, resolve));
+        // Load JSON with a timeout to prevent hanging
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                console.warn("WARNING: canvas.loadFromJSON timed out, proceeding anyway.");
+                resolve();
+            }, 10000); // 10 second timeout
+            
+            // Pass reviver to handle custom properties or errors if needed
+            canvas.loadFromJSON(layoutJson, () => { clearTimeout(timeout); resolve(); }, (o, object) => {
+                 // Ensure dataTag and other properties are preserved
+            });
+        });
 
-        // SETTINGS (Moved up for Genre Limit)
         const settings = layoutJson.custom_effects || layoutJson.metadata?.custom_effects || {};
 
-        // TEXTS
         canvas.getObjects().forEach(obj => {
             if (!obj.dataTag) return;
             let val = null;
@@ -520,7 +715,6 @@ function applyCustomEffects(canvas, settings, mainBg) {
             else if (obj.dataTag === 'overview') val = meta.overview;
             else if (obj.dataTag === 'genres') {
                 val = meta.genres;
-                // 1. Genre-Limitierung
                 if (val && settings.genreLimit) {
                     const limit = parseInt(settings.genreLimit);
                     if (!isNaN(limit) && limit > 0) {
@@ -531,7 +725,6 @@ function applyCustomEffects(canvas, settings, mainBg) {
             else if (obj.dataTag === 'runtime') val = meta.runtime;
             else if (obj.dataTag === 'officialRating') val = meta.officialRating;
             else if (obj.dataTag === 'provider_source') {
-                // 2. Provider Info
                 const src = (meta.source || "").toLowerCase();
                 if (src === 'radarr' || src === 'sonarr') {
                     val = "Available soon...";
@@ -550,25 +743,31 @@ function applyCustomEffects(canvas, settings, mainBg) {
                 if (obj.dataTag !== 'title') obj.set('visible', false);
             }
 
-            // Auto-resize text if needed (e.g. Overview)
             if (obj.dataTag === 'overview' && obj.type === 'textbox') {
-                // Ensure full text is available for refitting
                 if (!obj.fullMediaText && val) obj.fullMediaText = String(val);
                 fitTextToContainer(canvas, obj);
             }
+            
+            // Save original state of title for reset in updateVerticalLayout
+            if (obj.dataTag === 'title') {
+                obj._originalState = {
+                    scaleX: obj.scaleX,
+                    scaleY: obj.scaleY,
+                    left: obj.left,
+                    top: obj.top
+                };
+            }
         });
 
-        // BACKGROUND (Direct URL)
         let mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
         
         if (assets.backdrop_url) {
-            // Capture state from existing background (template)
             let left = canvas.width / 2;
             let top = canvas.height / 2;
             let flipX = false;
             let flipY = false;
             let oldWidth = 0;
-            const oldBg = mainBg; // Alias for clarity matching editor.js logic
+            const oldBg = mainBg;
             
             if (oldBg) {
                 const center = oldBg.getCenterPoint();
@@ -576,7 +775,7 @@ function applyCustomEffects(canvas, settings, mainBg) {
                 top = center.y;
                 flipX = oldBg.flipX;
                 flipY = oldBg.flipY;
-                oldWidth = oldBg.width * oldBg.scaleX; // getScaledWidth() equivalent
+                oldWidth = oldBg.width * oldBg.scaleX;
                 
                 canvas.remove(oldBg);
             }
@@ -588,10 +787,8 @@ function applyCustomEffects(canvas, settings, mainBg) {
                         resolve(); return; 
                     }
                     
-                    // Default Cover Scale
                     let scale = Math.max(canvas.width / img.width, canvas.height / img.height);
                     
-                    // If we had an old background, try to match its width (preserve zoom level)
                     if (oldBg && oldWidth > 0 && img.width > 0) {
                         scale = oldWidth / img.width;
                     }
@@ -616,63 +813,80 @@ function applyCustomEffects(canvas, settings, mainBg) {
             });
         }
         
-        // Fallback mainBg if not loaded
         if (!mainBg) {
              mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
         }
 
-        // 3. Auto Background Color & Brightness
-        const shouldAutoColor = settings.autoBackgroundColor === true || settings.autoBackgroundColor === "true";
-        if (mainBg && shouldAutoColor) {
+        // --- AUTO COLOR DETECTION ---
+        // Refactored Ambilight Logic to match editor.js behavior
+        // 1. Timing: Executed after backdrop load but before layout updates
+        if (mainBg && assets.backdrop_url) {
             try {
-                const el = mainBg.getElement ? mainBg.getElement() : mainBg._element;
-                
-                // Edge Sampling (Ambilight Logic)
-                const sampleSize = 100;
-                const tempCanvas = canvasModule.createCanvas(sampleSize, sampleSize);
-                const ctx = tempCanvas.getContext('2d');
-                ctx.drawImage(el, 0, 0, sampleSize, sampleSize);
-                const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
-                
-                let r = 0, g = 0, b = 0, count = 0;
-                const border = 10; // 10% edge
+                // Load image specifically for node-canvas sampling
+                // (JSDOM image element from fabric might not work with node-canvas drawImage)
+                const imageForSampling = await canvasModule.loadImage(assets.backdrop_url);
+                if (imageForSampling) {
+                    // 2. Sampling Logic: Use temp canvas (min 200px)
+                    const sampleSize = 200;
+                    const tempCanvas = canvasModule.createCanvas(sampleSize, sampleSize);
+                    const ctx = tempCanvas.getContext('2d');
+                    ctx.drawImage(imageForSampling, 0, 0, sampleSize, sampleSize);
+                    const imageData = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+                    
+                    let r = 0, g = 0, b = 0, count = 0;
+                    const border = 10; // 5% of 200px = 10px (Samples edges like editor.js)
 
-                for (let y = 0; y < sampleSize; y++) {
-                    for (let x = 0; x < sampleSize; x++) {
-                        if (x < border || x > sampleSize - border || y < border || y > sampleSize - border) {
-                            const i = (y * sampleSize + x) * 4;
-                            r += data[i]; g += data[i + 1]; b += data[i + 2];
-                            count++;
+                    for (let y = 0; y < sampleSize; y++) {
+                        for (let x = 0; x < sampleSize; x++) {
+                            if (x < border || x > sampleSize - border || y < border || y > sampleSize - border) {
+                                const i = (y * sampleSize + x) * 4;
+                                r += imageData[i]; g += imageData[i + 1]; b += imageData[i + 2];
+                                count++;
+                            }
                         }
                     }
-                }
-                
-                if (count > 0) { r = Math.floor(r/count); g = Math.floor(g/count); b = Math.floor(b/count); }
+                    
+                    if (count > 0) { 
+                        // Calculate Average RGB
+                        r = Math.floor(r/count); g = Math.floor(g/count); b = Math.floor(b/count); 
 
-                // Apply Brightness to Color (not Image)
-                if (settings.bgBrightness) {
-                    const bVal = parseInt(settings.bgBrightness);
-                    if (!isNaN(bVal)) {
+                        // 3. Brightness Correction: Apply factor from settings (default 20)
+                        let bVal = parseInt(settings.bgBrightness);
+                        if (isNaN(bVal)) bVal = 20;
                         const factor = bVal / 100;
                         r = Math.floor(r * factor);
                         g = Math.floor(g * factor);
                         b = Math.floor(b * factor);
+
+                        const toHex = (c) => {
+                            const hex = Math.max(0, Math.min(255, c)).toString(16);
+                            return hex.length === 1 ? "0" + hex : hex;
+                        };
+                        const detectedHex = "#" + toHex(r) + toHex(g) + toHex(b);
+                        
+                        // 4. State Sync: Update settings.bgColor AND canvas.backgroundColor
+                        // This ensures fade gradients use the correct darkened color
+                        settings.bgColor = detectedHex;
+                        if (typeof canvas.setBackgroundColor === 'function') canvas.setBackgroundColor(detectedHex, () => {});
+                        canvas.backgroundColor = detectedHex;
+                        
+                        console.log(`Auto-Color Applied: ${detectedHex} (Brightness: ${bVal}%)`);
+
+                        // Sync Textbox backgrounds
+                        canvas.getObjects().forEach(obj => {
+                            if (obj.type === 'textbox' && (obj.autoBackgroundColor === true || obj.autoBackgroundColor === "true") && obj.backgroundColor) {
+                                const c = new fabric.Color(obj.backgroundColor);
+                                const currentOpacity = c.getSource()[3];
+                                obj.set('backgroundColor', `rgba(${r}, ${g}, ${b}, ${currentOpacity})`);
+                            }
+                        });
                     }
                 }
-
-                const toHex = (c) => {
-                    const hex = c.toString(16);
-                    return hex.length === 1 ? "0" + hex : hex;
-                };
-                settings.bgColor = "#" + toHex(r) + toHex(g) + toHex(b);
-                // Apply to canvas immediately so it's picked up by toJSON if needed, though we overwrite custom_effects later
-                canvas.backgroundColor = settings.bgColor;
             } catch (e) {
-                console.warn("Auto color detection failed:", e.message);
+                console.warn("Auto color detection error:", e.message);
             }
         }
 
-        // LOGO (Direct URL)
         if (assets.logo_url) {
             const titleObj = canvas.getObjects().find(o => o.dataTag === 'title');
             if (titleObj) {
@@ -681,6 +895,11 @@ function applyCustomEffects(canvas, settings, mainBg) {
                 const targetT = titleObj.top;
                 const originX = titleObj.originX || 'left';
                 const originY = titleObj.originY || 'top';
+                
+                // Capture properties to persist
+                const savedFilters = titleObj.filters;
+                const savedLogoAutoFix = titleObj.logoAutoFix;
+
                 canvas.remove(titleObj); 
 
                 await new Promise(resolve => {
@@ -692,8 +911,16 @@ function applyCustomEffects(canvas, settings, mainBg) {
                                 originX: originX, originY: originY,
                                 scaleX: scale, scaleY: scale, 
                                 dataTag: 'title',
-                                crossOrigin: 'anonymous'
+                                crossOrigin: 'anonymous',
+                                logoAutoFix: savedLogoAutoFix
                             });
+                            
+                            // Restore filters if present
+                            if (savedFilters && savedFilters.length > 0) {
+                                img.filters = savedFilters;
+                                img.applyFilters();
+                            }
+
                             canvas.add(img);
                             canvas.bringToFront(img);
                         }
@@ -703,42 +930,93 @@ function applyCustomEffects(canvas, settings, mainBg) {
             }
         }
 
-        // Blocked Areas (Overlay)
         let activeBlockedAreas = [];
+        let overlayImageFile = null;
+        let overlayFound = false;
+
         try {
             const overlaysPath = path.join(__dirname, 'overlays.json');
             if (fs.existsSync(overlaysPath)) {
                 const overlays = JSON.parse(fs.readFileSync(overlaysPath, 'utf8'));
-                const activeOverlay = overlays.find(o => o.id === settings.overlayId);
-                if (activeOverlay && activeOverlay.blocked_areas) {
-                    activeBlockedAreas = activeOverlay.blocked_areas;
+                const activeOverlay = Array.isArray(overlays) ? overlays.find(o => o.id === settings.overlayId) : null;
+                if (activeOverlay) {
+                    overlayFound = true;
+                    if (activeOverlay.blocked_areas) {
+                        activeBlockedAreas = activeOverlay.blocked_areas;
+                        console.log(`[Overlay] Loaded ${activeBlockedAreas.length} blocked areas from server profile: ${activeOverlay.name}`);
+                    }
+                    
+                    // Determine correct overlay image file (4K vs 1080p)
+                    const is4K = canvas.width > 2000;
+                    overlayImageFile = is4K ? activeOverlay.file_4k : activeOverlay.file_1080;
+                    if (!overlayImageFile) overlayImageFile = is4K ? activeOverlay.file_1080 : activeOverlay.file_4k;
                 }
             }
         } catch (e) {
             console.warn("Could not load blocked areas from overlays.json", e.message);
         }
 
-        // Fallback: Check if blocked_areas are in settings (custom_effects)
-        if (settings.blocked_areas && Array.isArray(settings.blocked_areas)) {
+        // Fallback to settings from JSON only if overlay profile was not found on server
+        if (!overlayFound && settings.blocked_areas && Array.isArray(settings.blocked_areas)) {
             activeBlockedAreas = settings.blocked_areas;
         }
         
         updateVerticalLayout(canvas, settings, activeBlockedAreas);
         
-        // APPLY EFFECTS (After layout, using mainBg)
         if (mainBg) {
             applyCustomEffects(canvas, settings, mainBg);
         } else {
             console.warn("No main background found, skipping effects.");
         }
 
-        canvas.renderAll();
-        // SAVE IMAGE
-        const outStream = fs.createWriteStream(outputPath);
-        const canvasStream = canvas.createJPEGStream({ quality: 0.95 });
-        canvasStream.pipe(outStream);
+        // --- RENDER OVERLAY IMAGE (Visual Guide) ---
+        if (overlayImageFile) {
+            const overlayPath = path.join(__dirname, 'overlays', overlayImageFile);
+            if (fs.existsSync(overlayPath)) {
+                try {
+                    const overlayBuffer = fs.readFileSync(overlayPath);
+                    const ext = path.extname(overlayPath).slice(1) || 'png';
+                    const overlayDataUrl = `data:image/${ext};base64,${overlayBuffer.toString('base64')}`;
 
-        // CLEAN JSON FOR EDITOR
+                    await new Promise(resolve => {
+                        fabric.Image.fromURL(overlayDataUrl, (img) => {
+                            if (img) {
+                                img.set({
+                                    left: 0, top: 0,
+                                    originX: 'left', originY: 'top',
+                                    opacity: 0.5,
+                                    selectable: false, evented: false,
+                                    dataTag: 'guide_overlay'
+                                });
+                                img.scaleX = canvas.width / img.width;
+                                img.scaleY = canvas.height / img.height;
+                                canvas.add(img);
+                                canvas.bringToFront(img);
+                            }
+                            resolve();
+                        });
+                    });
+                } catch (e) {
+                    console.warn("Failed to load overlay image:", e.message);
+                }
+            }
+        }
+
+        canvas.renderAll();
+        
+        if (canvas.width === 0 || canvas.height === 0) {
+            console.error("FATAL: Canvas dimensions are 0x0. Rendering aborted.");
+            process.exit(1);
+        }
+
+        await new Promise((resolve, reject) => {
+            const outStream = fs.createWriteStream(outputPath);
+            const canvasStream = canvas.createJPEGStream({ quality: 0.95 });
+            canvasStream.pipe(outStream);
+            outStream.on('finish', resolve);
+            outStream.on('error', reject);
+        });
+
         const toProxy = (url) => {
             if (!url) return null;
             return `/api/proxy/image?url=${encodeURIComponent(url)}`;
@@ -764,15 +1042,16 @@ function applyCustomEffects(canvas, settings, mainBg) {
             'textureOpacity', 'snapToObjects', 'logoAutoFix', 'src', 'crossOrigin'
         ]);
         
-        // ADD METADATA & CUSTOM EFFECTS (Crucial for Editor compatibility)
-        // The batch process includes metadata in the saved JSON.
         jsonOutput.metadata = meta;
-        // Ensure custom_effects are preserved and updated with calculated values
+        // FIX: Add action_url to root to match batch.js output
+        if (meta && meta.action_url) {
+            jsonOutput.action_url = meta.action_url;
+        }
         jsonOutput.custom_effects = settings;
 
         fs.writeFileSync(jsonOutPath, JSON.stringify(jsonOutput));
 
-        outStream.on('finish', () => console.log("SUCCESS"));
+        console.log("SUCCESS");
 
     } catch (err) {
         console.error("FATAL:", err);

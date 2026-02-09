@@ -17,6 +17,7 @@
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter", 
         "googlecloudtools.cloudcode",
         "google.geminicodeassist",
         "wholroyd.jinja",
