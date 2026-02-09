@@ -1,4 +1,4 @@
-CURRENT_VERSION = "1.0.8"
+CURRENT_VERSION = "1.1.0"
 import os
 import sys
 import json

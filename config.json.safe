@@ -1,0 +1,46 @@
+{
+    "cron": {
+        "enabled": false,
+        "frequency": "1",
+        "start_time": "00:00"
+    },
+    "cron_jobs": [],
+    "editor": {
+        "resolution": "1080"
+    },
+    "general": {
+        "overwrite_existing": false,
+        "timezone_offset": 1
+    },
+    "jellyfin": {
+        "api_key": "b00ae14a7c3249b2b154f22f75e1ecfd",
+        "excluded_libraries": "",
+        "url": "http://192.168.178.92:30013",
+        "user_id": "c39196675b694b32b8c95f726c2092d1"
+    },
+    "jellyseerr": {
+        "api_key": "",
+        "url": ""
+    },
+    "plex": {
+        "token": "",
+        "url": ""
+    },
+    "radarr": {
+        "api_key": "",
+        "url": ""
+    },
+    "sonarr": {
+        "api_key": "",
+        "url": ""
+    },
+    "tmdb": {
+        "api_key": "",
+        "language": "de-DE"
+    },
+    "trakt": {
+        "api_key": "",
+        "listname": "",
+        "username": ""
+    }
+}
