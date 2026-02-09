@@ -1,72 +1,45 @@
 {
+    "cron": {
+        "enabled": false,
+        "frequency": "1",
+        "start_time": "00:00"
+    },
+    "cron_jobs": [],
+    "editor": {
+        "resolution": "1080"
+    },
     "general": {
         "overwrite_existing": false
     },
     "jellyfin": {
-        "url": "http://192.168.178.92:30013",
         "api_key": "b00ae14a7c3249b2b154f22f75e1ecfd",
-        "user_id": "c39196675b694b32b8c95f726c2092d1",
-        "excluded_libraries": ""
+        "excluded_libraries": "",
+        "url": "http://192.168.178.92:30013",
+        "user_id": "c39196675b694b32b8c95f726c2092d1"
+    },
+    "jellyseerr": {
+        "api_key": "",
+        "url": ""
     },
     "plex": {
-        "url": "",
-        "token": ""
+        "token": "",
+        "url": ""
+    },
+    "radarr": {
+        "api_key": "",
+        "url": ""
+    },
+    "sonarr": {
+        "api_key": "",
+        "url": ""
     },
     "tmdb": {
         "api_key": "",
         "language": "de-DE"
     },
-    "radarr": {
-        "url": "",
-        "api_key": ""
-    },
-    "sonarr": {
-        "url": "",
-        "api_key": ""
-    },
-    "jellyseerr": {
-        "url": "",
-        "api_key": ""
-    },
     "trakt": {
         "api_key": "",
-        "username": "",
-        "listname": ""
-    },
-    "editor": {
-        "resolution": "1080"
-    },
-    "cron": {
-        "enabled": false,
-        "start_time": "00:00",
-        "frequency": "1"
-    },
-    "cron_jobs": [
-        {
-            "created_at": "2026-02-06T18:40:03.732Z",
-            "enabled": true,
-            "filter_mode": "all",
-            "force_run": false,
-            "frequency": "1",
-            "id": "1770403203732",
-            "layout_name": "Default",
-            "name": "Untitled Job",
-            "overwrite": false,
-            "source_mode": "random",
-            "start_time": "03:00"
-        },
-        {
-            "id": "1770403536842",
-            "name": "T\u00e4glich",
-            "enabled": true,
-            "start_time": "03:00",
-            "frequency": "1",
-            "overwrite": false,
-            "force_run": false,
-            "layout_name": "Default 2",
-            "source_mode": "random",
-            "filter_mode": "all",
-            "created_at": "2026-02-06T18:45:36.842Z"
-        }
-    ]
+        "listname": "",
+        "username": ""
+    }
 }

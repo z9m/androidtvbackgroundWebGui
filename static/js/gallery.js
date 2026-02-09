@@ -167,6 +167,30 @@ async function saveToGalleryInternal(layoutName, overwriteFilename = null, targe
 
     const json = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity']);
     
+    // Save custom effects settings to ensure exact restoration
+    json.custom_effects = {
+        bgColor: document.getElementById('bgColor').value,
+        bgBrightness: document.getElementById('bgBrightness').value,
+        fadeEffect: document.getElementById('fadeEffect').value,
+        fadeRadius: document.getElementById('fadeRadius').value,
+        fadeLeft: document.getElementById('fadeLeft').value,
+        fadeRight: document.getElementById('fadeRight').value,
+        fadeTop: document.getElementById('fadeTop').value,
+        fadeBottom: document.getElementById('fadeBottom').value,
+        tagAlignment: document.getElementById('tagAlignSelect').value,
+        textContentAlignment: document.getElementById('textContentAlignSelect').value,
+        genreLimit: document.getElementById('genreLimitSlider').value,
+        overlayId: document.getElementById('overlaySelect').value,
+        margins: {
+            top: document.getElementById('marginTopInput').value,
+            bottom: document.getElementById('marginBottomInput').value,
+            left: document.getElementById('marginLeftInput').value,
+            right: document.getElementById('marginRightInput').value
+        }
+    };
+    // Filter out fade effects so they aren't saved as static objects (we regenerate them)
+    json.objects = json.objects.filter(o => o.dataTag !== 'fade_effect' && o.dataTag !== 'grid_line' && o.dataTag !== 'guide_overlay');
+
     const payload = { 
         image: dataURL, 
         layout_name: layoutName, 
@@ -222,6 +246,24 @@ async function editGalleryImage(folder, filename) {
                 mainBg.set('dataTag', 'background');
             }
         }
+        
+        // Attempt to recover background color from legacy images (missing custom_effects)
+        if (!data.custom_effects) {
+            const fadeObj = canvas.getObjects().find(o => o.dataTag === 'fade_effect');
+            if (fadeObj && fadeObj.fill && fadeObj.fill.colorStops && fadeObj.fill.colorStops.length > 0) {
+                let col = fadeObj.fill.colorStops[0].color;
+                if (col) {
+                    if (col.startsWith('rgb')) {
+                        const rgb = col.match(/\d+/g);
+                        if (rgb && rgb.length >= 3) {
+                            col = "#" + ((1 << 24) + (parseInt(rgb[0]) << 16) + (parseInt(rgb[1]) << 8) + parseInt(rgb[2])).toString(16).slice(1);
+                        }
+                    }
+                    data.custom_effects = { bgColor: col };
+                }
+            }
+        }
+
         // Remove ghost effects
         const ghosts = canvas.getObjects().filter(o => o.dataTag === 'fade_effect' || o.dataTag === 'grid_line');
         ghosts.forEach(g => canvas.remove(g));

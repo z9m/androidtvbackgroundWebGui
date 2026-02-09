@@ -576,17 +576,11 @@
                         <button onclick="moveLayer('up')" style="flex:1; font-size:11px; padding:4px;">⬆ Bring Forward</button>
                         <button onclick="moveLayer('down')" style="flex:1; font-size:11px; padding:4px;">⬇ Send Backward</button>
                     </div>
-                    <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                            <label style="font-size:12px; font-weight:bold; margin:0;" data-i18n="safe_zones">Global Margins & Blocked Areas</label>
-                        </div>
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-                            <div><label style="font-size:10px;">Top</label><input type="number" id="marginTopInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
-                            <div><label style="font-size:10px;">Bottom</label><input type="number" id="marginBottomInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
-                            <div><label style="font-size:10px;">Left</label><input type="number" id="marginLeftInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
-                            <div><label style="font-size:10px;">Right</label><input type="number" id="marginRightInput" value="50" oninput="updateVerticalLayout(); saveToLocalStorage()"></div>
-                        </div>
-                    </div>
+                    <!-- Hidden Margins (Preserved for JS compatibility) -->
+                    <input type="hidden" id="marginTopInput" value="50">
+                    <input type="hidden" id="marginBottomInput" value="50">
+                    <input type="hidden" id="marginLeftInput" value="50">
+                    <input type="hidden" id="marginRightInput" value="50">
                 </div>
             </div>
 
