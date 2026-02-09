@@ -119,7 +119,57 @@ def fetch_items_and_process(job=None):
 
     headers = {"X-Emby-Token": jf['api_key']}
     base_url = jf['url'].rstrip('/')
-    url = f"{base_url}/Users/{jf['user_id']}/Items?IncludeItemTypes=Movie&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=10&Fields=Overview,Genres,OfficialRating,CommunityRating,ProviderIds,ProductionYear,RunTimeTicks,OriginalTitle,Tags,Studios,InheritedParentalRatingValue,ImageTags"
+    
+    # --- Fetch BoxSet IDs to identify items in collections ---
+    boxset_ids = set()
+    try:
+        bs_url = f"{base_url}/Users/{jf['user_id']}/Items?IncludeItemTypes=BoxSet&Recursive=true&Fields=Id"
+        r_bs = requests.get(bs_url, headers=headers, timeout=10)
+        if r_bs.status_code == 200:
+            for b in r_bs.json().get('Items', []):
+                boxset_ids.add(b['Id'])
+    except Exception as e:
+        log(f"Error fetching BoxSets: {e}")
+
+    # --- Construct dynamic URL based on job settings ---
+    source_mode = job.get('source_mode', 'library')
+    filter_mode = job.get('filter_mode', 'all')
+    filter_val = job.get('filter_value', '')
+    
+    params = [
+        "IncludeItemTypes=Movie,Series",
+        "Recursive=true",
+        "ExcludeItemTypes=BoxSet",
+        "Fields=Overview,Genres,OfficialRating,CommunityRating,ProviderIds,ProductionYear,RunTimeTicks,OriginalTitle,Tags,Studios,InheritedParentalRatingValue,ImageTags,ParentId"
+    ]
+    
+    if source_mode == 'random':
+        limit = int(job.get('random_count', 10))
+        params.append("SortBy=Random")
+        params.append(f"Limit={limit}")
+    else:
+        # Library mode: Fetch all (up to 100k)
+        params.append("Limit=100000")
+        
+        if filter_mode == 'recent':
+            params.append("SortBy=DateCreated")
+            params.append("SortOrder=Descending")
+        elif filter_mode == 'year' and filter_val:
+            params.append("SortBy=SortName")
+            params.append(f"Years={filter_val}")
+        elif filter_mode == 'genre' and filter_val:
+            params.append("SortBy=SortName")
+            params.append(f"Genres={filter_val}")
+        elif filter_mode == 'rating':
+            params.append("SortBy=CommunityRating")
+            params.append("SortOrder=Descending")
+            if filter_val: params.append(f"MinCommunityRating={filter_val}")
+        else:
+            # Default 'all'
+            params.append("SortBy=SortName")
+
+    query_string = "&".join(params)
+    url = f"{base_url}/Users/{jf['user_id']}/Items?{query_string}"
     
     try:
         req = requests.get(url, headers=headers)
@@ -134,6 +184,11 @@ def fetch_items_and_process(job=None):
         if os.path.exists(STOP_SIGNAL_FILE): break
         
         safe_title = "".join(c for c in item.get('Name', '') if c.isalnum() or c in " ._-").strip()
+        
+        if job.get('dry_run'):
+            log(f"[Dry Run] Processing: {safe_title}")
+            continue
+            
         filename = f"{safe_title} - {item.get('ProductionYear')}.jpg"
 
         # --- Overwrite Check ---
@@ -154,6 +209,8 @@ def fetch_items_and_process(job=None):
         minutes = (ticks // 600000000) if ticks else 0
         h, m = divmod(minutes, 60)
         runtime = f"{h}h {m}min" if h > 0 else f"{m}min"
+        
+        is_in_boxset = item.get('ParentId') in boxset_ids
 
         meta = {
             "title": item.get('Name'),
@@ -164,7 +221,7 @@ def fetch_items_and_process(job=None):
             "genres": ", ".join(item.get('Genres', [])),
             "runtime": runtime,
             "backdrop_url": f"{base_url}/Items/{item['Id']}/Images/Backdrop?api_key={jf['api_key']}",
-            "logo_url": f"{base_url}/Items/{item['Id']}/Images/Logo?api_key={jf['api_key']}" if 'Logo' in item.get('ImageTags', {}) else None,
+            "logo_url": None if is_in_boxset else (f"{base_url}/Items/{item['Id']}/Images/Logo?api_key={jf['api_key']}" if 'Logo' in item.get('ImageTags', {}) else None),
             "action_url": f"jellyfin://items/{item['Id']}",
             "provider_ids": item.get('ProviderIds', {})
         }

@@ -31,6 +31,9 @@ BATCH_LOGS = []
 # Global to track latest image for preview
 LATEST_GENERATED_IMAGE = None
 
+# Global to track running cron process
+CRON_PROCESS = None
+
 # Initialize Image Generator for Proxy Processing
 image_gen = ImageGenerator()
 
@@ -193,8 +196,8 @@ def format_jellyfin_item(item, clean_url, api_key):
         "id": item.get('Id'),
         "title": item.get('Name'),
         "original_title": item.get('OriginalTitle'),
-        "year": item.get('ProductionYear', 'N/A'),
-        "rating": item.get('CommunityRating', 'N/A'),
+        "year": item.get('ProductionYear'),
+        "rating": item.get('CommunityRating'),
         "overview": item.get('Overview', ''),
         "genres": ", ".join(item.get('Genres', [])),
         "tags": item.get('Tags', []),
@@ -292,7 +295,7 @@ def get_media_list():
                 print(f"Error fetching libraries: {e}")
 
         # Fetch all items sorted by name
-        base_params = "Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&Fields=Name,Path,OfficialRating,InheritedParentalRatingValue"
+        base_params = "Recursive=true&IncludeItemTypes=Movie,Series&ExcludeItemTypes=BoxSet&Fields=Name,Path,OfficialRating,InheritedParentalRatingValue&Limit=100000"
         sort_params = "&SortBy=SortName"
         
         if filter_mode == 'recent':
@@ -421,6 +424,7 @@ def get_media_item(item_id):
 
 @gui_editor_bp.route('/api/settings', methods=['POST'])
 def update_settings():
+    global CRON_PROCESS
     config_data = request.json
     save_config(config_data)
     
@@ -432,7 +436,7 @@ def update_settings():
         # Spawn cron_runner.py in background to handle the forced job
         # We use sys.executable to ensure we use the same python interpreter
         script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cron_runner.py')
-        subprocess.Popen([sys.executable, script_path])
+        CRON_PROCESS = subprocess.Popen([sys.executable, script_path])
         
     return jsonify({"status": "success"})
 
@@ -457,6 +461,31 @@ def receive_cron_log():
         if len(BATCH_LOGS) > 1000:
             BATCH_LOGS.pop(0)
     return jsonify({"status": "success"})
+
+@gui_editor_bp.route('/api/cron/stop', methods=['POST'])
+def stop_cron_jobs():
+    global CRON_PROCESS
+    killed = False
+    
+    # 1. Try killing the child process we spawned directly
+    if CRON_PROCESS:
+        try:
+            CRON_PROCESS.terminate()
+            time.sleep(0.5)
+            if CRON_PROCESS.poll() is None:
+                CRON_PROCESS.kill()
+            killed = True
+        except: pass
+        CRON_PROCESS = None
+        
+    # 2. System-wide kill (fallback for jobs started via system cron)
+    try:
+        if os.name != 'nt':
+            ret = os.system("pkill -f cron_runner.py")
+            if ret == 0: killed = True
+    except: pass
+            
+    return jsonify({"status": "success", "message": "Stop signal sent" if killed else "No running jobs found"})
 
 @gui_editor_bp.route('/api/batch/logs/clear', methods=['POST'])
 def clear_batch_logs():

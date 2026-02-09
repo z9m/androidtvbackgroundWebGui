@@ -119,6 +119,23 @@ function toggleMobileMenu() {
 }
 
 function toggleGroup(id) {
+    // Accordion behavior: Close other batch groups when opening one
+    const batchGroups = ['group-batch-settings', 'group-cron-jobs'];
+    if (batchGroups.includes(id)) {
+        batchGroups.forEach(otherId => {
+            if (otherId !== id) {
+                const otherGroup = document.getElementById(otherId);
+                if (otherGroup) {
+                    const otherContent = otherGroup.querySelector('.group-content');
+                    const otherArrow = otherGroup.querySelector('.group-arrow');
+                    if (otherContent) otherContent.classList.add('collapsed');
+                    if (otherArrow) otherArrow.classList.add('collapsed');
+                    saveSidebarState(otherId, true);
+                }
+            }
+        });
+    }
+
     const group = document.getElementById(id);
     if (!group) return;
     const content = group.querySelector('.group-content');
@@ -148,12 +165,8 @@ function saveSidebarState(id, isCollapsed) {
 }
 
 function toggleBatchGroup(id) {
-    const group = document.getElementById(id);
-    if (!group) return;
-    const content = group.querySelector('.group-content');
-    const arrow = group.querySelector('.group-arrow');
-    if (content) content.classList.toggle('collapsed');
-    if (arrow) arrow.classList.toggle('collapsed');
+    // Alias to toggleGroup to ensure consistent behavior
+    toggleGroup(id);
 }
 
 function restoreSidebarState() {
@@ -879,7 +892,7 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
         
         [...canvas.getObjects()].forEach(obj => {
             if (obj.dataTag) {
-                let val = "";
+                let val = undefined; // Changed from "" to undefined to prevent accidental hiding of unhandled tags
                 switch(obj.dataTag) {
                     case 'title':
                         if (mediaData.logo_url && preloadedLogo) {
@@ -1000,31 +1013,41 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                             }
                         }
                         break;
-                    case 'year': val = mediaData.year || mediaData.ProductionYear; break;
+                    case 'year': 
+                        val = mediaData.year;
+                        if (val === undefined || val === null) val = mediaData.ProductionYear;
+                        if (val === undefined) val = null;
+                        break;
                     case 'rating': 
                         let r = mediaData.rating || mediaData.CommunityRating; 
                         if (r && r !== 'N/A' && !isNaN(parseFloat(r))) r = parseFloat(r).toFixed(1);
+                        else r = null; // Invalid rating
+                        
                         if (obj.type === 'group') {
                             const t = obj.getObjects().find(o => o.type === 'i-text');
-                            if(t) { t.set({ text: (r && r !== 'N/A') ? `${r}` : '' }); obj.addWithUpdate(); }
+                            if(t) { t.set({ text: r ? `${r}` : '' }); obj.addWithUpdate(); }
                             val = undefined;
+                            obj.set('visible', !!r);
                         } else {
-                            val = (r && r !== 'N/A') ? `IMDb: ${r}` : ''; 
+                            val = r ? `IMDb: ${r}` : null; 
                         }
                         break;
                     case 'rating_val': 
                         let rv = mediaData.rating || mediaData.CommunityRating; 
                         if (rv && rv !== 'N/A' && !isNaN(parseFloat(rv))) rv = parseFloat(rv).toFixed(1);
-                        val = (rv && rv !== 'N/A') ? `${rv}` : ''; 
+                        else rv = null;
+                        val = rv ? `${rv}` : null; 
                         break;
                     case 'rating_star': 
                         let rs = mediaData.rating || mediaData.CommunityRating; 
                         if (rs && rs !== 'N/A' && !isNaN(parseFloat(rs))) rs = parseFloat(rs).toFixed(1);
-                        val = (rs && rs !== 'N/A') ? `${rs}` : '';
+                        else rs = null;
+                        val = rs ? `${rs}` : null;
                         if (obj.type === 'group') {
                             const t = obj.getObjects().find(o => o.type === 'i-text');
-                            if(t) { t.set({ text: val }); obj.addWithUpdate(); }
+                            if(t) { t.set({ text: val || '' }); obj.addWithUpdate(); }
                             val = undefined; 
+                            obj.set('visible', !!rs);
                         }
                         break;
                     case 'overview': 
@@ -1038,14 +1061,13 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                             val = val.split(',').slice(0, gLimit).join(',');
                         }
                         break;
-                    case 'runtime': 
-                        val = mediaData.runtime || ""; 
-                        const rtCheck = String(val).toLowerCase().replace(/\s/g, '');
-                        if (rtCheck === '0min' || rtCheck === '0') {
-                            obj.set('visible', false);
-                        } else {
-                            obj.set('visible', true);
-                        }
+                    case 'runtime':
+                        val = mediaData.runtime;
+                        const rtCheck = String(val || "").toLowerCase().replace(/\s/g, '');
+                        if (rtCheck === '0min' || rtCheck === '0') val = null;
+                        break;
+                    case 'officialRating':
+                        val = mediaData.officialRating;
                         break;
                     case 'provider_source':
                         const src = (mediaData.source || "").toLowerCase();
@@ -1054,6 +1076,8 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                         } else if (src) {
                             const pName = src === 'tmdb' ? 'TMDB' : src.charAt(0).toUpperCase() + src.slice(1);
                             val = `Now available on ${pName}`;
+                        } else {
+                            val = "Now available on Jellyfin";
                         }
                         break;
                     case 'certification':
@@ -1091,7 +1115,15 @@ function previewTemplate(mediaData, skipRender = false, preloadedLogo = null) {
                         }
                         break;
                 }
-                if (val !== undefined && obj.dataTag !== 'overview') obj.set({ text: String(val) });
+                
+                // Only update visibility for tags that actually produced a value (or explicit null)
+                if (val !== undefined && obj.dataTag !== 'overview' && obj.dataTag !== 'background' && obj.dataTag !== 'fade_effect' && obj.dataTag !== 'guide_overlay') {
+                    if (val === null || val === "" || val === "N/A") {
+                        obj.set('visible', false);
+                    } else {
+                        obj.set({ text: String(val), visible: true });
+                    }
+                }
             }
         });
         
@@ -2179,6 +2211,7 @@ function init() {
     loadCustomIcons();
     updateFadeControls();
     loadCronJobs(); // Load jobs on init
+    injectCronFilterUI(); // Inject filter UI for Cron Jobs
     
     // Set initial mobile title
     const activeLink = document.querySelector('.tab-link.active');
@@ -4096,7 +4129,11 @@ async function clearServerLogs() {
 function startLogPolling() {
     if (logPollInterval) clearInterval(logPollInterval);
     const logDiv = document.getElementById('batchLog');
-    if (logDiv) logDiv.innerHTML = "Waiting for server logs...";
+    if (logDiv) {
+        logDiv.style.maxHeight = '300px';
+        logDiv.style.overflowY = 'auto';
+        logDiv.innerHTML = "Waiting for server logs...";
+    }
     
     logPollInterval = setInterval(async () => {
         try {
@@ -4133,8 +4170,12 @@ async function addCronJob() {
     const runNow = document.getElementById('cronJobRunNow').checked;
     
     const layout = document.getElementById('cronJobLayout').value;
-    const mode = document.getElementById('batchMode').value;
-    const filterMode = document.getElementById('batchFilterMode').value;
+    const mode = document.getElementById('cronSourceMode') ? document.getElementById('cronSourceMode').value : 'library';
+    const filterMode = document.getElementById('cronFilterMode') ? document.getElementById('cronFilterMode').value : 'all';
+    const filterVal = document.getElementById('cronFilterValue') ? document.getElementById('cronFilterValue').value : '';
+    const randomCount = document.getElementById('cronRandomCount') ? document.getElementById('cronRandomCount').value : 10;
+    const logoAutoFix = document.getElementById('cronLogoAutoFix') ? document.getElementById('cronLogoAutoFix').checked : true;
+    const dryRun = document.getElementById('cronDryRun') ? document.getElementById('cronDryRun').checked : false;
     
     const newJob = {
         id: Date.now().toString(), // Simple ID
@@ -4147,6 +4188,10 @@ async function addCronJob() {
         layout_name: layout,
         source_mode: mode,
         filter_mode: filterMode,
+        filter_value: filterVal,
+        random_count: randomCount,
+        logo_auto_fix: logoAutoFix,
+        dry_run: dryRun,
         // Capture other filter settings if needed
         created_at: new Date().toISOString()
     };
@@ -4181,11 +4226,33 @@ async function deleteCronJob(id) {
     renderCronJobs(config.cron_jobs);
 }
 
+async function stopCronJobs() {
+    if(!confirm("Stop all running cron jobs? This will terminate the background process.")) return;
+    try {
+        const r = await fetch('/api/cron/stop', { method: 'POST' });
+        const res = await r.json();
+        alert(res.message);
+    } catch(e) { 
+        console.error(e);
+        alert("Failed to send stop signal"); 
+    }
+}
+
 function renderCronJobs(jobs) {
     const list = document.getElementById('cronJobsList');
     list.innerHTML = '';
+    
+    // Add Stop Button Area
+    const controls = document.createElement('div');
+    controls.style.cssText = "display:flex; justify-content:flex-end; margin-bottom:10px;";
+    controls.innerHTML = `<button onclick="stopCronJobs()" style="background:#d32f2f; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px; display:flex; align-items:center;"><span style="margin-right:5px;">🛑</span> Stop All Jobs</button>`;
+    list.appendChild(controls);
+
     if (!jobs || jobs.length === 0) {
-        list.innerHTML = '<div style="color:#888; font-size:11px; padding:5px;">No active jobs.</div>';
+        const msg = document.createElement('div');
+        msg.style.cssText = 'color:#888; font-size:11px; padding:5px;';
+        msg.innerText = 'No active jobs.';
+        list.appendChild(msg);
         return;
     }
     
@@ -4232,6 +4299,116 @@ async function loadCronLayoutOptions() {
         const current = document.getElementById('layoutName').value;
         if (layouts.includes(current)) select.value = current;
     } catch(e) { console.error("Error loading cron layouts", e); }
+}
+
+function injectCronFilterUI() {
+    const layoutSelect = document.getElementById('cronJobLayout');
+    if (!layoutSelect || document.getElementById('cronFilterContainer')) return;
+    
+    const container = document.createElement('div');
+    container.id = 'cronFilterContainer';
+    container.style.marginTop = '10px';
+    container.innerHTML = `
+        <label style="display:block; color:#aaa; font-size:12px; margin-bottom:5px;">Source Mode</label>
+        <select id="cronSourceMode" style="width:100%; background:#333; color:#fff; border:1px solid #555; padding:5px; margin-bottom:10px;" onchange="toggleCronInputs()">
+            <option value="library" selected>Library (All Items)</option>
+            <option value="random">Random Selection</option>
+        </select>
+        
+        <div id="cronFilterSettings">
+            <label style="display:block; color:#aaa; font-size:12px; margin-bottom:5px;">Filter</label>
+            <select id="cronFilterMode" style="width:100%; background:#333; color:#fff; border:1px solid #555; padding:5px; margin-bottom:10px;" onchange="toggleCronInputs()">
+                <option value="all" selected>All Items</option>
+                <option value="recent">Recently Added</option>
+                <option value="year">By Year</option>
+                <option value="genre">By Genre</option>
+                <option value="rating">By Rating</option>
+            </select>
+            
+            <input type="text" id="cronFilterValue" placeholder="Value (e.g. 2023 or Action)" style="width:100%; background:#333; color:#fff; border:1px solid #555; padding:5px; margin-bottom:10px; display:none;">
+        </div>
+        
+        <div id="cronRandomSettings" style="display:none;">
+            <label style="display:block; color:#aaa; font-size:12px; margin-bottom:5px;">Count</label>
+            <input type="number" id="cronRandomCount" value="10" style="width:100%; background:#333; color:#fff; border:1px solid #555; padding:5px; margin-bottom:10px;">
+        </div>
+    `;
+    
+    layoutSelect.parentNode.insertBefore(container, layoutSelect.nextSibling);
+
+    // Inject Checkboxes (Auto Fix, Dry Run) grouped with existing checkboxes
+    const runNowCb = document.getElementById('cronJobRunNow');
+    let targetParent = container;
+    let targetSibling = null;
+
+    // Try to find the "Run Now" checkbox to place ours nearby
+    if (runNowCb) {
+        let ref = runNowCb;
+        // Traverse up to find the label or container
+        while (ref && ref.tagName !== 'LABEL' && ref.parentNode !== layoutSelect.parentNode) {
+            ref = ref.parentNode;
+        }
+        if (ref && (ref.tagName === 'LABEL' || ref.parentNode === layoutSelect.parentNode)) {
+            targetParent = ref.parentNode;
+            targetSibling = ref.nextSibling;
+        }
+    }
+
+    const checkboxesDiv = document.createElement('div');
+    
+    const createCb = (id, labelText, isChecked) => {
+        const label = document.createElement('label');
+        label.style.display = 'flex';
+        label.style.alignItems = 'center';
+        label.style.color = '#fff';
+        label.style.fontSize = '12px';
+        label.style.marginBottom = '5px';
+        label.style.cursor = 'pointer';
+        label.style.marginTop = '5px';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.id = id;
+        input.checked = isChecked;
+        
+        // Copy styles from reference checkbox (Run Immediately) to match size exactly
+        if (runNowCb) {
+            if (runNowCb.className) input.className = runNowCb.className;
+            if (runNowCb.style.cssText) input.style.cssText = runNowCb.style.cssText;
+        }
+        input.style.marginRight = '5px'; // Ensure spacing
+        
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(" " + labelText));
+        return label;
+    };
+
+    checkboxesDiv.appendChild(createCb('cronLogoAutoFix', 'Auto Fix Logo Color', true));
+    checkboxesDiv.appendChild(createCb('cronDryRun', 'Dry Run (Log only)', false));
+
+    if (targetSibling) {
+        targetParent.insertBefore(checkboxesDiv, targetSibling);
+    } else {
+        targetParent.appendChild(checkboxesDiv);
+    }
+}
+
+function toggleCronInputs() {
+    const mode = document.getElementById('cronSourceMode').value;
+    const filter = document.getElementById('cronFilterMode').value;
+    
+    document.getElementById('cronFilterSettings').style.display = (mode === 'library') ? 'block' : 'none';
+    document.getElementById('cronRandomSettings').style.display = (mode === 'random') ? 'block' : 'none';
+    
+    const valInput = document.getElementById('cronFilterValue');
+    if (mode === 'library' && ['year', 'genre', 'rating'].includes(filter)) {
+        valInput.style.display = 'block';
+        if (filter === 'year') valInput.placeholder = "Year (e.g. 2023)";
+        if (filter === 'genre') valInput.placeholder = "Genre (e.g. Action)";
+        if (filter === 'rating') valInput.placeholder = "Min Rating (e.g. 8.0)";
+    } else {
+        valInput.style.display = 'none';
+    }
 }
 
 window.onload = init;

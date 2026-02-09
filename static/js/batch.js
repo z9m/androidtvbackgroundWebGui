@@ -71,7 +71,13 @@ async function startBatchProcess() {
     
     document.getElementById('btn-start-batch').style.display = 'none';
     document.getElementById('btn-stop-batch').style.display = 'block';
-    document.getElementById('batchLog').innerText = "";
+    
+    const logDiv = document.getElementById('batchLog');
+    if (logDiv) {
+        logDiv.innerText = "";
+        logDiv.style.maxHeight = '300px';
+        logDiv.style.overflowY = 'auto';
+    }
     
     if (typeof setUIInteraction === 'function') {
         setUIInteraction(false);
@@ -122,6 +128,12 @@ async function startBatchProcess() {
     }
     logBatch("Layout loaded successfully.");
 
+    // --- FIX: Capture initial layout state ---
+    let initialState = null;
+    if (!dryRun && typeof canvas !== 'undefined') {
+        initialState = canvas.toJSON(['dataTag', 'fullMediaText', 'selectable', 'evented', 'lockScalingY', 'splitByGrapheme', 'fixedHeight', 'editable', 'matchHeight', 'autoBackgroundColor', 'textureId', 'textureScale', 'textureRotation', 'textureOpacity', 'snapToObjects', 'logoAutoFix']);
+    }
+
     const total = itemsToProcess.length;
     for (let i = 0; i < total; i++) {
         if (!isBatchRunning) break;
@@ -140,6 +152,17 @@ async function startBatchProcess() {
         }
 
         logBatch(`Processing (${i+1}/${total}): ${label}`);
+        
+        // --- FIX: Restore initial layout state ---
+        // Resets object positions (e.g. Overview) to prevent layout shifts from persisting
+        if (!dryRun && initialState) {
+            await new Promise(resolve => {
+                canvas.loadFromJSON(initialState, () => {
+                    mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
+                    resolve();
+                });
+            });
+        }
         
         // 1. Load data and update canvas text
         // (fetchMediaData comes from editor.js and handles the data fetching)

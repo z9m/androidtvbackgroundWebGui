@@ -45,6 +45,31 @@ if (fs.existsSync(fontsDir)) {
 
 // --- HELPERS ---
 
+function getCertificationFilename(rating) {
+    if (!rating) return null;
+    let r = String(rating).toUpperCase().replace(/[\s-]/g, ''); // Remove spaces/dashes
+
+    // FSK (German)
+    if (r === 'FSK0' || r === '0' || r === 'DE0' || r === 'AB0' || r === 'AB0JAHREN') return 'FSK_0.svg';
+    if (r === 'FSK6' || r === '6' || r === 'DE6' || r === 'AB6' || r === 'AB6JAHREN') return 'FSK_6.svg';
+    if (r === 'FSK12' || r === '12' || r === 'DE12' || r === 'AB12' || r === 'AB12JAHREN') return 'FSK_12.svg';
+    if (r === 'FSK16' || r === '16' || r === 'DE16' || r === 'AB16' || r === 'AB16JAHREN') return 'FSK_16.svg';
+    if (r === 'FSK18' || r === '18' || r === 'DE18' || r === 'AB18' || r === 'AB18JAHREN') return 'FSK_18.svg';
+
+    // MPAA (US) - Assuming these files exist in certification folder, otherwise fallback or ignore
+    // Note: You might need to add these SVGs to your /app/certification/ folder if they are missing
+    // For now, we map what we know exists or return null if file logic handles check
+    /*
+    if (r === 'G' || r === 'USG') return 'RATED_G.svg';
+    if (r === 'PG' || r === 'USPG') return 'RATED_PG.svg';
+    if (r === 'PG13' || r === 'USPG13') return 'RATED_PG-13.svg';
+    if (r === 'R' || r === 'USR') return 'RATED_R.svg';
+    if (r === 'NC17' || r === 'USNC17') return 'RATED_NC-17.svg';
+    */
+    
+    return null;
+}
+
 function fitTextToContainer(canvas, textbox) {
     if (!canvas || !textbox) return;
     const textSource = textbox.fullMediaText || textbox.text || "";
@@ -687,8 +712,14 @@ function applyCustomEffects(canvas, settings, mainBg) {
             });
         }
 
-        const baseWidth = (layoutJson.width && layoutJson.width > 3000) ? 3840 : 1920;
-        const baseHeight = (baseWidth === 3840) ? 2160 : 1080;
+        let baseWidth = 1920;
+        let baseHeight = 1080;
+        
+        // Detect resolution from JSON or Heuristic (Check if objects are positioned for 4K)
+        if ((layoutJson.width && layoutJson.width > 3000) || (layoutJson.objects && layoutJson.objects.some(o => o.left > 2500))) {
+            baseWidth = 3840;
+            baseHeight = 2160;
+        }
         const canvas = new fabric.StaticCanvas(null, { width: baseWidth, height: baseHeight });
 
         // Load JSON with a timeout to prevent hanging
@@ -704,16 +735,60 @@ function applyCustomEffects(canvas, settings, mainBg) {
             });
         });
 
+        // FIX: Immediately enforce base resolution after loading JSON
+        // This ensures that subsequent operations (like bg scaling) use the correct 1920/4K width
+        // instead of whatever width was saved in the JSON (e.g. 1280 from a buggy save).
+        if (canvas.getWidth() !== baseWidth || canvas.getHeight() !== baseHeight) {
+             canvas.setDimensions({ width: baseWidth, height: baseHeight });
+        }
+
         const settings = layoutJson.custom_effects || layoutJson.metadata?.custom_effects || {};
+
+        const imagePromises = [];
+        const certDir = path.join(__dirname, 'certification');
 
         canvas.getObjects().forEach(obj => {
             if (!obj.dataTag) return;
-            let val = null;
-            if (obj.dataTag === 'title' && obj.type !== 'image') val = meta.title;
-            else if (obj.dataTag === 'year') val = meta.year;
-            else if (obj.dataTag === 'rating') val = meta.rating;
-            else if (obj.dataTag === 'overview') val = meta.overview;
-            else if (obj.dataTag === 'genres') {
+            let val = undefined;
+
+            switch (obj.dataTag) {
+                case 'title':
+                    if (obj.type !== 'image') val = meta.title;
+                    break;
+                case 'year':
+                    val = meta.year;
+                    break;
+                case 'rating':
+                case 'rating_star':
+                    let r = meta.rating;
+                    if (r && r !== 'N/A' && !isNaN(parseFloat(r))) r = parseFloat(r).toFixed(1);
+                    else r = null;
+
+                    if (obj.type === 'group') {
+                        const t = obj.getObjects().find(o => o.type === 'i-text');
+                        if (t) {
+                            t.set('text', r ? String(r) : '');
+                            obj.addWithUpdate();
+                        }
+                        obj.set('visible', !!r);
+                        val = undefined; // Handled here
+                    } else {
+                        val = r ? (obj.dataTag === 'rating' ? `IMDb: ${r}` : r) : null;
+                    }
+                    break;
+                case 'rating_val':
+                    let rv = meta.rating;
+                    if (rv && rv !== 'N/A' && !isNaN(parseFloat(rv))) rv = parseFloat(rv).toFixed(1);
+                    else rv = null;
+                    val = rv;
+                    break;
+                case 'overview':
+                    val = meta.overview;
+                    if (obj.type === 'textbox') {
+                        obj.fullMediaText = val || "";
+                    }
+                    break;
+                case 'genres':
                 val = meta.genres;
                 if (val && settings.genreLimit) {
                     const limit = parseInt(settings.genreLimit);
@@ -721,10 +796,16 @@ function applyCustomEffects(canvas, settings, mainBg) {
                         val = val.split(',').slice(0, limit).join(',');
                     }
                 }
-            }
-            else if (obj.dataTag === 'runtime') val = meta.runtime;
-            else if (obj.dataTag === 'officialRating') val = meta.officialRating;
-            else if (obj.dataTag === 'provider_source') {
+                    break;
+                case 'runtime':
+                    val = meta.runtime;
+                    const rtCheck = String(val || "").toLowerCase().replace(/\s/g, '');
+                    if (rtCheck === '0min' || rtCheck === '0') val = null;
+                    break;
+                case 'officialRating':
+                    val = meta.officialRating;
+                    break;
+                case 'provider_source':
                 const src = (meta.source || "").toLowerCase();
                 if (src === 'radarr' || src === 'sonarr') {
                     val = "Available soon...";
@@ -734,13 +815,49 @@ function applyCustomEffects(canvas, settings, mainBg) {
                 } else {
                     val = "Now available on Jellyfin";
                 }
+                    break;
+                case 'certification':
+                    const fname = getCertificationFilename(meta.officialRating);
+                    if (fname) {
+                        const p = new Promise(resolve => {
+                            const fpath = path.join(certDir, fname);
+                            if (fs.existsSync(fpath)) {
+                                const imgData = fs.readFileSync(fpath);
+                                const ext = path.extname(fname).slice(1);
+                                const src = `data:image/${ext};base64,${imgData.toString('base64')}`;
+                                fabric.Image.fromURL(src, (img) => {
+                                    if (img) {
+                                        img.set({
+                                            left: obj.left, top: obj.top,
+                                            originX: obj.originX, originY: obj.originY,
+                                            dataTag: 'certification'
+                                        });
+                                        const targetH = obj.height * obj.scaleY;
+                                        img.scaleToHeight(targetH);
+                                        canvas.remove(obj);
+                                        canvas.add(img);
+                                    }
+                                    resolve();
+                                });
+                            } else {
+                                obj.set('visible', false);
+                                resolve();
+                            }
+                        });
+                        imagePromises.push(p);
+                        val = undefined; // Handled async
+                    } else {
+                        val = null; // Hide if no mapping found
+                    }
+                    break;
             }
 
-            if (val !== null && val !== undefined && val !== "") {
-                obj.set('text', String(val));
-                obj.set('visible', true);
-            } else if (obj.type === 'i-text' || obj.type === 'textbox') {
-                if (obj.dataTag !== 'title') obj.set('visible', false);
+            if (val !== undefined && obj.dataTag !== 'overview' && obj.dataTag !== 'background' && obj.dataTag !== 'fade_effect' && obj.dataTag !== 'guide_overlay') {
+                if (val === null || val === "" || val === "N/A") {
+                    obj.set('visible', false);
+                } else {
+                    obj.set({ text: String(val), visible: true });
+                }
             }
 
             if (obj.dataTag === 'overview' && obj.type === 'textbox') {
@@ -758,6 +875,10 @@ function applyCustomEffects(canvas, settings, mainBg) {
                 };
             }
         });
+
+        if (imagePromises.length > 0) {
+            await Promise.all(imagePromises);
+        }
 
         let mainBg = canvas.getObjects().find(o => o.dataTag === 'background');
         
@@ -804,6 +925,11 @@ function applyCustomEffects(canvas, settings, mainBg) {
                         flipY: flipY,
                         dataTag: 'background'
                     });
+                    
+                    // FIX: Enforce Fixed Canvas Resolution (Prevents wandering tags if bg size differs)
+                    if (canvas.getWidth() !== baseWidth || canvas.getHeight() !== baseHeight) {
+                        canvas.setDimensions({ width: baseWidth, height: baseHeight });
+                    }
                     
                     canvas.add(img);
                     canvas.sendToBack(img);
@@ -895,6 +1021,7 @@ function applyCustomEffects(canvas, settings, mainBg) {
                 const targetT = titleObj.top;
                 const originX = titleObj.originX || 'left';
                 const originY = titleObj.originY || 'top';
+                const oldWidth = titleObj.width * titleObj.scaleX;
                 
                 // Capture properties to persist
                 const savedFilters = titleObj.filters;
@@ -905,9 +1032,47 @@ function applyCustomEffects(canvas, settings, mainBg) {
                 await new Promise(resolve => {
                     fabric.Image.fromURL(assets.logo_url, (img) => {
                         if (img) {
-                            const scale = Math.min(targetW / img.width, 1); 
+                            // --- SMART RESIZE LOGIC (Match editor.js) ---
+                            const baseMaxW = canvas.width * 0.55;
+                            const baseMaxH = canvas.height * 0.35;
+                            const ratio = img.width / img.height;
+                            let allowedHeight = baseMaxH;
+
+                            if (ratio < 0.65) allowedHeight = baseMaxH * 0.50;      // Tall logos
+                            else if (ratio < 1.2) allowedHeight = baseMaxH * 0.75;  // Square logos
+                            
+                            // Calculate scale based on canvas limits, ignoring placeholder size for better consistency
+                            let scale = Math.min(baseMaxW / img.width, allowedHeight / img.height) * 0.9;
+
+                            // --- ALIGNMENT CORRECTION ---
+                            // Adjust 'left' to keep the anchor point stable based on alignment
+                            let newLeft = targetL;
+                            const align = settings.tagAlignment || 'left';
+                            const newWidth = img.width * scale;
+
+                            // Sticky Logic (Match editor.js)
+                            const marginLeft = parseInt(settings.margins?.left || 50);
+                            const marginRight = parseInt(settings.margins?.right || 50);
+                            const cW = canvas.width;
+                            const boundsL = targetL;
+                            const boundsR = targetL + oldWidth;
+                            
+                            const isStickyLeft = Math.abs(boundsL - marginLeft) < 20;
+                            const isStickyRight = Math.abs(boundsR - (cW - marginRight)) < 20;
+
+                            if (isStickyLeft) {
+                                newLeft = marginLeft;
+                            } else if (isStickyRight) {
+                                newLeft = (cW - marginRight) - newWidth;
+                            } else if (align === 'right') {
+                                newLeft = (targetL + oldWidth) - newWidth;
+                            } else if (align === 'center') {
+                                newLeft = (targetL + (oldWidth / 2)) - (newWidth / 2);
+                            }
+                            // If 'left', targetL stays the same
+
                             img.set({ 
-                                left: targetL, top: targetT, 
+                                left: newLeft, top: targetT, 
                                 originX: originX, originY: originY,
                                 scaleX: scale, scaleY: scale, 
                                 dataTag: 'title',
@@ -927,6 +1092,54 @@ function applyCustomEffects(canvas, settings, mainBg) {
                         resolve();
                     }, { crossOrigin: 'anonymous' });
                 });
+            }
+        } else {
+            // Fallback: If no logo (e.g. BoxSet item), ensure Title is Text
+            // If the layout uses an Image for title (placeholder), replace it with Text
+            const titleObj = canvas.getObjects().find(o => o.dataTag === 'title');
+            if (titleObj && titleObj.type === 'image') {
+                const is4K = canvas.width > 2000;
+                const fontSize = is4K ? 120 : 80;
+                const newText = new fabric.IText(meta.title || "Title", { 
+                    left: titleObj.left, top: titleObj.top, 
+                    fontFamily: 'Roboto', fontSize: fontSize, 
+                    fill: 'white', shadow: new fabric.Shadow({ color: 'rgba(0,0,0,0.8)', blur: 10, offsetX: 2, offsetY: 2 }), 
+                    dataTag: 'title', editable: false 
+                });
+
+                // --- FIX: Apply Alignment/Sticky Logic for Text Replacement ---
+                // Prevents short text from shifting left when replacing a wide logo in right-aligned layouts
+                const oldWidth = titleObj.width * titleObj.scaleX;
+                const targetL = titleObj.left;
+                const align = settings.tagAlignment || 'left';
+                const newWidth = newText.width * newText.scaleX;
+
+                const marginLeft = parseInt(settings.margins?.left || 50);
+                const marginRight = parseInt(settings.margins?.right || 50);
+                const cW = canvas.width;
+                const boundsL = targetL;
+                const boundsR = targetL + oldWidth;
+                
+                const isStickyLeft = Math.abs(boundsL - marginLeft) < 20;
+                const isStickyRight = Math.abs(boundsR - (cW - marginRight)) < 20;
+
+                let newLeft = targetL;
+
+                if (isStickyLeft) {
+                    newLeft = marginLeft;
+                } else if (isStickyRight) {
+                    newLeft = (cW - marginRight) - newWidth;
+                } else if (align === 'right') {
+                    newLeft = (targetL + oldWidth) - newWidth;
+                } else if (align === 'center') {
+                    newLeft = (targetL + (oldWidth / 2)) - (newWidth / 2);
+                }
+                
+                newText.set('left', newLeft);
+                // -------------------------------------------------------------
+
+                canvas.remove(titleObj);
+                canvas.add(newText);
             }
         }
 
@@ -961,45 +1174,28 @@ function applyCustomEffects(canvas, settings, mainBg) {
             activeBlockedAreas = settings.blocked_areas;
         }
         
+        // FIX: Enforce Fixed Canvas Resolution (Final Check before Layout)
+        if (canvas.getWidth() !== baseWidth || canvas.getHeight() !== baseHeight) {
+             canvas.setDimensions({ width: baseWidth, height: baseHeight });
+        }
+        
+        // FIX: Refresh textboxes and layout (Match batch.js behavior)
+        // Ensure text metrics are calculated before layout update
+        canvas.getObjects().forEach(obj => {
+            if (obj.dataTag === 'overview' && obj.type === 'textbox') {
+                fitTextToContainer(canvas, obj);
+            }
+            obj.setCoords();
+            obj.dirty = true;
+        });
+        canvas.renderAll(); // Force calc of text widths
+
         updateVerticalLayout(canvas, settings, activeBlockedAreas);
         
         if (mainBg) {
             applyCustomEffects(canvas, settings, mainBg);
         } else {
             console.warn("No main background found, skipping effects.");
-        }
-
-        // --- RENDER OVERLAY IMAGE (Visual Guide) ---
-        if (overlayImageFile) {
-            const overlayPath = path.join(__dirname, 'overlays', overlayImageFile);
-            if (fs.existsSync(overlayPath)) {
-                try {
-                    const overlayBuffer = fs.readFileSync(overlayPath);
-                    const ext = path.extname(overlayPath).slice(1) || 'png';
-                    const overlayDataUrl = `data:image/${ext};base64,${overlayBuffer.toString('base64')}`;
-
-                    await new Promise(resolve => {
-                        fabric.Image.fromURL(overlayDataUrl, (img) => {
-                            if (img) {
-                                img.set({
-                                    left: 0, top: 0,
-                                    originX: 'left', originY: 'top',
-                                    opacity: 0.5,
-                                    selectable: false, evented: false,
-                                    dataTag: 'guide_overlay'
-                                });
-                                img.scaleX = canvas.width / img.width;
-                                img.scaleY = canvas.height / img.height;
-                                canvas.add(img);
-                                canvas.bringToFront(img);
-                            }
-                            resolve();
-                        });
-                    });
-                } catch (e) {
-                    console.warn("Failed to load overlay image:", e.message);
-                }
-            }
         }
 
         canvas.renderAll();
@@ -1048,6 +1244,19 @@ function applyCustomEffects(canvas, settings, mainBg) {
             jsonOutput.action_url = meta.action_url;
         }
         jsonOutput.custom_effects = settings;
+
+        // FIX: Post-process JSON to ensure Certification URL is correct (Fixes Editor Preview)
+        // We replace the embedded Base64 data with the API URL so the Editor can load it.
+        if (jsonOutput.objects) {
+            const certObj = jsonOutput.objects.find(o => o.dataTag === 'certification' && o.type === 'image');
+            if (certObj && meta && meta.officialRating) {
+                const certFilename = getCertificationFilename(meta.officialRating);
+                if (certFilename) {
+                    certObj.src = `/api/certification/${certFilename}`;
+                    certObj.crossOrigin = 'anonymous';
+                }
+            }
+        }
 
         fs.writeFileSync(jsonOutPath, JSON.stringify(jsonOutput));
 
