@@ -11,6 +11,7 @@ import base64
 import shutil
 import re
 import uuid
+import threading
 import subprocess
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, url_for, send_file
@@ -36,6 +37,98 @@ CRON_PROCESS = None
 
 # Initialize Image Generator for Proxy Processing
 image_gen = ImageGenerator()
+
+# --- METADATA CACHE MANAGER (In-Memory) ---
+METADATA_CACHE = {"genres": set(), "ages": set()}
+METADATA_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'metadata_cache.json')
+CACHE_SAVE_TIMER = None
+
+def _save_metadata_cache_now():
+    """Writes the cache to disk."""
+    try:
+        data = {
+            "genres": sorted(list(METADATA_CACHE["genres"])),
+            "ages": sorted(list(METADATA_CACHE["ages"]))
+        }
+        with open(METADATA_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+        print("Metadata cache saved to disk.")
+    except Exception as e:
+        print(f"Error saving metadata cache: {e}")
+
+def _merge_metadata_to_cache(metadata):
+    """Merges new metadata into the in-memory sets."""
+    if not metadata: return
+    
+    # Genres (comma separated string)
+    genres_str = metadata.get('genres', '')
+    if genres_str:
+        parts = [g.strip() for g in genres_str.split(',') if g.strip()]
+        METADATA_CACHE["genres"].update(parts)
+        
+    # Ages (OfficialRating)
+    rating = metadata.get('officialRating')
+    if rating:
+        METADATA_CACHE["ages"].add(str(rating).strip())
+
+def update_metadata_cache(new_metadata):
+    """Updates the cache and schedules a debounced save."""
+    global CACHE_SAVE_TIMER
+    _merge_metadata_to_cache(new_metadata)
+    
+    # Debounce save (wait 5 seconds before writing to disk to save I/O)
+    if CACHE_SAVE_TIMER:
+        CACHE_SAVE_TIMER.cancel()
+    
+    CACHE_SAVE_TIMER = threading.Timer(5.0, _save_metadata_cache_now)
+    CACHE_SAVE_TIMER.start()
+
+def _scan_and_rebuild_cache():
+    """Scans all JSONs and rebuilds the cache. Returns number of files scanned."""
+    global METADATA_CACHE
+    METADATA_CACHE = {"genres": set(), "ages": set()}
+    
+    print("Building/Rebuilding metadata cache from files...")
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    target_dir = os.path.join(base_path, 'editor_backgrounds')
+    
+    scanned_files = 0
+    if os.path.exists(target_dir):
+        for root, dirs, files in os.walk(target_dir):
+            for file in files:
+                if file.endswith('.json') and file != 'status.json':
+                    try:
+                        with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            _merge_metadata_to_cache(data.get('metadata', {}))
+                            scanned_files += 1
+                    except Exception as e:
+                        print(f"Warning: Could not parse {os.path.join(root, file)}. Error: {e}")
+    
+    _save_metadata_cache_now()
+    print(f"Cache build/rebuild complete. Scanned {scanned_files} files.")
+    return scanned_files
+
+def initialize_metadata_cache():
+    """Loads cache from disk or rebuilds it from files on startup."""
+    global METADATA_CACHE
+    if os.path.exists(METADATA_CACHE_FILE):
+        try:
+            with open(METADATA_CACHE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                METADATA_CACHE["genres"] = set(data.get("genres", []))
+                METADATA_CACHE["ages"] = set(data.get("ages", []))
+                print("Loaded metadata cache from disk.")
+                return
+        except Exception as e:
+            print(f"Error loading metadata cache, rebuilding from scratch. Error: {e}")
+
+    # Fallback: Scan all JSONs if cache file missing
+    _scan_and_rebuild_cache()
+
+# Initialize on module load (Container Start)
+initialize_metadata_cache()
+# ------------------------------------------
 
 KNOWN_DIRS = [
     "layouts",
@@ -180,6 +273,32 @@ def generate_preview_server():
     
     # 3. Return Image
     return send_file(engine.get_bytes(), mimetype='image/jpeg')
+
+# --- CACHED METADATA ROUTES ---
+@gui_editor_bp.route('/api/genres/list')
+def list_genres_cached():
+    # Reads strictly from RAM
+    return jsonify(sorted(list(METADATA_CACHE["genres"])))
+
+@gui_editor_bp.route('/api/ages/list')
+def list_ages_cached():
+    # Reads strictly from RAM
+    return jsonify(sorted(list(METADATA_CACHE["ages"])))
+
+@gui_editor_bp.route('/api/cache/rebuild', methods=['POST'])
+def rebuild_cache_endpoint():
+    """API endpoint to manually trigger a cache rebuild from all image JSONs."""
+    try:
+        count = _scan_and_rebuild_cache()
+        return jsonify({
+            "status": "success", 
+            "message": f"Cache rebuilt successfully from {count} files.",
+            "genres": sorted(list(METADATA_CACHE["genres"])),
+            "ages": sorted(list(METADATA_CACHE["ages"]))
+        })
+    except Exception as e:
+        print(f"Error during manual cache rebuild: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 def format_jellyfin_item(item, clean_url, api_key):
     # Check for Logo availability
@@ -1312,6 +1431,10 @@ def save_editor_image():
         json_path = os.path.splitext(filepath)[0] + ".json"
         with open(json_path, "w") as f:
             json.dump(final_json_data, f)
+
+        # Update Cache (Live Update)
+        if metadata:
+            update_metadata_cache(metadata)
 
         # Update global variable for preview
         LATEST_GENERATED_IMAGE = filepath

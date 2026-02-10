@@ -1,0 +1,36 @@
+{
+    "genres": [
+        "Abenteuer",
+        "Action",
+        "Action & Adventure",
+        "Animation",
+        "Dokumentarfilm",
+        "Drama",
+        "Familie",
+        "Fantasy",
+        "Historie",
+        "Horror",
+        "Kids",
+        "Komödie",
+        "Kriegsfilm",
+        "Krimi",
+        "Liebesfilm",
+        "Musik",
+        "Mystery",
+        "Sci-Fi & Fantasy",
+        "Science Fiction",
+        "TV-Film",
+        "Thriller",
+        "Western"
+    ],
+    "ages": [
+        "FSK-0",
+        "FSK-12",
+        "FSK-16",
+        "FSK-18",
+        "FSK-6",
+        "NR",
+        "PG",
+        "R"
+    ]
+}

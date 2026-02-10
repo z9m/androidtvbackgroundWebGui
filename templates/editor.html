@@ -998,6 +998,52 @@
                             <div id="cronJobsList" style="display:flex; flex-direction:column; gap:5px;"></div>
                         </div>
                     </div>
+
+                    <!-- Cache Control Section -->
+                    <div class="control-group" id="group-cache-control" style="border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
+                        <h3 onclick="toggleGroup('group-cache-control')"><span class="group-arrow collapsed">▼</span> Metadata Cache</h3>
+                        <div class="group-content collapsed">
+                            <p style="font-size: 12px; color: #aaa; margin-top:0;">
+                                Scans all existing image files (.json) to update the lists for <b>Genres</b> and <b>Age Ratings</b> 
+                                in the dropdown menus.
+                            </p>
+                            
+                            <button id="btn-rebuild-cache" onclick="rebuildCache()" style="width: 100%; background: #1976d2; margin-top: 5px;">
+                                <i class="fas fa-sync-alt"></i> Rescan & Rebuild Cache
+                            </button>
+
+                            <!-- Result Display (Hidden until click) -->
+                            <div id="cache-results" style="display: none; margin-top: 15px;">
+                                <div id="cache-message" style="padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 12px;"></div>
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <!-- Genres Column -->
+                                    <div>
+                                        <div style="background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid #333;">
+                                            <div style="padding: 5px 8px; border-bottom: 1px solid #333; font-size: 12px;">
+                                                <strong>Found Genres (<span id="genre-count">0</span>)</strong>
+                                            </div>
+                                            <div style="padding: 8px; max-height: 150px; overflow-y: auto;">
+                                                <div id="genre-tags" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Age Ratings Column -->
+                                    <div>
+                                        <div style="background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid #333;">
+                                            <div style="padding: 5px 8px; border-bottom: 1px solid #333; font-size: 12px;">
+                                                <strong>Age Ratings (<span id="age-count">0</span>)</strong>
+                                            </div>
+                                            <div style="padding: 8px; max-height: 150px; overflow-y: auto;">
+                                                <div id="age-tags" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 10px; height: 100%;">
@@ -1501,6 +1547,81 @@
                 console.error(e);
                 alert("Error deleting family.");
             }
+        }
+
+        function rebuildCache() {
+            const btn = document.getElementById('btn-rebuild-cache');
+            const resultDiv = document.getElementById('cache-results');
+            const msgDiv = document.getElementById('cache-message');
+            
+            // Disable button and show loading spinner
+            btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning files...';
+            
+            fetch('/api/cache/rebuild', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 1. Show success message
+                        msgDiv.style.background = '#2e7d32';
+                        msgDiv.style.color = 'white';
+                        msgDiv.innerText = data.message;
+                        
+                        // 2. Update counts
+                        document.getElementById('genre-count').innerText = data.genres.length;
+                        document.getElementById('age-count').innerText = data.ages.length;
+                        
+                        // 3. Render genre tags
+                        const genreContainer = document.getElementById('genre-tags');
+                        genreContainer.innerHTML = '';
+                        data.genres.forEach(g => {
+                            // Create small badges for each genre
+                            const span = document.createElement('span');
+                            span.style.background = '#0277bd';
+                            span.style.color = 'white';
+                            span.style.padding = '2px 6px';
+                            span.style.borderRadius = '8px';
+                            span.style.fontSize = '11px';
+                            span.innerText = g;
+                            genreContainer.appendChild(span);
+                        });
+
+                        // 4. Render age rating tags
+                        const ageContainer = document.getElementById('age-tags');
+                        ageContainer.innerHTML = '';
+                        data.ages.forEach(a => {
+                            const span = document.createElement('span');
+                            span.style.background = '#555';
+                            span.style.color = 'white';
+                            span.style.padding = '2px 6px';
+                            span.style.borderRadius = '8px';
+                            span.style.fontSize = '11px';
+                            span.innerText = a;
+                            ageContainer.appendChild(span);
+                        });
+
+                        // Make the results area visible
+                        resultDiv.style.display = 'block';
+                    } else {
+                        msgDiv.style.background = '#c62828';
+                        msgDiv.style.color = 'white';
+                        msgDiv.innerText = 'Error: ' + data.message;
+                        resultDiv.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    msgDiv.style.background = '#c62828';
+                    msgDiv.style.color = 'white';
+                    msgDiv.innerText = 'A network error occurred.';
+                    resultDiv.style.display = 'block';
+                })
+                .finally(() => {
+                    // Reset button
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                });
         }
     </script>
 </body>

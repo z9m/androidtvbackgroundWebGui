@@ -3,7 +3,7 @@ Copyright (c) 2010-2014 by tyPoland Lukasz Dziedzic (team@latofonts.com) with Re
 Lato, OpenSans, Roboto, Diplomata, Metal Mania, Fredericka_the_Great, Barrio, Flavors, Special_Elite, Rubik_Vinyl, Bungee_Outline, Bungee_Shade, Bungee_Spice, Shojumaru,
 Nosifer, Ewert, Fascinate, Fascinate_Inline, Codystar, Abril_Fatface, Alice, Andika, Arvo, Creepster, Faster_One, Fira_Code, Fira_Sans, Honk, IBM_Plex_Sans, Lacquer,
 Modak, Monoton, Nabla, Rubik_Beastly, Silkscreen, Zilla_Slab, Zilla_Slab_Highlight, Inter, Jost, Manrope, Mulish, Nunito, Playfair_Display, Space_Grotesk, Space_Mono, 
-Titillium_Web, Urbanist, Merriweather, Montserrat
+Titillium_Web, Urbanist, Merriweather, Montserrat, Rocket Brush, Showpop, Scribble Show, Primecolor, DigitltS, UseYourImagination, Agreloyc, Prosh3, SudegnakNo4, Namskow, Manbow, ColorTube, Gilbert, CimeroPro, Aquaphonic, Honk, Fattern
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
