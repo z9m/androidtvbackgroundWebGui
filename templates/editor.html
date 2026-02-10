@@ -1001,27 +1001,27 @@
 
                     <!-- Cache Control Section -->
                     <div class="control-group" id="group-cache-control" style="border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
-                        <h3 onclick="toggleGroup('group-cache-control')"><span class="group-arrow collapsed">▼</span> Metadata Cache</h3>
+                        <h3 onclick="toggleGroup('group-cache-control')"><span class="group-arrow collapsed">▼</span> <span data-i18n="cache_title">Metadata Cache</span></h3>
                         <div class="group-content collapsed">
-                            <p style="font-size: 12px; color: #aaa; margin-top:0;">
-                                Scans all existing image files (.json) to update the lists for <b>Genres</b> and <b>Age Ratings</b> 
+                            <p style="font-size: 12px; color: #aaa; margin-top:0;" data-i18n="cache_desc">
+                                Scans all existing image files (.json) to update the lists for Genres and Age Ratings 
                                 in the dropdown menus.
                             </p>
                             
                             <button id="btn-rebuild-cache" onclick="rebuildCache()" style="width: 100%; background: #1976d2; margin-top: 5px;">
-                                <i class="fas fa-sync-alt"></i> Rescan & Rebuild Cache
+                                <i class="fas fa-sync-alt"></i> <span data-i18n="cache_btn">Rescan & Rebuild Cache</span>
                             </button>
 
                             <!-- Result Display (Hidden until click) -->
                             <div id="cache-results" style="display: none; margin-top: 15px;">
                                 <div id="cache-message" style="padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 12px;"></div>
                                 
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px;">
                                     <!-- Genres Column -->
                                     <div>
                                         <div style="background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid #333;">
                                             <div style="padding: 5px 8px; border-bottom: 1px solid #333; font-size: 12px;">
-                                                <strong>Found Genres (<span id="genre-count">0</span>)</strong>
+                                                <strong><span data-i18n="cache_genres">Found Genres</span> (<span id="genre-count">0</span>)</strong>
                                             </div>
                                             <div style="padding: 8px; max-height: 150px; overflow-y: auto;">
                                                 <div id="genre-tags" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
@@ -1033,10 +1033,34 @@
                                     <div>
                                         <div style="background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid #333;">
                                             <div style="padding: 5px 8px; border-bottom: 1px solid #333; font-size: 12px;">
-                                                <strong>Age Ratings (<span id="age-count">0</span>)</strong>
+                                                <strong><span data-i18n="cache_ages">Age Ratings</span> (<span id="age-count">0</span>)</strong>
                                             </div>
                                             <div style="padding: 8px; max-height: 150px; overflow-y: auto;">
                                                 <div id="age-tags" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Years Column -->
+                                    <div>
+                                        <div style="background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid #333;">
+                                            <div style="padding: 5px 8px; border-bottom: 1px solid #333; font-size: 12px;">
+                                                <strong><span data-i18n="cache_years">Years</span> (<span id="year-count">0</span>)</strong>
+                                            </div>
+                                            <div style="padding: 8px; max-height: 150px; overflow-y: auto;">
+                                                <div id="year-tags" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Ratings Column -->
+                                    <div>
+                                        <div style="background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid #333;">
+                                            <div style="padding: 5px 8px; border-bottom: 1px solid #333; font-size: 12px;">
+                                                <strong><span data-i18n="cache_ratings">Scores</span></strong>
+                                            </div>
+                                            <div style="padding: 8px; max-height: 150px; overflow-y: auto;">
+                                                <div id="rating-tags" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -1571,6 +1595,7 @@
                         // 2. Update counts
                         document.getElementById('genre-count').innerText = data.genres.length;
                         document.getElementById('age-count').innerText = data.ages.length;
+                        document.getElementById('year-count').innerText = data.years.length;
                         
                         // 3. Render genre tags
                         const genreContainer = document.getElementById('genre-tags');
@@ -1600,6 +1625,37 @@
                             span.innerText = a;
                             ageContainer.appendChild(span);
                         });
+
+                        // 5. Render year tags
+                        const yearContainer = document.getElementById('year-tags');
+                        yearContainer.innerHTML = '';
+                        data.years.forEach(y => {
+                            const span = document.createElement('span');
+                            span.style.background = '#4a148c';
+                            span.style.color = 'white';
+                            span.style.padding = '2px 6px';
+                            span.style.borderRadius = '8px';
+                            span.style.fontSize = '11px';
+                            span.innerText = y;
+                            yearContainer.appendChild(span);
+                        });
+
+                        // 6. Render rating tags
+                        const ratingContainer = document.getElementById('rating-tags');
+                        ratingContainer.innerHTML = '';
+                        if (data.ratings) {
+                            data.ratings.forEach(r => {
+                                const span = document.createElement('span');
+                                span.style.background = '#f57f17';
+                                span.style.color = 'black';
+                                span.style.padding = '2px 6px';
+                                span.style.borderRadius = '8px';
+                                span.style.fontSize = '11px';
+                                span.style.fontWeight = 'bold';
+                                span.innerText = r + "+";
+                                ratingContainer.appendChild(span);
+                            });
+                        }
 
                         // Make the results area visible
                         resultDiv.style.display = 'block';

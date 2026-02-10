@@ -39,7 +39,7 @@ CRON_PROCESS = None
 image_gen = ImageGenerator()
 
 # --- METADATA CACHE MANAGER (In-Memory) ---
-METADATA_CACHE = {"genres": set(), "ages": set()}
+METADATA_CACHE = {"genres": set(), "ages": set(), "years": set(), "images": []}
 METADATA_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'metadata_cache.json')
 CACHE_SAVE_TIMER = None
 
@@ -48,7 +48,9 @@ def _save_metadata_cache_now():
     try:
         data = {
             "genres": sorted(list(METADATA_CACHE["genres"])),
-            "ages": sorted(list(METADATA_CACHE["ages"]))
+            "ages": sorted(list(METADATA_CACHE["ages"])),
+            "years": sorted(list(METADATA_CACHE["years"])),
+            "images": METADATA_CACHE["images"]
         }
         with open(METADATA_CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
@@ -56,7 +58,7 @@ def _save_metadata_cache_now():
     except Exception as e:
         print(f"Error saving metadata cache: {e}")
 
-def _merge_metadata_to_cache(metadata):
+def _merge_metadata_to_cache(metadata, filepath=None, layout_name=None):
     """Merges new metadata into the in-memory sets."""
     if not metadata: return
     
@@ -70,11 +72,43 @@ def _merge_metadata_to_cache(metadata):
     rating = metadata.get('officialRating')
     if rating:
         METADATA_CACHE["ages"].add(str(rating).strip())
+        
+    # Years
+    year = metadata.get('year')
+    if year:
+        METADATA_CACHE["years"].add(str(year).strip())
+        
+    # Update Image Inventory (if path provided)
+    if filepath and layout_name:
+        # Remove existing entry for this file if exists (to allow updates)
+        METADATA_CACHE["images"] = [img for img in METADATA_CACHE["images"] if img['path'] != filepath]
+        
+        # Parse Rating (Try different fields)
+        rating = 0.0
+        for field in ['rating', 'CommunityRating', 'VoteAverage', 'OfficialRating']:
+            val = metadata.get(field)
+            if val is not None:
+                try:
+                    rating = float(val)
+                    break
+                except: pass
+        
+        image_entry = {
+            "path": filepath,
+            "layout": layout_name,
+            "genres": metadata.get('genres', ''),
+            "officialRating": metadata.get('officialRating', ''),
+            "year": metadata.get('year'),
+            "rating": rating,
+            "title": metadata.get('title'),
+            "action_url": metadata.get('action_url')
+        }
+        METADATA_CACHE["images"].append(image_entry)
 
-def update_metadata_cache(new_metadata):
+def update_metadata_cache(new_metadata, filepath=None, layout_name=None):
     """Updates the cache and schedules a debounced save."""
     global CACHE_SAVE_TIMER
-    _merge_metadata_to_cache(new_metadata)
+    _merge_metadata_to_cache(new_metadata, filepath, layout_name)
     
     # Debounce save (wait 5 seconds before writing to disk to save I/O)
     if CACHE_SAVE_TIMER:
@@ -86,7 +120,7 @@ def update_metadata_cache(new_metadata):
 def _scan_and_rebuild_cache():
     """Scans all JSONs and rebuilds the cache. Returns number of files scanned."""
     global METADATA_CACHE
-    METADATA_CACHE = {"genres": set(), "ages": set()}
+    METADATA_CACHE = {"genres": set(), "ages": set(), "years": set(), "images": []}
     
     print("Building/Rebuilding metadata cache from files...")
     base_path = os.path.dirname(os.path.abspath(__file__))
@@ -100,7 +134,14 @@ def _scan_and_rebuild_cache():
                     try:
                         with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
                             data = json.load(f)
-                            _merge_metadata_to_cache(data.get('metadata', {}))
+                            
+                            # Determine Layout Name from folder structure
+                            rel_path = os.path.relpath(root, target_dir)
+                            layout_name = "Default"
+                            if rel_path != ".":
+                                layout_name = rel_path.split(os.sep)[0]
+                                
+                            _merge_metadata_to_cache(data.get('metadata', {}), os.path.join(root, file), layout_name)
                             scanned_files += 1
                     except Exception as e:
                         print(f"Warning: Could not parse {os.path.join(root, file)}. Error: {e}")
@@ -118,6 +159,8 @@ def initialize_metadata_cache():
                 data = json.load(f)
                 METADATA_CACHE["genres"] = set(data.get("genres", []))
                 METADATA_CACHE["ages"] = set(data.get("ages", []))
+                METADATA_CACHE["years"] = set(data.get("years", []))
+                METADATA_CACHE["images"] = data.get("images", [])
                 print("Loaded metadata cache from disk.")
                 return
         except Exception as e:
@@ -285,16 +328,41 @@ def list_ages_cached():
     # Reads strictly from RAM
     return jsonify(sorted(list(METADATA_CACHE["ages"])))
 
+@gui_editor_bp.route('/api/year/list')
+def list_years_cached():
+    # Reads strictly from RAM
+    return jsonify(sorted(list(METADATA_CACHE["years"]), reverse=True))
+
+@gui_editor_bp.route('/api/ratings/list')
+def list_ratings_cached():
+    # Extract unique integer ratings on the fly from the image list
+    rating_levels = set()
+    for img in METADATA_CACHE["images"]:
+        r = img.get('rating', 0)
+        if r > 0:
+            rating_levels.add(int(r))
+    return jsonify(sorted(list(rating_levels), reverse=True))
+
 @gui_editor_bp.route('/api/cache/rebuild', methods=['POST'])
 def rebuild_cache_endpoint():
     """API endpoint to manually trigger a cache rebuild from all image JSONs."""
     try:
         count = _scan_and_rebuild_cache()
+        
+        # Extract unique integer ratings for display (e.g. 7 for 7.0-7.9)
+        rating_levels = set()
+        for img in METADATA_CACHE["images"]:
+            r = img.get('rating', 0)
+            if r > 0:
+                rating_levels.add(int(r))
+                
         return jsonify({
             "status": "success", 
             "message": f"Cache rebuilt successfully from {count} files.",
             "genres": sorted(list(METADATA_CACHE["genres"])),
-            "ages": sorted(list(METADATA_CACHE["ages"]))
+            "ages": sorted(list(METADATA_CACHE["ages"])),
+            "years": sorted(list(METADATA_CACHE["years"]), reverse=True),
+            "ratings": sorted(list(rating_levels), reverse=True)
         })
     except Exception as e:
         print(f"Error during manual cache rebuild: {e}")
@@ -1187,6 +1255,8 @@ def get_wallpaper_status():
     layout_name = request.args.get('layout', 'Default')
     genre_filter = request.args.get('genre')
     age_rating_filter = request.args.get('age_rating') or request.args.get('age')
+    min_rating_filter = request.args.get('min_rating')
+    max_rating_filter = request.args.get('max_rating')
     sort_mode = request.args.get('sort', 'random') # random, year, rating
 
     safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
@@ -1199,72 +1269,81 @@ def get_wallpaper_status():
         "title": None
     }
 
-    if not os.path.exists(target_dir):
-        return jsonify(response) # Return empty if layout not found
-
-    # 1. Collect Candidates
-    candidates = []
-    for f in os.listdir(target_dir):
-        if f.endswith('.json') and f != 'status.json':
-            full_path = os.path.join(target_dir, f)
-            try:
-                with open(full_path, 'r') as json_file:
-                    data = json.load(json_file)
-                    meta = data.get('metadata', {})
-                    
-                    item = {
-                        "path": full_path,
-                        "data": data,
-                        "year": int(meta.get('year', 0)) if str(meta.get('year', '0')).isdigit() else 0,
-                        "rating": float(meta.get('rating', 0)) if str(meta.get('rating', '0')).replace('.','',1).isdigit() else 0.0,
-                        "genres": str(meta.get('genres', '')),
-                        "officialRating": str(meta.get('officialRating', '')),
-                        "mtime": os.path.getmtime(full_path)
-                    }
-                    candidates.append(item)
-            except: continue
-
+    # 1. Collect Candidates from RAM Cache (No Disk I/O)
+    # Filter by layout first
+    candidates = [img for img in METADATA_CACHE["images"] if img.get('layout') == safe_layout]
+    
     if not candidates:
         return jsonify(response)
 
     # 2. Filter
     filtered = candidates
+    
+    # Rating Filter
+    if min_rating_filter or max_rating_filter:
+        try:
+            min_r = float(min_rating_filter) if min_rating_filter else 0.0
+            max_r = float(max_rating_filter) if max_rating_filter else 10.0
+            filtered = [c for c in filtered if min_r <= float(c.get('rating', 0)) <= max_r]
+        except: pass
+    
     if genre_filter:
         g_search = genre_filter.lower().strip()
-        filtered = [c for c in filtered if g_search in c['genres'].lower()]
+        filtered = [c for c in filtered if g_search in str(c.get('genres', '')).lower()]
         
     if age_rating_filter:
         # Normalize: remove spaces and dashes for comparison (e.g. "FSK-16" -> "fsk16")
         a_search = "".join(c for c in age_rating_filter.lower() if c.isalnum())
-        filtered = [c for c in filtered if a_search in "".join(k for k in c['officialRating'].lower() if k.isalnum())]
+        filtered = [c for c in filtered if a_search in "".join(k for k in str(c.get('officialRating', '')).lower() if k.isalnum())]
 
     # Fallback if filter too strict
-    if not filtered:
+    # If rating filter was applied and result is empty, we might want to return nothing (404 logic)
+    # or fallback to candidates. The user requested: "return fallback image (without filter)"
+    if not filtered and candidates:
+        # If specific filters failed, fallback to any image from this layout
         filtered = candidates
+    elif not filtered:
+        return jsonify(response)
 
     # 3. Sort / Pick
     selected = None
     if sort_mode == 'year':
-        filtered.sort(key=lambda x: x['year'], reverse=True)
+        filtered.sort(key=lambda x: int(x.get('year', 0) or 0), reverse=True)
         selected = filtered[0]
     elif sort_mode == 'rating':
-        filtered.sort(key=lambda x: x['rating'], reverse=True)
+        filtered.sort(key=lambda x: float(x.get('rating', 0)), reverse=True)
         selected = filtered[0]
     elif sort_mode == 'latest':
-        filtered.sort(key=lambda x: x['mtime'], reverse=True)
+        # We don't have mtime in cache yet, fallback to random or add mtime to cache if needed
+        # For now, random is better than crashing
         selected = filtered[0]
     else: # random
         selected = random.choice(filtered)
 
     # 4. Construct Response
     if selected:
-        data = selected['data']
-        filename = os.path.basename(selected['path']).replace('.json', '.jpg')
+        # We need to reconstruct the relative filename for the URL
+        # The cache stores absolute path. We need relative to editor_backgrounds/LayoutName
+        # But get_gallery_image expects filename relative to the folder param.
+        
+        full_path = selected['path']
+        filename = os.path.basename(full_path).replace('.json', '.jpg')
+        
+        # Check if it's in a subfolder (Genre sorting)
+        # We can try to deduce it from the path
+        layout_dir = os.path.join(base_path, 'editor_backgrounds', safe_layout)
+        if full_path.startswith(layout_dir):
+            rel_path = os.path.relpath(full_path, layout_dir)
+            # rel_path might be "Action/Movie.json"
+            filename = rel_path.replace('.json', '.jpg')
+            # Ensure slashes are correct for URL
+            filename = filename.replace('\\', '/')
+
         # Use layout subfolder logic for URL
         folder_param = f"Layout: {safe_layout}"
         response["imageUrl"] = url_for('gui_editor.get_gallery_image', folder=folder_param, filename=filename, _external=True)
-        response["actionUrl"] = data.get("metadata", {}).get("action_url") or data.get("action_url")
-        response["title"] = data.get("metadata", {}).get("title")
+        response["actionUrl"] = selected.get("action_url")
+        response["title"] = selected.get("title")
             
     return jsonify(response)
 
@@ -1434,7 +1513,7 @@ def save_editor_image():
 
         # Update Cache (Live Update)
         if metadata:
-            update_metadata_cache(metadata)
+            update_metadata_cache(metadata, filepath, safe_layout)
 
         # Update global variable for preview
         LATEST_GENERATED_IMAGE = filepath

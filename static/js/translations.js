@@ -115,7 +115,14 @@ const translations = {
         "cron_frequency": "Frequency (per day)",
         "freq_daily": "Once Daily",
         "freq_twice": "Twice Daily (Every 12h)",
-        "freq_four": "4 Times Daily (Every 6h)"
+        "freq_four": "4 Times Daily (Every 6h)",
+        "cache_title": "Metadata Cache",
+        "cache_desc": "Scans all existing image files (.json) to update the lists for Genres and Age Ratings in the dropdown menus.",
+        "cache_btn": "Rescan & Rebuild Cache",
+        "cache_genres": "Found Genres",
+        "cache_ages": "Age Ratings",
+        "cache_years": "Years",
+        "cache_ratings": "Scores (0-10)"
     },
     "de": {
         "nav_editor": "🎨 Layout Editor",
@@ -233,7 +240,14 @@ const translations = {
         "cron_frequency": "Häufigkeit (pro Tag)",
         "freq_daily": "Einmal täglich",
         "freq_twice": "Zweimal täglich (alle 12h)",
-        "freq_four": "Viermal täglich (alle 6h)"
+        "freq_four": "Viermal täglich (alle 6h)",
+        "cache_title": "Metadaten Cache",
+        "cache_desc": "Scannt alle existierenden Bild-Dateien (.json), um die Listen für Genres und Altersfreigaben in den Dropdown-Menüs zu aktualisieren.",
+        "cache_btn": "Cache neu scannen & aufbauen",
+        "cache_genres": "Gefundene Genres",
+        "cache_ages": "Altersfreigaben",
+        "cache_years": "Jahre",
+        "cache_ratings": "Bewertungen"
     },
     "it": {
         "nav_editor": "🎨 Editor Layout",
@@ -339,7 +353,14 @@ const translations = {
         "token": "Token",
         "language": "Lingua",
         "save_settings": "Salva Impostazioni",
-        "generated_previews": "Anteprime Generate"
+        "generated_previews": "Anteprime Generate",
+        "cache_title": "Cache Metadati",
+        "cache_desc": "Scansiona tutti i file immagine esistenti (.json) per aggiornare gli elenchi di Generi e Classificazioni Età nei menu a discesa.",
+        "cache_btn": "Riscansiona e Ricostruisci Cache",
+        "cache_genres": "Generi Trovati",
+        "cache_ages": "Classificazioni Età",
+        "cache_years": "Anni",
+        "cache_ratings": "Punteggi"
     },
     "fr": {
         "nav_editor": "🎨 Éditeur de Mise en Page",
@@ -445,7 +466,14 @@ const translations = {
         "token": "Token",
         "language": "Langue",
         "save_settings": "Enregistrer Paramètres",
-        "generated_previews": "Aperçus Générés"
+        "generated_previews": "Aperçus Générés",
+        "cache_title": "Cache de Métadonnées",
+        "cache_desc": "Scanne tous les fichiers image existants (.json) pour mettre à jour les listes de Genres et Classifications d'Âge dans les menus déroulants.",
+        "cache_btn": "Rescanner et Reconstruire le Cache",
+        "cache_genres": "Genres Trouvés",
+        "cache_ages": "Classifications d'Âge",
+        "cache_years": "Années",
+        "cache_ratings": "Notes"
     },
     "pl": {
         "nav_editor": "🎨 Edytor Układu",
@@ -551,7 +579,14 @@ const translations = {
         "token": "Token",
         "language": "Język",
         "save_settings": "Zapisz Ustawienia",
-        "generated_previews": "Wygenerowane Podglądy"
+        "generated_previews": "Wygenerowane Podglądy",
+        "cache_title": "Pamięć Podręczna Metadanych",
+        "cache_desc": "Skanuje wszystkie istniejące pliki obrazów (.json), aby zaktualizować listy Gatunków i Ocen Wiekowych w menu rozwijanym.",
+        "cache_btn": "Przeskanuj i Odbuduj Pamięć Podręczną",
+        "cache_genres": "Znalezione Gatunki",
+        "cache_ages": "Oceny Wiekowe",
+        "cache_years": "Lata",
+        "cache_ratings": "Oceny"
     },
     "cs": {
         "nav_editor": "🎨 Editor Rozvržení",
@@ -657,7 +692,14 @@ const translations = {
         "token": "Token",
         "language": "Jazyk",
         "save_settings": "Uložit Nastavení",
-        "generated_previews": "Vygenerované Náhledy"
+        "generated_previews": "Vygenerované Náhledy",
+        "cache_title": "Mezipaměť Metadat",
+        "cache_desc": "Skenuje všechny existující soubory obrázků (.json) pro aktualizaci seznamů Žánrů a Věkových Hodnocení v rozbalovacích nabídkách.",
+        "cache_btn": "Znovu Naskenovat a Obnovit Mezipaměť",
+        "cache_genres": "Nalezené Žánry",
+        "cache_ages": "Věková Hodnocení",
+        "cache_years": "Roky",
+        "cache_ratings": "Hodnocení"
     },
     "es": {
         "nav_editor": "🎨 Editor de Diseño",
@@ -763,7 +805,14 @@ const translations = {
         "token": "Token",
         "language": "Idioma",
         "save_settings": "Guardar Configuración",
-        "generated_previews": "Vistas Previas Generadas"
+        "generated_previews": "Vistas Previas Generadas",
+        "cache_title": "Caché de Metadatos",
+        "cache_desc": "Escanea todos los archivos de imagen existentes (.json) para actualizar las listas de Géneros y Clasificaciones de Edad en los menús desplegables.",
+        "cache_btn": "Reescanear y Reconstruir Caché",
+        "cache_genres": "Géneros Encontrados",
+        "cache_ages": "Clasificaciones de Edad",
+        "cache_years": "Años",
+        "cache_ratings": "Puntuaciones"
     },
     "ro": {
         "nav_editor": "🎨 Editor Aspect",
@@ -869,7 +918,14 @@ const translations = {
         "token": "Token",
         "language": "Limbă",
         "save_settings": "Salvează Setări",
-        "generated_previews": "Previzualizări Generate"
+        "generated_previews": "Previzualizări Generate",
+        "cache_title": "Cache Metadate",
+        "cache_desc": "Scanează toate fișierele imagine existente (.json) pentru a actualiza listele de Genuri și Clasificări de Vârstă în meniurile derulante.",
+        "cache_btn": "Rescanează și Reconstruiește Cache",
+        "cache_genres": "Genuri Găsite",
+        "cache_ages": "Clasificări de Vârstă",
+        "cache_years": "Ani",
+        "cache_ratings": "Scoruri"
     }
 };
 
