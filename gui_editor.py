@@ -830,7 +830,8 @@ def parse_font_filename(filename):
         r'(italic|oblique)',
         r'(thin|hairline|100)',
         r'(extra[-]?light|ultra[-]?light|200)',
-        r'(light|300)',
+        # r'(light|300)', # Removed aggressive match that breaks "Highlight"
+        r'[-_ ](light|300)', # Only remove if preceded by separator (Fixes Highlight -> High)
         r'(normal|regular|book|400)',
         r'(medium|500)',
         r'(semi[-]?bold|demi[-]?bold|600)',

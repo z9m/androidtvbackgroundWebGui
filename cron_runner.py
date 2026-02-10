@@ -58,11 +58,15 @@ def run_node_renderer(layout_path, metadata):
     final_json = None
     
     try:
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'render_task.js')
+        # Determine script directory for absolute paths
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(script_dir, 'render_task.js')
         
         # Run Node
         cmd = ['node', script_path, payload_path, output_image_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
+        
+        # Run Node with CWD set to script directory to ensure relative paths work
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', cwd=script_dir)
         
         # Check result
         if result.returncode == 0 and "SUCCESS" in result.stdout:
@@ -183,6 +187,22 @@ def fetch_items_and_process(job=None):
     for item in items:
         if os.path.exists(STOP_SIGNAL_FILE): break
         
+        # FIX: Check if job is still valid in config (Self-Termination on Delete)
+        # This allows the process to stop itself if the user deletes the job from the UI
+        if job.get('id'):
+            try:
+                curr_conf = load_config()
+                curr_jobs = curr_conf.get('cron_jobs', [])
+                active = next((j for j in curr_jobs if j.get('id') == job['id']), None)
+                if not active:
+                    log(f"Job {job.get('name')} was deleted. Stopping.")
+                    break
+                if not active.get('enabled', True):
+                    log(f"Job {job.get('name')} was disabled. Stopping.")
+                    break
+            except:
+                pass
+
         safe_title = "".join(c for c in item.get('Name', '') if c.isalnum() or c in " ._-").strip()
         
         if job.get('dry_run'):
@@ -245,7 +265,6 @@ def fetch_items_and_process(job=None):
         else:
             log("Rendering failed.")
 
-    if os.path.exists(STOP_SIGNAL_FILE): os.remove(STOP_SIGNAL_FILE)
     log("Batch Finished.")
 
 def run_scheduler():
@@ -328,3 +347,6 @@ if __name__ == "__main__":
                 jobs[i]['force_run'] = False
                 config['cron_jobs'] = jobs
                 save_config(config)
+        
+        if os.path.exists(STOP_SIGNAL_FILE):
+            os.remove(STOP_SIGNAL_FILE)

@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { fabric } = require('fabric');
 const canvasModule = require('canvas');
@@ -23,24 +24,119 @@ process.on('uncaughtException', (err) => {
 });
 
 // --- FONTS ---
-const fontsDir = path.join(__dirname, 'fonts');
+const possibleDirs = [
+    path.resolve(__dirname, 'fonts'),
+    path.resolve(__dirname, 'static', 'fonts')
+];
 
-if (fs.existsSync(fontsDir)) {
-    const files = fs.readdirSync(fontsDir);
-    // Silent font registration
+const fontsDir = possibleDirs.find(d => {
+    try { return fs.existsSync(d); } catch (e) { return false; }
+});
+
+if (fontsDir) {
+    let files = [];
+    try {
+        files = fs.readdirSync(fontsDir);
+    } catch (e) {
+        console.error(`[ERROR] Failed to read fonts dir: ${e.message}`);
+    }
+    
+    // Helper to match Python's parse_font_filename logic for consistent family names
+    const getFontFamilies = (filename) => {
+        const ext = path.extname(filename);
+        const originalName = path.basename(filename, ext);
+        let name = originalName;
+        let aggressiveName = originalName;
+        
+        // Remove style
+        name = name.replace(/(italic|oblique)/gi, '');
+        aggressiveName = aggressiveName.replace(/(italic|oblique)/gi, '');
+        
+        // Remove weights
+        const keywords = [
+            'thin', 'hairline', '100',
+            'extra[-]?light', 'ultra[-]?light', '200',
+            'light', '300', // This causes "Highlight" -> "High"
+            'normal', 'regular', 'book', '400',
+            'medium', '500',
+            'semi[-]?bold', 'demi[-]?bold', '600',
+            'extra[-]?bold', 'ultra[-]?bold', '800',
+            'bold', '700',
+            'black', 'heavy', '900',
+            'variablefont_wght',
+            'variablefont'
+        ];
+        
+        keywords.forEach(k => {
+            // Strict replacement (needs separator or boundary) for the "clean" name
+            // This prevents "Highlight" -> "High"
+            const strictRegex = new RegExp(`[-_ ]${k}`, 'gi');
+            name = name.replace(strictRegex, '');
+            
+            // Aggressive replacement (Old Logic) - needed for existing JSONs
+            // This replicates the bug where "Highlight" -> "High"
+            const aggressiveRegex = new RegExp(k, 'gi');
+            aggressiveName = aggressiveName.replace(aggressiveRegex, '');
+        });
+        
+        // Remove _18pt etc and clean separators
+        const clean = (n) => n.replace(/(_\d+pt)/gi, '').replace(/,/g, ' ').replace(/[-_ ]+/g, ' ').trim();
+        
+        const families = new Set();
+        families.add(clean(name));           // Correct name (e.g. Zilla Slab Highlight)
+        families.add(clean(aggressiveName)); // Legacy name (e.g. Zilla Slab High)
+        families.add(originalName);          // Raw filename (fallback)
+        
+        return Array.from(families).filter(f => f.length > 0);
+    };
+
     files.forEach(file => {
         const ext = path.extname(file).toLowerCase();
-        if (ext === '.ttf' || ext === '.otf') {
-            const fullPath = path.join(fontsDir, file).replace(/\\/g, '/');
+        if (['.ttf', '.otf', '.woff', '.woff2'].includes(ext)) {
+            let fullPath = path.join(fontsDir, file);
+
+            // FIX: Pango (node-canvas) stürzt ab, wenn Dateinamen Kommas enthalten.
+            // Wir kopieren die Datei temporär in einen sicheren Pfad ohne Kommas.
+            if (file.includes(',')) {
+                try {
+                    const safeName = file.replace(/,/g, '_');
+                    // Use unique filename to avoid EACCES if file exists owned by another user
+                    const tempPath = path.join(os.tmpdir(), `${Date.now()}_${Math.floor(Math.random() * 1000)}_${safeName}`);
+                    fs.copyFileSync(fullPath, tempPath);
+                    fullPath = tempPath;
+                } catch (e) {
+                    console.warn(`[WARN] Could not create temp copy for ${file}: ${e.message}`);
+                    return; // Skip this font to prevent crash
+                }
+            }
+
             try {
-                let familyName = path.basename(file, ext).split('-')[0].replace(/[^a-zA-Z0-9]/g, '');
-                if (!familyName) familyName = "CustomFont";
-                canvasModule.registerFont(fullPath, { family: familyName });
+                // Verify file exists and is not empty
+                const stats = fs.statSync(fullPath);
+                if (stats.isFile() && stats.size > 0) {
+                    const families = getFontFamilies(file);
+                    
+                    families.forEach(fam => {
+                        // Register with spaces (e.g. "Zilla Slab High")
+                        canvasModule.registerFont(fullPath, { family: fam });
+                        
+                        // Register without spaces (e.g. "ZillaSlabHigh") - JSON often uses this
+                        const noSpaces = fam.replace(/\s+/g, '');
+                        if (noSpaces !== fam) {
+                            canvasModule.registerFont(fullPath, { family: noSpaces });
+                        }
+                    });
+                } else {
+                    console.warn(`[WARN] Skipped invalid font file: ${file} (Size: ${stats.size})`);
+                }
             } catch (fontErr) {
-                // Silent catch
+                // Catch errors to prevent script crash
+                console.error(`[ERROR] Failed to load font ${file}: ${fontErr.message}`);
             }
         }
     });
+} else {
+    console.warn(`[WARN] No fonts directory found in: ${possibleDirs.join(', ')}`);
 }
 
 // --- HELPERS ---
@@ -1188,6 +1284,7 @@ function applyCustomEffects(canvas, settings, mainBg) {
             obj.setCoords();
             obj.dirty = true;
         });
+
         canvas.renderAll(); // Force calc of text widths
 
         updateVerticalLayout(canvas, settings, activeBlockedAreas);
