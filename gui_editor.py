@@ -1257,6 +1257,8 @@ def get_wallpaper_status():
     age_rating_filter = request.args.get('age_rating') or request.args.get('age')
     min_rating_filter = request.args.get('min_rating')
     max_rating_filter = request.args.get('max_rating')
+    min_year_filter = request.args.get('min_year')
+    max_year_filter = request.args.get('max_year')
     sort_mode = request.args.get('sort', 'random') # random, year, rating
 
     safe_layout = "".join(c for c in layout_name if c.isalnum() or c in " ._-").strip()
@@ -1287,14 +1289,27 @@ def get_wallpaper_status():
             filtered = [c for c in filtered if min_r <= float(c.get('rating', 0)) <= max_r]
         except: pass
     
+    # Year Filter (Range)
+    if min_year_filter or max_year_filter:
+        try:
+            min_y = int(min_year_filter) if min_year_filter else 0
+            max_y = int(max_year_filter) if max_year_filter else 9999
+            filtered = [c for c in filtered if min_y <= int(c.get('year', 0) or 0) <= max_y]
+        except: pass
+
     if genre_filter:
-        g_search = genre_filter.lower().strip()
-        filtered = [c for c in filtered if g_search in str(c.get('genres', '')).lower()]
+        # Split by comma for multi-select (OR logic)
+        g_terms = [g.strip().lower() for g in genre_filter.split(',') if g.strip()]
+        if g_terms:
+            filtered = [c for c in filtered if any(term in str(c.get('genres', '')).lower() for term in g_terms)]
         
     if age_rating_filter:
-        # Normalize: remove spaces and dashes for comparison (e.g. "FSK-16" -> "fsk16")
-        a_search = "".join(c for c in age_rating_filter.lower() if c.isalnum())
-        filtered = [c for c in filtered if a_search in "".join(k for k in str(c.get('officialRating', '')).lower() if k.isalnum())]
+        # Split by comma for multi-select (OR logic)
+        a_terms = [a.strip().lower() for a in age_rating_filter.split(',') if a.strip()]
+        if a_terms:
+            # Normalize terms (remove non-alnum)
+            norm_terms = ["".join(c for c in t if c.isalnum()) for t in a_terms]
+            filtered = [c for c in filtered if any(term in "".join(k for k in str(c.get('officialRating', '')).lower() if k.isalnum()) for term in norm_terms)]
 
     # Fallback if filter too strict
     # If rating filter was applied and result is empty, we might want to return nothing (404 logic)
